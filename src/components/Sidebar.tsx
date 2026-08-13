@@ -1,7 +1,6 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import { getInitials } from '@/lib/utils'
 import type { Profile } from '@/lib/database.types'
 import { useTheme } from '@/lib/ThemeContext'
@@ -62,8 +61,8 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, un
         (!item.mediaOnly || isMediaEmployee)
       )
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
+  const handleLogout = () => {
+    localStorage.removeItem('rushi_token')
     router.push('/')
   }
 

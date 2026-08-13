@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import type { ActiveSection } from '@/app/dashboard/page'
 import { CheckSquare, Clock, AlertTriangle, TrendingUp, BarChart3, Users, Star, Trophy } from 'lucide-react'
@@ -33,6 +33,7 @@ interface GlobalStats {
 }
 
 export default function OverviewSection({ profile, onNavigate }: Props) {
+  const router = useRouter()
   const [tasks, setTasks] = useState<Task[]>([])
   const [stats, setStats] = useState<GlobalStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -40,11 +41,10 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
   const [stars, setStars] = useState<{ rank: number; total_points: number; employee: { full_name: string; designation: string | null } }[]>([])
 
   const fetchData = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
+    const token = localStorage.getItem('rushi_token')
+    if (!token) { router.push('/'); return }
 
-    const token = session.access_token
-    const headers = { Authorization: `Bearer ${token}` }
+    const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
 
     const [tasksRes, perfRes, pointsRes] = await Promise.all([
       fetch('/api/tasks', { headers }),
@@ -67,7 +67,7 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
     }
 
     setLoading(false)
-  }, [profile.role])
+  }, [profile.role, router])
 
   useEffect(() => { fetchData() }, [fetchData])
 

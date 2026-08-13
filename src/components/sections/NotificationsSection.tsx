@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { timeAgo } from '@/lib/utils'
 import { Bell, CheckCheck, Info, AlertTriangle, CheckCircle2, Clock, AlertCircle, MessageSquare } from 'lucide-react'
@@ -28,27 +28,34 @@ const typeConfig: Record<string, { icon: React.ElementType; color: string; bg: s
 }
 
 export default function NotificationsSection({ profile, onRead }: Props) {
+  const router = useRouter()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
 
-  const getToken = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    return session?.access_token || ''
+  const getToken = () => {
+    const token = localStorage.getItem('rushi_token')
+    if (!token) {
+      router.push('/')
+      return null
+    }
+    return token
   }
 
   const fetchNotifications = useCallback(async () => {
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
     const res = await fetch('/api/notifications', { headers: { Authorization: `Bearer ${token}` } })
     const data = await res.json()
     if (Array.isArray(data)) setNotifications(data)
     setLoading(false)
-  }, [])
+  }, [router])
 
   useEffect(() => { fetchNotifications() }, [fetchNotifications])
 
   const markRead = async (id: string) => {
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
     await fetch('/api/notifications', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -59,7 +66,8 @@ export default function NotificationsSection({ profile, onRead }: Props) {
   }
 
   const markAllRead = async () => {
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
     await fetch('/api/notifications', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

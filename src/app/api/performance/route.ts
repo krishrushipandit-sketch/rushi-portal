@@ -1,22 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { query, queryOne } from '@/lib/db'
+import { getUserFromRequest } from '@/lib/auth'
 
 // GET /api/performance — employee performance analytics (admin only)
 export async function GET(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
+    const user = await getUserFromRequest(req)
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const token = authHeader.replace('Bearer ', '')
-    const supabase = supabaseAdmin()
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const { data: callerProfile } = await supabase
-      .from('profiles').select('role').eq('id', user.id).single()
+    const callerProfile = await queryOne<{ role: string }>(
+      'SELECT role FROM profiles WHERE id = $1',
+      [user.userId]
+    )
     if (callerProfile?.role !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
@@ -26,17 +23,12 @@ export async function GET(req: NextRequest) {
     const dateTo = new Date(new Date(dateFrom).setMonth(new Date(dateFrom).getMonth() + 1)).toISOString().slice(0, 10)
 
     // ── Run all 4 DB queries in parallel ──
-    const [empRes, tasksRes, leadsRes, reportsRes] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, email, designation, department, avatar_url').eq('role', 'employee').eq('is_active', true),
-      supabase.from('tasks').select('id, assigned_to, status, deadline, completed_at, task_type, priority'),
-      supabase.from('leads').select('id, assigned_to, status, category'),
-      supabase.from('daily_reports').select('employee_id, report_date, entries, note').gte('report_date', dateFrom).lt('report_date', dateTo),
+    const [employees, tasks, leads, reports] = await Promise.all([
+      query<any>(`SELECT id, full_name, email, designation, department, avatar_url FROM profiles WHERE role = 'employee' AND is_active = true`),
+      query<any>(`SELECT id, assigned_to, status, deadline, completed_at, task_type, priority FROM tasks`),
+      query<any>(`SELECT id, assigned_to, status, category FROM leads`),
+      query<any>(`SELECT employee_id, report_date, entries, note FROM daily_reports WHERE report_date >= $1 AND report_date < $2`, [dateFrom, dateTo]),
     ])
-
-    const employees = empRes.data || []
-    const tasks = tasksRes.data || []
-    const leads = leadsRes.data || []
-    const reports = reportsRes.data || []
 
     const performance = employees.map(emp => {
       const empTasks = tasks.filter(t => t.assigned_to === emp.id)
@@ -81,7 +73,7 @@ export async function GET(req: NextRequest) {
           total_this_month: empReports.length,
           details: empReports.map(r => ({
             date: r.report_date,
-            entries: (r.entries || []) as { description: string; notes?: string; count: number }[],
+            entries: (typeof r.entries === 'string' ? JSON.parse(r.entries) : (r.entries || [])) as { description: string; notes?: string; count: number }[],
             note: r.note || ''
           }))
         }
@@ -103,7 +95,7 @@ export async function GET(req: NextRequest) {
       }, {}),
       enrollments: reports.reduce((acc: Record<string, number>, r) => {
         const ENROLL_KEYWORDS = ['enrollment', 'enroll', 'admission', 'join', 'amazon', 'dm ', 'target']
-        const entries = (r.entries || []) as { description: string; count: number }[]
+        const entries = (typeof r.entries === 'string' ? JSON.parse(r.entries) : (r.entries || [])) as { description: string; count: number }[]
         for (const entry of entries) {
           const desc = entry.description?.toLowerCase() || ''
           if (ENROLL_KEYWORDS.some(kw => desc.includes(kw))) {

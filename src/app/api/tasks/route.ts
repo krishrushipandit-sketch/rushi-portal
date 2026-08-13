@@ -1,26 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
-import { formatPhoneForWhatsApp, isDeadlineApproaching } from '@/lib/utils'
+import { query, queryOne, execute } from '@/lib/db'
+import { getUserFromRequest } from '@/lib/auth'
+import { formatPhoneForWhatsApp } from '@/lib/utils'
 
 // POST /api/tasks — create task (admin only)
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const user = await getUserFromRequest(req)
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const token = authHeader.replace('Bearer ', '')
-    const supabase = supabaseAdmin()
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const { data: callerProfile } = await supabase
-      .from('profiles').select('role, full_name, phone').eq('id', user.id).single()
-    if (callerProfile?.role !== 'admin') {
+    if (user.role !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
+
+    const callerProfile = await queryOne<{ full_name: string; phone: string }>(
+      'SELECT full_name, phone FROM profiles WHERE id = $1',
+      [user.userId]
+    )
 
     const body = await req.json()
     const { title, description, assigned_to, task_type, priority, deadline, notes } = body
@@ -29,34 +25,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'title and assigned_to are required' }, { status: 400 })
     }
 
-    const { data: task, error } = await supabase.from('tasks').insert({
-      title,
-      description,
-      assigned_to,
-      assigned_by: user.id,
-      task_type: task_type || 'assigned',
-      priority: priority || 'medium',
-      deadline,
-      notes,
-      status: 'pending',
-      reminder_sent: false,
-    }).select().single()
+    const task = await queryOne(
+      `INSERT INTO tasks (title, description, assigned_to, assigned_by, task_type, priority, deadline, notes, status, reminder_sent)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', false)
+       RETURNING *`,
+      [
+        title,
+        description || null,
+        assigned_to,
+        user.userId,
+        task_type || 'assigned',
+        priority || 'medium',
+        deadline || null,
+        notes || null,
+      ]
+    )
 
-    if (error) throw error
+    if (!task) throw new Error('Failed to create task')
 
     // ── Fetch assignee profile (name + phone) ─────────────────────────────
-    const { data: assigneeProfile } = await supabase
-      .from('profiles')
-      .select('full_name, phone')
-      .eq('id', assigned_to)
-      .single()
+    const assigneeProfile = await queryOne<{ full_name: string; phone: string }>(
+      'SELECT full_name, phone FROM profiles WHERE id = $1',
+      [assigned_to]
+    )
 
     // ── Fetch admin name ──────────────────────────────────────────────────
-    const { data: adminProfile } = await supabase
-      .from('profiles')
-      .select('full_name')
-      .eq('id', user.id)
-      .single()
+    const adminProfile = await queryOne<{ full_name: string }>(
+      'SELECT full_name FROM profiles WHERE id = $1',
+      [user.userId]
+    )
 
     const deadlineStr = deadline
       ? new Intl.DateTimeFormat('en-IN', {
@@ -69,13 +66,17 @@ export async function POST(req: NextRequest) {
     const priorityLabel = (priority || 'medium').charAt(0).toUpperCase() + (priority || 'medium').slice(1)
 
     // ── In-app notification ───────────────────────────────────────────────
-    await supabase.from('notifications').insert({
-      user_id: assigned_to,
-      title: '📋 New Task Assigned',
-      message: `"${title}" has been assigned to you by ${adminProfile?.full_name || 'Admin'}. Priority: ${priorityLabel}. Deadline: ${deadlineStr}`,
-      type: 'info',
-      task_id: task.id,
-    })
+    await execute(
+      `INSERT INTO notifications (user_id, title, message, type, task_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [
+        assigned_to,
+        '📋 New Task Assigned',
+        `"${title}" has been assigned to you by ${adminProfile?.full_name || 'Admin'}. Priority: ${priorityLabel}. Deadline: ${deadlineStr}`,
+        'info',
+        (task as any).id,
+      ]
+    )
 
     // ── WhatsApp via AiSensy (instant on assignment) ──────────────────────
     const AISENSY_KEY = process.env.AISENSY_API_KEY || ''
@@ -129,7 +130,7 @@ export async function POST(req: NextRequest) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               apiKey: AISENSY_KEY,
-              campaignName: 'task_assigned_admin_info', // ← Suggesting a separate template or use same
+              campaignName: 'task_assigned_admin_info',
               destination: adminE164,
               userName: callerProfile.full_name,
               templateParams: [
@@ -161,37 +162,52 @@ export async function POST(req: NextRequest) {
 // GET /api/tasks — list tasks
 export async function GET(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const user = await getUserFromRequest(req)
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    let sql = `
+      SELECT 
+        t.*,
+        json_build_object(
+          'id', p_to.id,
+          'full_name', p_to.full_name,
+          'email', p_to.email,
+          'avatar_url', p_to.avatar_url
+        ) AS assigned_to_profile,
+        json_build_object(
+          'id', p_by.id,
+          'full_name', p_by.full_name
+        ) AS assigned_by_profile,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', tu.id,
+                'comment', tu.comment,
+                'progress_percent', tu.progress_percent,
+                'created_at', tu.created_at,
+                'updated_by', tu.updated_by
+              )
+            )
+            FROM task_updates tu
+            WHERE tu.task_id = t.id
+          ),
+          '[]'::json
+        ) AS task_updates
+      FROM tasks t
+      LEFT JOIN profiles p_to ON p_to.id = t.assigned_to
+      LEFT JOIN profiles p_by ON p_by.id = t.assigned_by
+    `
+    const params: unknown[] = []
+
+    if (user.role !== 'admin') {
+      params.push(user.userId)
+      sql += ` WHERE t.assigned_to = $1`
     }
 
-    const token = authHeader.replace('Bearer ', '')
-    const supabase = supabaseAdmin()
+    sql += ` ORDER BY t.created_at DESC`
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const { data: profile } = await supabase
-      .from('profiles').select('role').eq('id', user.id).single()
-
-    let query = supabase
-      .from('tasks')
-      .select(`
-        *,
-        assigned_to_profile:profiles!tasks_assigned_to_fkey(id, full_name, email, avatar_url),
-        assigned_by_profile:profiles!tasks_assigned_by_fkey(id, full_name),
-        task_updates(id, comment, progress_percent, created_at, updated_by)
-      `)
-      .order('created_at', { ascending: false })
-
-    // Employees only see their own tasks (RLS handles this, but double-check)
-    if (profile?.role !== 'admin') {
-      query = query.eq('assigned_to', user.id)
-    }
-
-    const { data, error } = await query
-    if (error) throw error
+    const data = await query(sql, params)
 
     const response = NextResponse.json(data)
     response.headers.set('Cache-Control', 's-maxage=15, stale-while-revalidate=30')
@@ -210,28 +226,27 @@ export async function PUT(req: NextRequest) {
   }
 
   try {
-    const supabase = supabaseAdmin()
-
-    // Find assigned tasks approaching deadline within 1 hour, reminder not yet sent
     const now = new Date()
     const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000)
 
-    const { data: tasks, error } = await supabase
-      .from('tasks')
-      .select(`
-        *,
-        assigned_to_profile:profiles!tasks_assigned_to_fkey(
-          id, full_name, whatsapp_number, email
-        )
-      `)
-      .eq('task_type', 'assigned')
-      .eq('reminder_sent', false)
-      .neq('status', 'completed')
-      .neq('status', 'cancelled')
-      .gte('deadline', now.toISOString())
-      .lte('deadline', oneHourLater.toISOString())
-
-    if (error) throw error
+    const tasks = await query<any>(
+      `SELECT 
+        t.*,
+        json_build_object(
+          'id', p.id,
+          'full_name', p.full_name,
+          'whatsapp_number', p.whatsapp_number,
+          'email', p.email
+        ) AS assigned_to_profile
+      FROM tasks t
+      LEFT JOIN profiles p ON p.id = t.assigned_to
+      WHERE t.task_type = 'assigned'
+        AND t.reminder_sent = false
+        AND t.status NOT IN ('completed', 'cancelled')
+        AND t.deadline >= $1
+        AND t.deadline <= $2`,
+      [now.toISOString(), oneHourLater.toISOString()]
+    )
 
     const results: { task: string; status: string }[] = []
 
@@ -283,16 +298,14 @@ export async function PUT(req: NextRequest) {
       }
 
       // Create in-portal reminder notification
-      await supabase.from('notifications').insert({
-        user_id: task.assigned_to,
-        title: 'Task Deadline Reminder',
-        message: `"${task.title}" is due in less than 1 hour!`,
-        type: 'reminder',
-        task_id: task.id,
-      })
+      await execute(
+        `INSERT INTO notifications (user_id, title, message, type, task_id)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [task.assigned_to, 'Task Deadline Reminder', `"${task.title}" is due in less than 1 hour!`, 'reminder', task.id]
+      )
 
       // Mark reminder as sent
-      await supabase.from('tasks').update({ reminder_sent: true }).eq('id', task.id)
+      await execute('UPDATE tasks SET reminder_sent = true WHERE id = $1', [task.id])
     }
 
     return NextResponse.json({ processed: tasks?.length || 0, results })

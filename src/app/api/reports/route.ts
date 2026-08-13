@@ -1,29 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-const db = () => createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
-async function getAuth(req: NextRequest) {
-  const token = req.headers.get('Authorization')?.replace('Bearer ', '')
-  if (!token) return null
-  const { data: { user } } = await db().auth.getUser(token)
-  if (!user) return null
-  const { data: profile } = await db().from('profiles').select('role, full_name').eq('id', user.id).single()
-  return { user, profile }
-}
+import { query, queryOne, execute } from '@/lib/db'
+import { getUserFromRequest } from '@/lib/auth'
 
 // GET /api/reports                        → employee: own reports | admin: all
 // GET /api/reports?employee_id=xxx        → admin: specific employee reports
 // GET /api/reports?month=2026-05          → admin: monthly summary for all employees
 export async function GET(req: NextRequest) {
-  const auth = await getAuth(req)
-  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = await getUserFromRequest(req)
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { user, profile } = auth
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin = user.role === 'admin'
   const { searchParams } = new URL(req.url)
   const employeeId = searchParams.get('employee_id')
   const targetDate = searchParams.get('target_date')
@@ -31,15 +17,24 @@ export async function GET(req: NextRequest) {
   // Daily summary for all employees (admin dashboard)
   if (isAdmin && targetDate) {
     try {
-      const { data: reports } = await db()
-        .from('daily_reports')
-        .select('*, employee:profiles!daily_reports_employee_id_fkey(id, full_name, designation, avatar_url)')
-        .eq('report_date', targetDate)
+      const reports = await query<any>(
+        `SELECT 
+          dr.*,
+          json_build_object(
+            'id', p.id,
+            'full_name', p.full_name,
+            'designation', p.designation,
+            'avatar_url', p.avatar_url
+          ) AS employee
+        FROM daily_reports dr
+        LEFT JOIN profiles p ON p.id = dr.employee_id
+        WHERE dr.report_date = $1`,
+        [targetDate]
+      )
 
-      const { data: employees } = await db()
-        .from('profiles')
-        .select('id, full_name, designation, avatar_url')
-        .eq('is_active', true)
+      const employees = await query<any>(
+        `SELECT id, full_name, designation, avatar_url FROM profiles WHERE is_active = true`
+      )
 
       const summary = (employees || []).map(emp => {
         const report = (reports || []).find((r: any) => r.employee_id === emp.id)
@@ -54,19 +49,31 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    let query = db()
-      .from('daily_reports')
-      .select('*, employee:profiles!daily_reports_employee_id_fkey(id, full_name, designation, avatar_url)')
-      .order('report_date', { ascending: false })
+    let sql = `
+      SELECT 
+        dr.*,
+        json_build_object(
+          'id', p.id,
+          'full_name', p.full_name,
+          'designation', p.designation,
+          'avatar_url', p.avatar_url
+        ) AS employee
+      FROM daily_reports dr
+      LEFT JOIN profiles p ON p.id = dr.employee_id
+    `
+    const params: unknown[] = []
 
     if (!isAdmin) {
-      query = query.eq('employee_id', user.id)
+      params.push(user.userId)
+      sql += ` WHERE dr.employee_id = $1`
     } else if (employeeId) {
-      query = query.eq('employee_id', employeeId)
+      params.push(employeeId)
+      sql += ` WHERE dr.employee_id = $1`
     }
 
-    const { data, error } = await query
-    if (error) throw error
+    sql += ` ORDER BY dr.report_date DESC`
+
+    const data = await query(sql, params)
     return NextResponse.json(data || [])
   } catch {
     return NextResponse.json([])
@@ -75,11 +82,10 @@ export async function GET(req: NextRequest) {
 
 // POST /api/reports — submit today's report
 export async function POST(req: NextRequest) {
-  const auth = await getAuth(req)
-  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = await getUserFromRequest(req)
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { user, profile } = auth
-  const isAdmin = profile?.role === 'admin'
+  const isAdmin = user.role === 'admin'
   const body = await req.json()
   const { report_date, entries, note, employee_id, check_in_time, check_out_time } = body
 
@@ -87,7 +93,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'report_date and entries required' }, { status: 400 })
   }
 
-  const targetEmployeeId = isAdmin && employee_id ? employee_id : user.id
+  const targetEmployeeId = isAdmin && employee_id ? employee_id : user.userId
   const today = (() => {
     const d = new Date()
     const offset = d.getTimezoneOffset() * 60000
@@ -100,34 +106,67 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { data: existing } = await db()
-      .from('daily_reports')
-      .select('id')
-      .eq('employee_id', targetEmployeeId)
-      .eq('report_date', report_date)
-      .single()
-
-    const payload: Record<string, any> = {
-      entries,
-      note: note || '',
-      updated_at: new Date().toISOString(),
-      updated_by_admin: isAdmin,
-    }
-
-    if (check_in_time !== undefined)  payload.check_in_time  = check_in_time
-    if (check_out_time !== undefined) payload.check_out_time = check_out_time
+    const existing = await queryOne<{ id: string }>(
+      `SELECT id FROM daily_reports WHERE employee_id = $1 AND report_date = $2`,
+      [targetEmployeeId, report_date]
+    )
 
     let savedReport: any
     if (existing) {
-      const { data, error } = await db().from('daily_reports').update(payload).eq('id', existing.id).select().single()
-      if (error) throw error
-      savedReport = data
+      const setClauses: string[] = [
+        `entries = $1::jsonb`,
+        `note = $2`,
+        `updated_at = $3`,
+        `updated_by_admin = $4`,
+      ]
+      const updateParams: unknown[] = [
+        JSON.stringify(entries),
+        note || '',
+        new Date().toISOString(),
+        isAdmin,
+      ]
+
+      if (check_in_time !== undefined) {
+        updateParams.push(check_in_time)
+        setClauses.push(`check_in_time = $${updateParams.length}`)
+      }
+      if (check_out_time !== undefined) {
+        updateParams.push(check_out_time)
+        setClauses.push(`check_out_time = $${updateParams.length}`)
+      }
+
+      updateParams.push(existing.id)
+      savedReport = await queryOne(
+        `UPDATE daily_reports SET ${setClauses.join(', ')} WHERE id = $${updateParams.length} RETURNING *`,
+        updateParams
+      )
     } else {
-      const { data, error } = await db().from('daily_reports')
-        .insert({ employee_id: targetEmployeeId, report_date, ...payload })
-        .select().single()
-      if (error) throw error
-      savedReport = data
+      const columns: string[] = ['employee_id', 'report_date', 'entries', 'note', 'updated_at', 'updated_by_admin']
+      const values: string[] = ['$1', '$2', '$3::jsonb', '$4', '$5', '$6']
+      const insertParams: unknown[] = [
+        targetEmployeeId,
+        report_date,
+        JSON.stringify(entries),
+        note || '',
+        new Date().toISOString(),
+        isAdmin,
+      ]
+
+      if (check_in_time !== undefined) {
+        insertParams.push(check_in_time)
+        columns.push('check_in_time')
+        values.push(`$${insertParams.length}`)
+      }
+      if (check_out_time !== undefined) {
+        insertParams.push(check_out_time)
+        columns.push('check_out_time')
+        values.push(`$${insertParams.length}`)
+      }
+
+      savedReport = await queryOne(
+        `INSERT INTO daily_reports (${columns.join(', ')}) VALUES (${values.join(', ')}) RETURNING *`,
+        insertParams
+      )
     }
 
     // ── Auto-calculate points (non-blocking) ──
@@ -142,24 +181,26 @@ export async function POST(req: NextRequest) {
     // ── Auto-mark Attendance based on checkout (non-blocking) ──
     if (check_out_time) {
       const isHalfDay = check_out_time < '17:00'
-      db().from('employee_attendance').upsert({
-        employee_id: targetEmployeeId,
-        date: report_date,
-        status: isHalfDay ? 'half_day' : 'present',
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'employee_id,date' }).then(() => {})
+      execute(
+        `INSERT INTO employee_attendance (employee_id, date, status, updated_at)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (employee_id, date) DO UPDATE SET
+           status = EXCLUDED.status,
+           updated_at = EXCLUDED.updated_at`,
+        [targetEmployeeId, report_date, isHalfDay ? 'half_day' : 'present', new Date().toISOString()]
+      ).catch(() => {})
     }
 
     // ── Auto-sync client production progress (non-blocking) ──
-    runClientSync(db(), targetEmployeeId, report_date, entries)
+    runClientSync(targetEmployeeId, report_date, entries)
 
     // ── WhatsApp Notification to Admin (non-blocking) ──
     ;(async () => {
       const AISENSY_KEY = process.env.AISENSY_API_KEY || ''
       if (!AISENSY_KEY || AISENSY_KEY === 'your-aisensy-api-key-here') return
 
-      const { data: emp } = await db().from('profiles').select('full_name').eq('id', targetEmployeeId).single()
-      const { data: admins } = await db().from('profiles').select('full_name, phone').eq('role', 'admin')
+      const emp = await queryOne<{ full_name: string }>('SELECT full_name FROM profiles WHERE id = $1', [targetEmployeeId])
+      const admins = await query<{ full_name: string; phone: string }>('SELECT full_name, phone FROM profiles WHERE role = $1', ['admin'])
 
       if (!admins || admins.length === 0) return
 
@@ -204,11 +245,7 @@ export async function POST(req: NextRequest) {
 }
 
 // ── Standalone sync: report entries → client_progress_log ────────────────────
-// Responsibility title = client name (e.g. "CA Suyash Sir")
-// Description/notes text = content types (e.g. "4 reels 2 youtube 3 static posts")
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function runClientSync(
-  client: any,
   employee_id: string,
   report_date: string,
   entries: { description: string; count: number; notes?: string }[]
@@ -236,12 +273,27 @@ function runClientSync(
   }
 
   const work = async () => {
-    const { data: clients, error } = await client
-      .from('clients')
-      .select('id, name, slug, deliverables:client_deliverables(id, content_type)')
-      .eq('is_active', true)
+    const clients = await query<any>(
+      `SELECT 
+        c.id, c.name, c.slug,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', cd.id,
+                'content_type', cd.content_type
+              )
+            )
+            FROM client_deliverables cd
+            WHERE cd.client_id = c.id
+          ),
+          '[]'::json
+        ) AS deliverables
+      FROM clients c
+      WHERE c.is_active = true`
+    )
 
-    if (error || !clients || clients.length === 0) return
+    if (!clients || clients.length === 0) return
 
     for (const entry of entries) {
       // entry.description = responsibility title = client name
@@ -284,25 +336,20 @@ function runClientSync(
         if (!matchedDel) continue
 
         // Upsert: delete then insert for this employee+deliverable+date
-        await client
-          .from('client_progress_log')
-          .delete()
-          .eq('employee_id', employee_id)
-          .eq('deliverable_id', matchedDel.id)
-          .eq('log_date', report_date)
+        await execute(
+          `DELETE FROM client_progress_log 
+           WHERE employee_id = $1 AND deliverable_id = $2 AND log_date = $3`,
+          [employee_id, matchedDel.id, report_date]
+        )
 
-        await client.from('client_progress_log').insert({
-          client_id: matchedClient.id,
-          deliverable_id: matchedDel.id,
-          employee_id,
-          log_date: report_date,
-          count,
-          notes: entry.notes || null,
-        } as any)
+        await execute(
+          `INSERT INTO client_progress_log (client_id, deliverable_id, employee_id, log_date, count, notes)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [matchedClient.id, matchedDel.id, employee_id, report_date, count, entry.notes || null]
+        )
       }
     }
   }
 
   work().catch(() => { /* non-critical */ })
 }
-

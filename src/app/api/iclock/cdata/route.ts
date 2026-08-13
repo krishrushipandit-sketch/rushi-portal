@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-const db = () => createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+import { queryOne, execute } from '@/lib/db'
 
 // eSSL ADMS Push Protocol Receiver
 // The biometric machine is configured to push data HERE automatically.
@@ -88,8 +83,10 @@ export async function POST(req: NextRequest) {
     for (const [key, times] of Object.entries(grouped)) {
       const [biometric_id, report_date] = key.split('_')
 
-      const { data: profile } = await db()
-        .from('profiles').select('id').eq('biometric_id', biometric_id).single()
+      const profile = await queryOne<{ id: string }>(
+        'SELECT id FROM profiles WHERE biometric_id = $1',
+        [biometric_id]
+      )
       if (!profile) continue
 
       const employee_id = profile.id
@@ -100,26 +97,49 @@ export async function POST(req: NextRequest) {
       const checkOutStr = times.checkOut ? toTimeStr(times.checkOut) : null
 
       // Upsert daily report
-      const { data: existing } = await db().from('daily_reports').select('id')
-        .eq('employee_id', employee_id).eq('report_date', report_date).single()
-
-      const reportPayload: any = { check_in_time: checkInStr }
-      if (checkOutStr) reportPayload.check_out_time = checkOutStr
+      const existing = await queryOne<{ id: string }>(
+        'SELECT id FROM daily_reports WHERE employee_id = $1 AND report_date = $2',
+        [employee_id, report_date]
+      )
 
       if (existing) {
-        await db().from('daily_reports').update(reportPayload).eq('id', existing.id)
+        if (checkOutStr) {
+          await execute(
+            'UPDATE daily_reports SET check_in_time = $1, check_out_time = $2 WHERE id = $3',
+            [checkInStr, checkOutStr, existing.id]
+          )
+        } else {
+          await execute(
+            'UPDATE daily_reports SET check_in_time = $1 WHERE id = $2',
+            [checkInStr, existing.id]
+          )
+        }
       } else {
-        await db().from('daily_reports').insert({ employee_id, report_date, entries: [], ...reportPayload })
+        if (checkOutStr) {
+          await execute(
+            `INSERT INTO daily_reports (employee_id, report_date, check_in_time, check_out_time, entries)
+             VALUES ($1, $2, $3, $4, $5::jsonb)`,
+            [employee_id, report_date, checkInStr, checkOutStr, JSON.stringify([])]
+          )
+        } else {
+          await execute(
+            `INSERT INTO daily_reports (employee_id, report_date, check_in_time, entries)
+             VALUES ($1, $2, $3, $4::jsonb)`,
+            [employee_id, report_date, checkInStr, JSON.stringify([])]
+          )
+        }
       }
 
       // Auto mark attendance
       if (checkOutStr) {
         const isHalfDay = checkOutStr < '17:00'
-        await db().from('employee_attendance').upsert({
-          employee_id, date: report_date,
-          status: isHalfDay ? 'half_day' : 'present',
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'employee_id,date' })
+        await execute(
+          `INSERT INTO employee_attendance (employee_id, date, status, updated_at)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (employee_id, date)
+           DO UPDATE SET status = EXCLUDED.status, updated_at = EXCLUDED.updated_at`,
+          [employee_id, report_date, isHalfDay ? 'half_day' : 'present', new Date().toISOString()]
+        )
       }
     }
 

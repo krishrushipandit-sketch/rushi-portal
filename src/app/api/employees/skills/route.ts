@@ -1,24 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { query, queryOne, execute } from '@/lib/db'
+import { getUserFromRequest } from '@/lib/auth'
 
 export async function GET(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const user = await getUserFromRequest(req)
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const token = authHeader.replace('Bearer ', '')
-    const supabase = supabaseAdmin()
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const { data: skills, error } = await supabase
-      .from('sales_industry_skills')
-      .select('*')
-
-    if (error) throw error
+    const skills = await query('SELECT * FROM sales_industry_skills')
     return NextResponse.json(skills || [])
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
@@ -27,20 +16,14 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const token = authHeader.replace('Bearer ', '')
-    const supabase = supabaseAdmin()
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const user = await getUserFromRequest(req)
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     // Admin authorization check
-    const { data: profile } = await supabase
-      .from('profiles').select('role').eq('id', user.id).single()
+    const profile = await queryOne<{ role: string }>(
+      'SELECT role FROM profiles WHERE id = $1',
+      [user.userId]
+    )
 
     if (profile?.role !== 'admin') {
       return NextResponse.json({ error: 'Forbidden. Admin access required.' }, { status: 403 })
@@ -54,21 +37,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Delete existing skills for user
-    await supabase.from('sales_industry_skills').delete().eq('user_id', user_id)
+    await execute('DELETE FROM sales_industry_skills WHERE user_id = $1', [user_id])
 
     // Insert new skills
     if (industries.length > 0) {
-      const inserts = industries.map((ind: string) => ({
-        user_id,
-        industry: ind,
-        is_active: true
-      }))
-
-      const { error: insertErr } = await supabase
-        .from('sales_industry_skills')
-        .insert(inserts)
-
-      if (insertErr) throw insertErr
+      for (const ind of industries) {
+        await execute(
+          `INSERT INTO sales_industry_skills (user_id, industry, is_active) VALUES ($1, $2, $3)`,
+          [user_id, ind, true]
+        )
+      }
     }
 
     return NextResponse.json({ success: true, user_id, count: industries.length })

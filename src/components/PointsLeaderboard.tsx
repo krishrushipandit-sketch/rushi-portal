@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 import { getInitials } from '@/lib/utils'
 import { Trophy, Star } from 'lucide-react'
 
@@ -21,26 +21,38 @@ interface Props {
 }
 
 export default function PointsLeaderboard({ isLight }: Props) {
+  const router = useRouter()
   const [leaderboard, setLeaderboard] = useState<LeaderRow[]>([])
   const [stars, setStars] = useState<StarPerformer[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchPoints = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
-      const res = await fetch('/api/points', {
-        headers: { Authorization: `Bearer ${session.access_token}` }
-      })
-      const data = await res.json()
-      if (data.leaderboard) {
-        setLeaderboard(data.leaderboard.slice(0, 5)) // top 5 in sidebar
-        setStars(data.stars || [])
+      const token = localStorage.getItem('rushi_token')
+      if (!token) {
+        router.push('/')
+        return
+      }
+      
+      try {
+        const res = await fetch('/api/points', {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json' 
+          }
+        })
+        const data = await res.json()
+        if (data.leaderboard) {
+          setLeaderboard(data.leaderboard.slice(0, 5)) // top 5 in sidebar
+          setStars(data.stars || [])
+        }
+      } catch (err) {
+        console.error('Failed to fetch points:', err)
       }
       setLoading(false)
     }
     fetchPoints()
-  }, [])
+  }, [router])
 
   const textColor = isLight ? 'rgba(255,255,255,0.85)' : 'var(--text-primary)'
   const mutedColor = isLight ? 'rgba(255,255,255,0.45)' : 'var(--text-muted)'

@@ -1,36 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-const db = () => createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+import { query } from '@/lib/db'
+import { getUserFromRequest } from '@/lib/auth'
 
 // GET /api/client-progress/debug
 // Tests keyword matching on a sample description and checks DB state
 export async function GET(req: NextRequest) {
-  const token = req.headers.get('Authorization')?.replace('Bearer ', '')
-  if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = await getUserFromRequest(req)
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
   const testDesc = searchParams.get('desc') || 'CA Reel editing'
 
   try {
     // 1. Check clients exist
-    const { data: clients, error: clientErr } = await db()
-      .from('clients')
-      .select('id, name, slug, deliverables:client_deliverables(id, content_type)')
-      .eq('is_active', true)
+    let clients: any[] = []
+    let clientErr: any = null
+
+    try {
+      const clientsList = await query<any>(
+        'SELECT id, name, slug FROM clients WHERE is_active = true'
+      )
+      const deliverablesList = await query<any>(
+        'SELECT id, client_id, content_type FROM client_deliverables'
+      )
+      clients = clientsList.map((c: any) => ({
+        ...c,
+        deliverables: deliverablesList.filter((d: any) => d.client_id === c.id)
+      }))
+    } catch (err: any) {
+      clientErr = err
+    }
 
     if (clientErr) {
       return NextResponse.json({
         error: 'clients table error — did you run SETUP-CLIENTS.sql?',
-        details: clientErr.message
+        details: clientErr.message || String(clientErr)
       }, { status: 500 })
     }
 
     // 2. Check client_progress_log exists
-    const { error: logErr } = await db().from('client_progress_log').select('id').limit(1)
+    let logErr: any = null
+    try {
+      await query('SELECT id FROM client_progress_log LIMIT 1')
+    } catch (err: any) {
+      logErr = err
+    }
 
     // 3. Test keyword matching on the provided description
     const clientKeywords: Record<string, string[]> = {
@@ -62,11 +76,15 @@ export async function GET(req: NextRequest) {
     }
 
     // 4. Recent logs
-    const { data: recentLogs } = await db()
-      .from('client_progress_log')
-      .select('employee_id, log_date, count, deliverable_id')
-      .order('created_at', { ascending: false })
-      .limit(5)
+    let recentLogs: any[] = []
+    try {
+      recentLogs = await query(
+        `SELECT employee_id, TO_CHAR(log_date, 'YYYY-MM-DD') AS log_date, count, deliverable_id
+         FROM client_progress_log
+         ORDER BY created_at DESC
+         LIMIT 5`
+      )
+    } catch {}
 
     return NextResponse.json({
       status: 'ok',

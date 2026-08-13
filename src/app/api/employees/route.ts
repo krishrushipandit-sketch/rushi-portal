@@ -1,33 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { query, queryOne, execute } from '@/lib/db'
+import { getUserFromRequest } from '@/lib/auth'
+import bcrypt from 'bcryptjs'
 
 export async function GET(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const user = await getUserFromRequest(req)
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-    const token = authHeader.replace('Bearer ', '')
-    const supabase = supabaseAdmin()
+    const employees = await query(
+      `SELECT id, email, full_name, role, department, designation, phone,
+              whatsapp_number, avatar_url, is_active, created_at
+       FROM profiles ORDER BY created_at ASC`
+    )
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    // Check caller is admin
-    const { data: callerProfile } = await supabase
-      .from('profiles').select('role').eq('id', user.id).single()
-    if (callerProfile?.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: true })
-
-    if (error) throw error
-    return NextResponse.json(data)
+    return NextResponse.json(employees)
   } catch (err: unknown) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })
   }
@@ -35,22 +23,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const token = authHeader.replace('Bearer ', '')
-    const supabase = supabaseAdmin()
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const { data: callerProfile } = await supabase
-      .from('profiles').select('role').eq('id', user.id).single()
-    if (callerProfile?.role !== 'admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    const user = await getUserFromRequest(req)
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const body = await req.json()
     const { full_name, email, password, role, department, designation, whatsapp_number, phone, avatar_url } = body
@@ -59,54 +34,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'email, password and full_name are required' }, { status: 400 })
     }
 
-    // Check if user already exists
-    const orConditions = [`email.eq.${email}`]
-    if (phone) orConditions.push(`phone.eq.${phone}`)
-    if (whatsapp_number) orConditions.push(`whatsapp_number.eq.${whatsapp_number}`)
+    // Check if email already exists
+    const existing = await queryOne('SELECT id FROM profiles WHERE email = $1', [email.toLowerCase()])
+    if (existing) return NextResponse.json({ error: 'A user with this email already exists.' }, { status: 400 })
 
-    const { data: existingUser } = await supabase
-      .from('profiles')
-      .select('id, email, phone, whatsapp_number')
-      .or(orConditions.join(','))
-      .limit(1)
-      .maybeSingle()
+    const password_hash = await bcrypt.hash(password, 10)
 
-    if (existingUser) {
-      if (existingUser.email === email) {
-        return NextResponse.json({ error: 'A user with this email already exists.' }, { status: 400 })
-      }
-      if (phone && existingUser.phone === phone) {
-        return NextResponse.json({ error: 'A user with this phone number already exists.' }, { status: 400 })
-      }
-      if (whatsapp_number && existingUser.whatsapp_number === whatsapp_number) {
-        return NextResponse.json({ error: 'A user with this WhatsApp number already exists.' }, { status: 400 })
-      }
-      return NextResponse.json({ error: 'A user with these details already exists.' }, { status: 400 })
-    }
+    const [newUser] = await query(
+      `INSERT INTO profiles (email, full_name, password_hash, role, department, designation, phone, whatsapp_number, avatar_url, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
+       RETURNING id, email, full_name, role, department, designation`,
+      [email.toLowerCase(), full_name, password_hash, role || 'employee', department, designation, phone, whatsapp_number, avatar_url]
+    )
 
-    // Create auth user
-    const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: { full_name, role: role || 'employee' },
-    })
-
-    if (createError) throw createError
-
-    // Update profile with extra fields (trigger creates it)
-    if (newUser?.user) {
-      await supabase.from('profiles').update({
-        department,
-        designation,
-        whatsapp_number,
-        phone,
-        role: role || 'employee',
-        avatar_url,
-      }).eq('id', newUser.user.id)
-    }
-
-    return NextResponse.json({ success: true, user: newUser.user })
+    return NextResponse.json({ success: true, user: newUser })
   } catch (err: unknown) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })
   }

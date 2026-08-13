@@ -1,23 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { GoogleGenerativeAI } from '@google/generative-ai'
-
-const db = () => createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
-async function getUser(req: NextRequest) {
-  const token = req.headers.get('Authorization')?.replace('Bearer ', '')
-  if (!token) return null
-  const { data: { user } } = await db().auth.getUser(token)
-  return user
-}
+import { query, queryOne, execute } from '@/lib/db'
+import { getUserFromRequest } from '@/lib/auth'
 
 // POST /api/reports/analyze
 // Body: { report_id } — called after a report is submitted
 export async function POST(req: NextRequest) {
-  const user = await getUser(req)
+  const user = await getUserFromRequest(req)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const apiKey = process.env.GEMINI_API_KEY
@@ -29,24 +18,27 @@ export async function POST(req: NextRequest) {
   if (!report_id) return NextResponse.json({ error: 'report_id required' }, { status: 400 })
 
   // Fetch the report
-  const { data: report, error: fetchErr } = await db()
-    .from('daily_reports')
-    .select('*, employee:profiles!daily_reports_employee_id_fkey(full_name, designation)')
-    .eq('id', report_id)
-    .single()
+  const report = await queryOne<any>(
+    `SELECT r.*, json_build_object('full_name', p.full_name, 'designation', p.designation) as employee
+     FROM daily_reports r
+     LEFT JOIN profiles p ON r.employee_id = p.id
+     WHERE r.id = $1`,
+    [report_id]
+  )
 
-  if (fetchErr || !report) return NextResponse.json({ error: 'Report not found' }, { status: 404 })
+  if (!report) return NextResponse.json({ error: 'Report not found' }, { status: 404 })
 
   // Only the owner or admin can analyze
-  const { data: profile } = await db().from('profiles').select('role').eq('id', user.id).single()
-  if (report.employee_id !== user.id && profile?.role !== 'admin') {
+  const profile = await queryOne<{ role: string }>('SELECT role FROM profiles WHERE id = $1', [user.userId])
+  if (report.employee_id !== user.userId && profile?.role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   // Build context for Gemini
   const employeeName = report.employee?.full_name || 'Employee'
   const designation = report.employee?.designation || ''
-  const taskLines = (report.task_entries as any[])
+  const taskEntries = typeof report.task_entries === 'string' ? JSON.parse(report.task_entries) : (report.task_entries || [])
+  const taskLines = (taskEntries as any[])
     .map((t: any) => `- ${t.task_title}${t.notes ? `: ${t.notes}` : ' (completed)'}`)
     .join('\n')
   const overallNote = report.overall_note || ''
@@ -141,12 +133,29 @@ Rules:
     }
 
     // Save to report
-    const { error: updateErr } = await db()
-      .from('daily_reports')
-      .update(aiData)
-      .eq('id', report_id)
-
-    if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
+    await execute(
+      `UPDATE daily_reports
+       SET ai_summary = $1,
+           ai_productivity_score = $2,
+           ai_sentiment = $3,
+           ai_key_points = $4::jsonb,
+           ai_concerns = $5,
+           ai_improvement_tip = $6,
+           ai_metrics = $7::jsonb,
+           ai_analyzed_at = $8
+       WHERE id = $9`,
+      [
+        aiData.ai_summary,
+        aiData.ai_productivity_score,
+        aiData.ai_sentiment,
+        JSON.stringify(aiData.ai_key_points),
+        aiData.ai_concerns,
+        aiData.ai_improvement_tip,
+        JSON.stringify(aiData.ai_metrics),
+        aiData.ai_analyzed_at,
+        report_id,
+      ]
+    )
 
     return NextResponse.json({ success: true, ...aiData })
   } catch (err: any) {
@@ -158,10 +167,10 @@ Rules:
 // GET /api/reports/analyze?mode=team_insights
 // Returns AI-generated team-wide insights for admin
 export async function GET(req: NextRequest) {
-  const user = await getUser(req)
+  const user = await getUserFromRequest(req)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: profile } = await db().from('profiles').select('role').eq('id', user.id).single()
+  const profile = await queryOne<{ role: string }>('SELECT role FROM profiles WHERE id = $1', [user.userId])
   if (profile?.role !== 'admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 })
 
   const apiKey = process.env.GEMINI_API_KEY
@@ -171,12 +180,15 @@ export async function GET(req: NextRequest) {
 
   // Get last 7 days of analyzed reports
   const from = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-  const { data: reports } = await db()
-    .from('daily_reports')
-    .select('ai_summary, ai_productivity_score, ai_sentiment, ai_concerns, report_date, employee:profiles!daily_reports_employee_id_fkey(full_name)')
-    .gte('report_date', from)
-    .not('ai_summary', 'is', null)
-    .order('report_date', { ascending: false })
+  const reports = await query<any>(
+    `SELECT r.ai_summary, r.ai_productivity_score, r.ai_sentiment, r.ai_concerns, r.report_date,
+            json_build_object('full_name', p.full_name) as employee
+     FROM daily_reports r
+     LEFT JOIN profiles p ON r.employee_id = p.id
+     WHERE r.report_date >= $1 AND r.ai_summary IS NOT NULL
+     ORDER BY r.report_date DESC`,
+    [from]
+  )
 
   if (!reports || reports.length === 0) {
     return NextResponse.json({ insights: 'No analyzed reports available yet. Submit and analyze some reports first.' })

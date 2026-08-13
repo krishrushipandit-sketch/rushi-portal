@@ -1,37 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { query, queryOne } from '@/lib/db'
+import { getUserFromRequest } from '@/lib/auth'
 
 export async function GET(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const user = await getUserFromRequest(req)
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    let sql = `
+      SELECT 
+        l.*,
+        CASE WHEN p.id IS NOT NULL THEN json_build_object(
+          'id', p.id,
+          'full_name', p.full_name,
+          'email', p.email
+        ) ELSE NULL END AS assigned_to_profile
+      FROM leads l
+      LEFT JOIN profiles p ON p.id = l.assigned_to
+    `
+    const params: unknown[] = []
+
+    if (user.role !== 'admin') {
+      params.push(user.userId)
+      sql += ` WHERE l.assigned_to = $1`
     }
 
-    const token = authHeader.replace('Bearer ', '')
-    const supabase = supabaseAdmin()
+    sql += ` ORDER BY l.created_at DESC`
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const { data: profile } = await supabase
-      .from('profiles').select('role').eq('id', user.id).single()
-
-    let query = supabase
-      .from('leads')
-      .select(`
-        *,
-        assigned_to_profile:profiles!leads_assigned_to_fkey(id, full_name, email)
-      `)
-      .order('created_at', { ascending: false })
-
-    if (profile?.role !== 'admin') {
-      query = query.eq('assigned_to', user.id)
-    }
-
-    const { data, error } = await query
-    if (error) throw error
-
+    const data = await query(sql, params)
     return NextResponse.json(data)
   } catch (err: unknown) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })
@@ -40,16 +36,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const token = authHeader.replace('Bearer ', '')
-    const supabase = supabaseAdmin()
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const user = await getUserFromRequest(req)
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await req.json()
     const { client_name, phone, email, category, status, source, notes, follow_up_date, assigned_to } = body
@@ -58,22 +46,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'client_name, phone and category are required' }, { status: 400 })
     }
 
-    const { data: profile } = await supabase
-      .from('profiles').select('role').eq('id', user.id).single()
+    const assignedToVal = user.role === 'admin' ? (assigned_to || user.userId) : user.userId
 
-    const { data, error } = await supabase.from('leads').insert({
-      client_name,
-      phone,
-      email,
-      category,
-      status: status || 'new',
-      source,
-      notes,
-      follow_up_date,
-      assigned_to: profile?.role === 'admin' ? (assigned_to || user.id) : user.id,
-    }).select().single()
+    const data = await queryOne(
+      `INSERT INTO leads (client_name, phone, email, category, status, source, notes, follow_up_date, assigned_to)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [
+        client_name,
+        phone,
+        email || null,
+        category,
+        status || 'new',
+        source || null,
+        notes || null,
+        follow_up_date || null,
+        assignedToVal
+      ]
+    )
 
-    if (error) throw error
     return NextResponse.json(data)
   } catch (err: unknown) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })

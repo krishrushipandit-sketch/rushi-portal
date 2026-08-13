@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import type { Profile } from '@/lib/database.types'
 import Sidebar from '@/components/Sidebar'
 import Topbar from '@/components/Topbar'
@@ -19,8 +18,6 @@ import SettingsSection from '@/components/sections/SettingsSection'
 import LeaderboardSection from '@/components/sections/LeaderboardSection'
 import AttendanceSection from '@/components/sections/AttendanceSection'
 
-
-
 export type ActiveSection =
   | 'overview'
   | 'tasks'
@@ -35,6 +32,17 @@ export type ActiveSection =
   | 'leaderboard'
   | 'attendance'
 
+/** Get the stored JWT token for API calls */
+export function getAuthToken(): string | null {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem('rushi_token')
+}
+
+/** Auth headers helper */
+export function authHeaders(): HeadersInit {
+  const token = getAuthToken()
+  return token ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' }
+}
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -45,63 +53,73 @@ export default function DashboardPage() {
   const [unreadCount, setUnreadCount] = useState(0)
 
   const fetchProfile = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
-      router.push('/')
-      return
-    }
+    try {
+      const token = localStorage.getItem('rushi_token')
+      const userStr = localStorage.getItem('rushi_user')
 
-    let { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', session.user.id)
-      .single()
-
-    // If profile doesn't exist yet, create it (handles admin created before schema)
-    if (error && error.code === 'PGRST116') {
-      const { data: newProfile, error: insertError } = await supabase
-        .from('profiles')
-        .insert({
-          id: session.user.id,
-          email: session.user.email!,
-          full_name: session.user.user_metadata?.full_name || session.user.email!.split('@')[0],
-          role: 'employee',
-        })
-        .select()
-        .single()
-
-      if (insertError) {
-        console.error('Could not create profile:', insertError.message)
-        await supabase.auth.signOut()
+      if (!token || !userStr) {
         router.push('/')
         return
       }
-      data = newProfile
-    } else if (error) {
-      console.error('Profile fetch error:', error.message)
-      await supabase.auth.signOut()
-      router.push('/')
-      return
-    }
 
-    if (!data) {
-      router.push('/')
-      return
-    }
+      // Verify token is still valid
+      const res = await fetch('/api/auth/me', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
 
-    setProfile(data)
-    setLoading(false)
+      if (!res.ok) {
+        localStorage.removeItem('rushi_token')
+        localStorage.removeItem('rushi_user')
+        router.push('/')
+        return
+      }
+
+      const { user } = await res.json()
+
+      // Fetch full profile
+      const profileRes = await fetch(`/api/employees/${user.userId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+
+      if (profileRes.ok) {
+        const profileData = await profileRes.json()
+        setProfile(profileData)
+      } else {
+        // Build profile from JWT data
+        setProfile({
+          id: user.userId,
+          email: user.email,
+          full_name: user.name,
+          role: user.role,
+          department: null,
+          designation: null,
+          phone: null,
+          whatsapp_number: null,
+          avatar_url: null,
+          is_active: true,
+          created_at: new Date().toISOString(),
+        } as Profile)
+      }
+
+      setLoading(false)
+    } catch (err) {
+      console.error('Session error:', err)
+      router.push('/')
+    }
   }, [router])
 
   const fetchUnreadCount = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
-    const { count } = await supabase
-      .from('notifications')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', session.user.id)
-      .eq('is_read', false)
-    setUnreadCount(count || 0)
+    try {
+      const token = localStorage.getItem('rushi_token')
+      if (!token) return
+      const res = await fetch('/api/notifications?unread=true', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setUnreadCount(Array.isArray(data) ? data.filter((n: {is_read: boolean}) => !n.is_read).length : 0)
+      }
+    } catch { /* silent */ }
   }, [])
 
   useEffect(() => {
@@ -111,27 +129,8 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!profile) return
     fetchUnreadCount()
-    // Poll for new notifications every 60 seconds
     const interval = setInterval(fetchUnreadCount, 60000)
     return () => clearInterval(interval)
-  }, [profile, fetchUnreadCount])
-
-  // Real-time notification subscription
-  useEffect(() => {
-    if (!profile) return
-    const channel = supabase
-      .channel('notifications')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'notifications',
-        filter: `user_id=eq.${profile.id}`,
-      }, () => {
-        fetchUnreadCount()
-      })
-      .subscribe()
-
-    return () => { supabase.removeChannel(channel) }
   }, [profile, fetchUnreadCount])
 
   if (loading) {
@@ -175,7 +174,6 @@ export default function DashboardPage() {
         ? <LeadsSection {...props} />
         : <OverviewSection {...props} onNavigate={setActiveSection} />
       case 'sales': return profile.role === 'admin' ? <SalesSection {...props} /> : null
-
       case 'performance': return <PerformanceSection {...props} />
       case 'employees': return profile.role === 'admin' ? <EmployeesSection {...props} /> : null
       case 'notifications': return <NotificationsSection {...props} onRead={fetchUnreadCount} />

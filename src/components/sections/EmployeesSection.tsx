@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { getInitials, formatDate } from '@/lib/utils'
 import { Plus, Trash2, X, Loader2, Users, Phone, Mail, Edit2, ToggleLeft, ToggleRight, Upload } from 'lucide-react'
@@ -25,6 +25,7 @@ interface Employee {
 const DEPARTMENTS = ['Sales', 'Administration', 'Academic', 'Finance', 'Operations', 'Marketing', 'IT']
 
 export default function EmployeesSection({ profile }: Props) {
+  const router = useRouter()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -36,13 +37,15 @@ export default function EmployeesSection({ profile }: Props) {
     department: '', designation: '', phone: '', whatsapp_number: '', avatar_url: ''
   })
 
-  const getToken = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    return session?.access_token || ''
+  const getToken = () => {
+    const token = localStorage.getItem('rushi_token')
+    if (!token) { router.push('/'); return '' }
+    return token
   }
 
   const fetchEmployees = useCallback(async () => {
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
     const res = await fetch('/api/employees', { headers: { Authorization: `Bearer ${token}` } })
     const data = await res.json()
     if (Array.isArray(data)) setEmployees(data)
@@ -62,16 +65,22 @@ export default function EmployeesSection({ profile }: Props) {
     if (!file) return
     setSubmitting(true)
     try {
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`
+      const formData = new FormData()
+      formData.append('file', file)
       
-      const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file)
-      if (uploadError) throw uploadError
-      
-      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName)
-      setForm(f => ({ ...f, avatar_url: publicUrl }))
+      const token = getToken()
+      if (!token) return
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      })
+      if (!res.ok) throw new Error('Upload failed')
+      const data = await res.json()
+      setForm(f => ({ ...f, avatar_url: data.url }))
     } catch (err: any) {
-      alert('Avatar upload failed: ' + err.message + '\nMake sure you created a public "avatars" bucket in Supabase Storage.')
+      alert('Avatar upload failed: ' + err.message)
     } finally {
       setSubmitting(false)
     }
@@ -80,7 +89,8 @@ export default function EmployeesSection({ profile }: Props) {
   const handleSubmit = async () => {
     if (!form.full_name || !form.email) return
     setSubmitting(true)
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
 
     if (editEmployee) {
       const { password, ...updateData } = form
@@ -111,13 +121,15 @@ export default function EmployeesSection({ profile }: Props) {
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Delete employee "${name}"? All their tasks will be unassigned.`)) return
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
     await fetch(`/api/employees/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
     fetchEmployees()
   }
 
   const toggleActive = async (emp: Employee) => {
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
     await fetch(`/api/employees/${emp.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

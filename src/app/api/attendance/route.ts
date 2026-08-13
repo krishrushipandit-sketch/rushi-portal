@@ -1,24 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-const db = () => createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
-async function getAuth(req: NextRequest) {
-  const token = req.headers.get('Authorization')?.replace('Bearer ', '')
-  if (!token) return null
-  const { data: { user } } = await db().auth.getUser(token)
-  if (!user) return null
-  const { data: profile } = await db().from('profiles').select('role').eq('id', user.id).single()
-  return { user, profile }
-}
+import { query, queryOne, execute } from '@/lib/db'
+import { getUserFromRequest } from '@/lib/auth'
 
 export async function GET(req: NextRequest) {
-  const auth = await getAuth(req)
-  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const { user, profile } = auth
+  const user = await getUserFromRequest(req)
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
   const month = searchParams.get('month') // e.g. 2026-05
@@ -31,23 +17,34 @@ export async function GET(req: NextRequest) {
   const dateTo = new Date(d0.getFullYear(), d0.getMonth() + 1, 1).toISOString().slice(0, 10)
 
   try {
-    let query = db()
-      .from('employee_attendance')
-      .select('*, employee:profiles!employee_attendance_employee_id_fkey(id, full_name, avatar_url, designation)')
-      .gte('date', dateFrom)
-      .lt('date', dateTo)
+    let sql = `
+      SELECT 
+        ea.*,
+        json_build_object(
+          'id', p.id,
+          'full_name', p.full_name,
+          'avatar_url', p.avatar_url,
+          'designation', p.designation
+        ) AS employee
+      FROM employee_attendance ea
+      LEFT JOIN profiles p ON p.id = ea.employee_id
+      WHERE ea.date >= $1 AND ea.date < $2
+    `
+    const params: unknown[] = [dateFrom, dateTo]
 
-    if (profile?.role !== 'admin') {
+    if (user.role !== 'admin') {
       // Employees can only see their own attendance
-      query = query.eq('employee_id', user.id)
+      params.push(user.userId)
+      sql += ` AND ea.employee_id = $${params.length}`
     } else if (employeeId) {
       // Admin filtering by specific employee
-      query = query.eq('employee_id', employeeId)
+      params.push(employeeId)
+      sql += ` AND ea.employee_id = $${params.length}`
     }
 
-    const { data, error } = await query.order('date', { ascending: true })
-    if (error) throw error
+    sql += ` ORDER BY ea.date ASC`
 
+    const data = await query(sql, params)
     return NextResponse.json(data || [])
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
@@ -55,15 +52,15 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await getAuth(req)
-  if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const { user, profile } = auth
-  const isAdmin = profile?.role === 'admin'
+  const user = await getUserFromRequest(req)
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const isAdmin = user.role === 'admin'
 
   try {
     const body = await req.json()
     const { date, status } = body
-    const targetEmployeeId = (isAdmin && body.employee_id) ? body.employee_id : user.id
+    const targetEmployeeId = (isAdmin && body.employee_id) ? body.employee_id : user.userId
 
     if (!date || !status) {
       return NextResponse.json({ error: 'Date and status required' }, { status: 400 })
@@ -71,7 +68,7 @@ export async function POST(req: NextRequest) {
 
     if (status === 'DELETE') {
       if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      await db().from('employee_attendance').delete().eq('employee_id', targetEmployeeId).eq('date', date)
+      await execute('DELETE FROM employee_attendance WHERE employee_id = $1 AND date = $2', [targetEmployeeId, date])
       return NextResponse.json({ success: true })
     }
 
@@ -81,18 +78,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Cannot mark attendance for future dates' }, { status: 400 })
     }
 
-    const { data, error } = await db()
-      .from('employee_attendance')
-      .upsert({
-        employee_id: targetEmployeeId,
-        date,
-        status,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'employee_id,date' })
-      .select()
-      .single()
-
-    if (error) throw error
+    const data = await queryOne(
+      `INSERT INTO employee_attendance (employee_id, date, status, updated_at)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (employee_id, date) DO UPDATE SET
+         status = EXCLUDED.status,
+         updated_at = EXCLUDED.updated_at
+       RETURNING *`,
+      [targetEmployeeId, date, status, new Date().toISOString()]
+    )
 
     // ── Auto Sandwich Leave Logic ──
     // If leave is marked on Saturday or Monday, check the other side of the weekend.
@@ -107,24 +101,24 @@ export async function POST(req: NextRequest) {
         adjacentDate.setDate(adjacentDate.getDate() + checkOffset)
         const adjacentDateStr = adjacentDate.toISOString().slice(0, 10)
 
-        const { data: adjacentRec } = await db()
-          .from('employee_attendance')
-          .select('status')
-          .eq('employee_id', targetEmployeeId)
-          .eq('date', adjacentDateStr)
-          .single()
+        const adjacentRec = await queryOne<{ status: string }>(
+          `SELECT status FROM employee_attendance WHERE employee_id = $1 AND date = $2`,
+          [targetEmployeeId, adjacentDateStr]
+        )
 
         if (adjacentRec && (adjacentRec.status === 'leave' || adjacentRec.status === 'leave_pending')) {
           // Both Sat and Mon are leaves! Add sandwich leave for Sunday.
           const sundayDate = new Date(d)
           sundayDate.setDate(sundayDate.getDate() + (day === 1 ? -1 : 1))
           
-          await db().from('employee_attendance').upsert({
-            employee_id: targetEmployeeId,
-            date: sundayDate.toISOString().slice(0, 10),
-            status: 'sandwich_leave',
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'employee_id,date' })
+          await execute(
+            `INSERT INTO employee_attendance (employee_id, date, status, updated_at)
+             VALUES ($1, $2, 'sandwich_leave', $3)
+             ON CONFLICT (employee_id, date) DO UPDATE SET
+               status = EXCLUDED.status,
+               updated_at = EXCLUDED.updated_at`,
+            [targetEmployeeId, sundayDate.toISOString().slice(0, 10), new Date().toISOString()]
+          )
         }
       }
     }

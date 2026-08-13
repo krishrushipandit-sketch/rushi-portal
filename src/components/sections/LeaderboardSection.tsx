@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 import { getInitials } from '@/lib/utils'
 import type { Profile } from '@/lib/database.types'
 import { Trophy, Star, ChevronLeft, ChevronRight, Medal, Crown, Zap } from 'lucide-react'
@@ -44,22 +44,28 @@ function monthLabel(m: string) {
 }
 
 export default function LeaderboardSection({ profile }: Props) {
+  const router = useRouter()
   const [selectedMonth, setSelectedMonth] = useState(MONTHS[0])
   const [leaderboard, setLeaderboard] = useState<LeaderRow[]>([])
   const [stars, setStars] = useState<StarPerformer[]>([])
   const [pastStars, setPastStars] = useState<Record<string, StarPerformer[]>>({})
   const [loading, setLoading] = useState(true)
 
-  const getToken = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    return session?.access_token || ''
+  const getToken = () => {
+    const token = localStorage.getItem('rushi_token')
+    if (!token) {
+      router.push('/')
+      return null
+    }
+    return token
   }
 
   const fetchMonth = async (month: string) => {
+    const token = getToken()
+    if (!token) return
     setLoading(true)
-    const token = await getToken()
     const res = await fetch(`/api/points?month=${month}`, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
     })
     const data = await res.json()
     setLeaderboard(data.leaderboard || [])
@@ -68,12 +74,13 @@ export default function LeaderboardSection({ profile }: Props) {
   }
 
   const fetchPastStars = async () => {
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
     const pastMonths = MONTHS.slice(1) // skip current month
     const results: Record<string, StarPerformer[]> = {}
     await Promise.all(pastMonths.map(async (m) => {
       const res = await fetch(`/api/points?month=${m}`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
       })
       const data = await res.json()
       if (data.stars && data.stars.length > 0) {

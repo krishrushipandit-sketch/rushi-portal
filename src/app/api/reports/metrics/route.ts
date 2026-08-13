@@ -1,24 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-const db = () => createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
-async function getUser(req: NextRequest) {
-  const token = req.headers.get('Authorization')?.replace('Bearer ', '')
-  if (!token) return null
-  const { data: { user } } = await db().auth.getUser(token)
-  return user
-}
+import { query, queryOne } from '@/lib/db'
+import { getUserFromRequest } from '@/lib/auth'
 
 // GET /api/reports/metrics?month=2026-05&employee_id=xxx
 export async function GET(req: NextRequest) {
-  const user = await getUser(req)
+  const user = await getUserFromRequest(req)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: profile } = await db().from('profiles').select('role').eq('id', user.id).single()
+  const profile = await queryOne<{ role: string }>('SELECT role FROM profiles WHERE id = $1', [user.userId])
   const isAdmin = profile?.role === 'admin'
 
   const { searchParams } = new URL(req.url)
@@ -30,27 +19,26 @@ export async function GET(req: NextRequest) {
   dateToObj.setMonth(dateToObj.getMonth() + 1)
   const dateTo = dateToObj.toISOString().slice(0, 10)
 
-  // Fetch reports WITH task_entries (no AI needed for basic counts)
-  let query = db()
-    .from('daily_reports')
-    .select(`
-      employee_id, report_date, task_entries, ai_metrics, ai_productivity_score, in_time, out_time,
-      employee:profiles!daily_reports_employee_id_fkey(id, full_name, designation, department)
-    `)
-    .gte('report_date', dateFrom)
-    .lt('report_date', dateTo)
+  let sql = `
+    SELECT r.employee_id, r.report_date, r.task_entries, r.ai_metrics, r.ai_productivity_score, r.in_time, r.out_time,
+           json_build_object('id', p.id, 'full_name', p.full_name, 'designation', p.designation, 'department', p.department) as employee
+    FROM daily_reports r
+    LEFT JOIN profiles p ON r.employee_id = p.id
+    WHERE r.report_date >= $1 AND r.report_date < $2
+  `
+  const params: any[] = [dateFrom, dateTo]
 
   if (!isAdmin) {
-    query = query.eq('employee_id', user.id)
+    sql += ` AND r.employee_id = $3`
+    params.push(user.userId)
   } else if (employeeFilter && employeeFilter !== 'all') {
-    query = query.eq('employee_id', employeeFilter)
+    sql += ` AND r.employee_id = $3`
+    params.push(employeeFilter)
   }
 
   let reports: any[] = []
   try {
-    const { data, error } = await query
-    if (error) throw error
-    reports = data || []
+    reports = await query(sql, params)
   } catch {
     return NextResponse.json({ month, data: [] })
   }
@@ -58,12 +46,13 @@ export async function GET(req: NextRequest) {
   // If admin and no filter, also get all employees (to show zero-report ones)
   let allEmployees: any[] = []
   if (isAdmin) {
-    const { data } = await db()
-      .from('profiles')
-      .select('id, full_name, designation, department')
-      .eq('role', 'employee')
-      .eq('is_active', true)
-    allEmployees = data || []
+    try {
+      allEmployees = await query(
+        `SELECT id, full_name, designation, department FROM profiles WHERE role = 'employee' AND is_active = true`
+      )
+    } catch {
+      allEmployees = []
+    }
   }
 
   // Build employee map
@@ -105,7 +94,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Count each task from task_entries (works without AI)
-    const entries = (report.task_entries || []) as any[]
+    const entries = (typeof report.task_entries === 'string' ? JSON.parse(report.task_entries) : report.task_entries || []) as any[]
     for (const entry of entries) {
       if (!entry.task_title) continue
       const key = entry.task_title.toLowerCase().replace(/\s+/g, '_')
@@ -114,7 +103,7 @@ export async function GET(req: NextRequest) {
     }
 
     // AI-extracted quantities (richer info when AI has analyzed)
-    const metrics = (report.ai_metrics || []) as any[]
+    const metrics = (typeof report.ai_metrics === 'string' ? JSON.parse(report.ai_metrics) : report.ai_metrics || []) as any[]
     for (const m of metrics) {
       if (!m.task_title || !m.quantity) continue
       const key = m.task_title.toLowerCase().replace(/\s+/g, '_')

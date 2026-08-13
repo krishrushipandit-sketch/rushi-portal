@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-const db = () => createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+import { queryOne, execute } from '@/lib/db'
+import bcrypt from 'bcryptjs'
 
 // ============================================================
 // Employee definitions — edit emails/designations as needed
@@ -154,11 +150,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Get admin ID
-  const { data: adminProfile } = await db()
-    .from('profiles')
-    .select('id')
-    .eq('role', 'admin')
-    .single()
+  const adminProfile = await queryOne<{ id: string }>(
+    `SELECT id FROM profiles WHERE role = 'admin' LIMIT 1`
+  )
 
   if (!adminProfile) {
     return NextResponse.json({ error: 'No admin profile found. Create admin first.' }, { status: 400 })
@@ -171,11 +165,10 @@ export async function POST(req: NextRequest) {
   for (const emp of EMPLOYEES) {
     try {
       // Check if user already exists
-      const { data: existing } = await db()
-        .from('profiles')
-        .select('id')
-        .ilike('full_name', emp.name)
-        .single()
+      const existing = await queryOne<{ id: string }>(
+        `SELECT id FROM profiles WHERE LOWER(full_name) = LOWER($1)`,
+        [emp.name]
+      )
 
       let profileId: string
 
@@ -183,60 +176,56 @@ export async function POST(req: NextRequest) {
         profileId = existing.id
         results.push({ name: emp.name, status: 'already exists — tasks updated', tasks: 0 })
       } else {
-        // Create auth user
-        const { data: authUser, error: authError } = await db().auth.admin.createUser({
-          email: emp.email,
-          password: DEFAULT_PASSWORD,
-          email_confirm: true,
-          user_metadata: { full_name: emp.name },
-        })
+        // Hash password and insert profile directly
+        const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, 10)
+        profileId = crypto.randomUUID()
 
-        if (authError) {
-          errors.push(`${emp.name}: ${authError.message}`)
-          continue
-        }
-
-        profileId = authUser.user.id
-
-        // Create profile
-        await db().from('profiles').upsert({
-          id: profileId,
-          email: emp.email,
-          full_name: emp.name,
-          role: 'employee',
-          designation: emp.designation,
-          department: emp.department,
-          phone: emp.phone,
-          is_active: true,
-        })
+        await execute(
+          `INSERT INTO profiles (id, email, full_name, role, designation, department, phone, is_active, password_hash)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            profileId,
+            emp.email,
+            emp.name,
+            'employee',
+            emp.designation,
+            emp.department,
+            emp.phone,
+            true,
+            passwordHash,
+          ]
+        )
 
         results.push({ name: emp.name, status: 'created', tasks: 0 })
       }
 
       // Delete old regular tasks for this employee (to avoid duplicates)
-      await db().from('tasks')
-        .delete()
-        .eq('assigned_to', profileId)
-        .eq('task_type', 'regular')
+      await execute(
+        `DELETE FROM tasks WHERE assigned_to = $1 AND task_type = $2`,
+        [profileId, 'regular']
+      )
 
       // Insert regular tasks
-      const taskRows = emp.tasks.map(title => ({
-        title,
-        description: `Regular responsibility for ${emp.name}`,
-        assigned_to: profileId,
-        assigned_by: adminId,
-        task_type: 'regular',
-        priority: 'medium',
-        status: 'in_progress',
-      }))
-
-      const { error: taskError } = await db().from('tasks').insert(taskRows)
-      if (taskError) {
-        errors.push(`${emp.name} tasks: ${taskError.message}`)
-      } else {
-        const r = results.find(r => r.name === emp.name)
-        if (r) r.tasks = emp.tasks.length
+      let insertedCount = 0
+      for (const title of emp.tasks) {
+        await execute(
+          `INSERT INTO tasks (title, description, assigned_to, assigned_by, task_type, priority, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            title,
+            `Regular responsibility for ${emp.name}`,
+            profileId,
+            adminId,
+            'regular',
+            'medium',
+            'in_progress',
+          ]
+        )
+        insertedCount++
       }
+
+      const r = results.find(r => r.name === emp.name)
+      if (r) r.tasks = insertedCount
     } catch (e: any) {
       errors.push(`${emp.name}: ${e.message}`)
     }

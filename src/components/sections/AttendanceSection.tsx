@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { Calendar as CalendarIcon, CheckCircle2, ChevronLeft, ChevronRight, Home, Briefcase, CalendarOff, Palmtree, User } from 'lucide-react'
 
@@ -28,6 +28,7 @@ const ATTENDANCE_TYPES = [
 const EMPLOYEE_SELECTABLE = ['present', 'wfh', 'leave_pending']
 
 export default function AttendanceSection({ profile }: { profile: Profile }) {
+  const router = useRouter()
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
   const [records, setRecords] = useState<any[]>([])
   const [employees, setEmployees] = useState<any[]>([])
@@ -40,8 +41,8 @@ export default function AttendanceSection({ profile }: { profile: Profile }) {
 
   const loadData = useCallback(async () => {
     setLoading(true)
-    const { data: { session } } = await supabase.auth.getSession()
-    const token = session?.access_token || ''
+    const token = localStorage.getItem('rushi_token')
+    if (!token) { router.push('/'); return }
     
     // Fetch records
     const res = await fetch(`/api/attendance?month=${month}`, {
@@ -52,19 +53,22 @@ export default function AttendanceSection({ profile }: { profile: Profile }) {
 
     // Fetch employees for admin view
     if (isAdmin) {
-      const { data: emps } = await supabase.from('profiles').select('*').eq('role', 'employee').eq('is_active', true)
-      setEmployees(emps || [])
+      const empsRes = await fetch('/api/employees', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const emps = await empsRes.json()
+      setEmployees(Array.isArray(emps) ? emps.filter((e: any) => e.role === 'employee' && e.is_active) : [])
     }
     setLoading(false)
-  }, [month, isAdmin])
+  }, [month, isAdmin, router])
 
   useEffect(() => { loadData() }, [loadData])
 
   const markAttendance = async (status: string, targetEmpId?: string, targetDate?: string) => {
     const dateToMark = targetDate || markingDate
     if (!dateToMark) return
-    const { data: { session } } = await supabase.auth.getSession()
-    const token = session?.access_token || ''
+    const token = localStorage.getItem('rushi_token')
+    if (!token) { router.push('/'); return }
 
     await fetch('/api/attendance', {
       method: 'POST',

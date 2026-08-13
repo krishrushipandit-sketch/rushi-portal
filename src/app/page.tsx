@@ -2,8 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { Eye, EyeOff, Lock, Mail, Loader2, Building2 } from 'lucide-react'
+import { Eye, EyeOff, Lock, Mail, Loader2 } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -19,25 +18,28 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password }),
       })
 
-      if (authError) throw authError
+      const data = await res.json()
 
-      if (data?.user) {
-        router.push('/dashboard')
+      if (!res.ok) {
+        setError(data.error || 'Invalid email or password. Please try again.')
+        return
       }
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message === 'Invalid login credentials'
-          ? 'Invalid email or password. Please try again.'
-          : err.message
-        )
-      } else {
-        setError('An error occurred. Please try again.')
+
+      // Store token for API calls
+      if (data.token) {
+        localStorage.setItem('rushi_token', data.token)
+        localStorage.setItem('rushi_user', JSON.stringify(data.user))
       }
+
+      router.push('/dashboard')
+    } catch {
+      setError('An error occurred. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -55,15 +57,15 @@ export default function LoginPage() {
             display: 'inline-block',
             boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
           }}>
-            <img 
-              src="/logo.png" 
-              alt="RushiPandit Institute Logo" 
-              style={{ 
-                width: '220px', 
+            <img
+              src="/logo.png"
+              alt="RushiPandit Institute Logo"
+              style={{
+                width: '220px',
                 height: 'auto',
-                objectFit: 'contain', 
+                objectFit: 'contain',
                 display: 'block',
-              }} 
+              }}
             />
           </div>
         </div>
@@ -87,7 +89,7 @@ export default function LoginPage() {
               <input
                 type="email"
                 className="form-input"
-                placeholder="your@rushiPandit.com"
+                placeholder="your@rushipandit.com"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 style={{ paddingLeft: '2.5rem' }}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { getInitials, formatDate } from '@/lib/utils'
 import DailyReportForm from './EmployeeReportForm'
@@ -37,6 +37,7 @@ interface EmpSummary {
 interface ReportEntry { description: string; count: number; notes?: string }
 
 export default function ReportsSection({ profile }: { profile: Profile }) {
+  const router = useRouter()
   const [reports, setReports] = useState<DailyReport[]>([]) // For Employee View
   const [summary, setSummary] = useState<EmpSummary[]>([]) // For Admin View
   const [targetDate, setTargetDate] = useState(today())
@@ -48,13 +49,18 @@ export default function ReportsSection({ profile }: { profile: Profile }) {
   
   const isAdmin = profile.role === 'admin'
 
-  const getToken = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    return session?.access_token || ''
+  const getToken = () => {
+    const token = localStorage.getItem('rushi_token')
+    if (!token) {
+      router.push('/')
+      return null
+    }
+    return token
   }
 
   const load = useCallback(async () => {
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
     const h = { Authorization: `Bearer ${token}` }
     if (isAdmin) {
       // Daily summary for all employees
@@ -68,7 +74,7 @@ export default function ReportsSection({ profile }: { profile: Profile }) {
       setReports(Array.isArray(d) ? d : [])
     }
     setLoading(false)
-  }, [isAdmin, targetDate])
+  }, [isAdmin, targetDate, router])
 
   useEffect(() => { load() }, [load])
 
@@ -432,10 +438,14 @@ function AdminCommentBox({ report, onCommentAdded }: { report: DailyReport | nul
   const handleSave = async () => {
     setIsSaving(true)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
+      const token = localStorage.getItem('rushi_token')
+      if (!token) {
+        window.location.href = '/' // Quick router fallback
+        return
+      }
       const res = await fetch('/api/reports/comment', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ report_id: report.id, admin_comment: comment })
       })
       if (!res.ok) {

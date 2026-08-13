@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { queryOne, execute } from '@/lib/db'
+import { getUserFromRequest } from '@/lib/auth'
 
 export async function PATCH(
   req: NextRequest,
@@ -7,26 +8,42 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const token = authHeader.replace('Bearer ', '')
-    const supabase = supabaseAdmin()
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const user = await getUserFromRequest(req)
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await req.json()
-    const { data, error } = await supabase
-      .from('leads')
-      .update(body)
-      .eq('id', id)
-      .select()
-      .single()
+    const allowedFields = [
+      'client_name',
+      'phone',
+      'email',
+      'category',
+      'status',
+      'source',
+      'notes',
+      'follow_up_date',
+      'assigned_to',
+      'updated_at',
+    ]
 
-    if (error) throw error
+    const updates: string[] = []
+    const values: unknown[] = []
+
+    for (const key of Object.keys(body)) {
+      if (allowedFields.includes(key)) {
+        values.push(body[key])
+        updates.push(`${key} = $${values.length}`)
+      }
+    }
+
+    if (updates.length === 0) {
+      const existing = await queryOne('SELECT * FROM leads WHERE id = $1', [id])
+      return NextResponse.json(existing)
+    }
+
+    values.push(id)
+    const sql = `UPDATE leads SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`
+    const data = await queryOne(sql, values)
+
     return NextResponse.json(data)
   } catch (err: unknown) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })
@@ -39,19 +56,10 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const user = await getUserFromRequest(req)
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const token = authHeader.replace('Bearer ', '')
-    const supabase = supabaseAdmin()
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const { error } = await supabase.from('leads').delete().eq('id', id)
-    if (error) throw error
+    await execute('DELETE FROM leads WHERE id = $1', [id])
 
     return NextResponse.json({ success: true })
   } catch (err: unknown) {

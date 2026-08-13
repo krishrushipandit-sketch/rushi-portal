@@ -1,17 +1,7 @@
-import { createClient } from '@supabase/supabase-js'
+// ⚠️ Supabase has been fully replaced by PostgreSQL + JWT auth
+// This file is kept as a compatibility shim to prevent import errors during migration
+// New code should use: import { query, queryOne, execute } from '@/lib/db'
+// And: import { getUserFromRequest, getCurrentUser } from '@/lib/auth'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
-
-// Server-side client with service role (for admin operations & cron)
-// Untyped intentionally — many tables (daily_reports, employee_responsibilities, etc.)
-// are not in the generated Database type, and strict typing causes 'never' build errors.
-export const supabaseAdmin = () => {
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!serviceKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY is not set')
-  return createClient(supabaseUrl, serviceKey, {
-    auth: { autoRefreshToken: false, persistSession: false }
-  })
-}
+export const supabase = null as never
+export const supabaseAdmin = () => { throw new Error('Supabase removed — use @/lib/db instead') }

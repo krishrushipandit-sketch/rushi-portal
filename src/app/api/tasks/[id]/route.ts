@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { queryOne, execute } from '@/lib/db'
+import { getUserFromRequest } from '@/lib/auth'
 
 export async function PATCH(
   req: NextRequest,
@@ -7,16 +8,8 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const token = authHeader.replace('Bearer ', '')
-    const supabase = supabaseAdmin()
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const user = await getUserFromRequest(req)
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await req.json()
 
@@ -25,7 +18,10 @@ export async function PATCH(
       body.completed_at = new Date().toISOString()
 
       // Award flat 20 points for task completion
-      const { data: task } = await supabase.from('tasks').select('assigned_to, title').eq('id', id).single()
+      const task = await queryOne<{ assigned_to: string; title: string }>(
+        'SELECT assigned_to, title FROM tasks WHERE id = $1',
+        [id]
+      )
       if (task && task.assigned_to) {
         const newPoints = 20
         const addedReason = `Task "${task.title}" completed! 🏆 (+20)`
@@ -35,35 +31,42 @@ export async function PATCH(
         const istTime = new Date(d.getTime() + offset + (330 * 60000))
         const todayStr = istTime.toISOString().slice(0, 10)
 
-        const { data: existingPoint } = await supabase
-          .from('employee_points')
-          .select('points, reason')
-          .eq('employee_id', task.assigned_to)
-          .eq('report_date', todayStr)
-          .single()
+        const existingPoint = await queryOne<{ points: number; reason: string }>(
+          'SELECT points, reason FROM employee_points WHERE employee_id = $1 AND report_date = $2',
+          [task.assigned_to, todayStr]
+        )
 
         const totalPoints = (existingPoint?.points || 0) + newPoints
         const totalReason = existingPoint?.reason ? existingPoint.reason + ' | ' + addedReason : addedReason
 
-        await supabase.from('employee_points').upsert({
-          employee_id: task.assigned_to,
-          report_date: todayStr,
-          points: totalPoints,
-          reason: totalReason,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'employee_id,report_date' })
+        await execute(
+          `INSERT INTO employee_points (employee_id, report_date, points, reason, updated_at)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (employee_id, report_date) DO UPDATE SET
+             points = EXCLUDED.points,
+             reason = EXCLUDED.reason,
+             updated_at = EXCLUDED.updated_at`,
+          [task.assigned_to, todayStr, totalPoints, totalReason, new Date().toISOString()]
+        )
       }
     }
 
-    const { data, error } = await supabase
-      .from('tasks')
-      .update(body)
-      .eq('id', id)
-      .select()
-      .single()
+    const keys = Object.keys(body)
+    if (keys.length === 0) {
+      const existingTask = await queryOne('SELECT * FROM tasks WHERE id = $1', [id])
+      return NextResponse.json(existingTask)
+    }
 
-    if (error) throw error
-    return NextResponse.json(data)
+    const setClauses = keys.map((key, i) => `${key} = $${i + 1}`)
+    const values = keys.map(key => body[key])
+    values.push(id)
+
+    const updatedTask = await queryOne(
+      `UPDATE tasks SET ${setClauses.join(', ')} WHERE id = $${values.length} RETURNING *`,
+      values
+    )
+
+    return NextResponse.json(updatedTask)
   } catch (err: unknown) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })
   }
@@ -75,25 +78,14 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const user = await getUserFromRequest(req)
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const token = authHeader.replace('Bearer ', '')
-    const supabase = supabaseAdmin()
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const { data: profile } = await supabase
-      .from('profiles').select('role').eq('id', user.id).single()
-    if (profile?.role !== 'admin') {
+    if (user.role !== 'admin') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const { error } = await supabase.from('tasks').delete().eq('id', id)
-    if (error) throw error
+    await execute('DELETE FROM tasks WHERE id = $1', [id])
 
     return NextResponse.json({ success: true })
   } catch (err: unknown) {
@@ -101,34 +93,25 @@ export async function DELETE(
   }
 }
 
-// POST /api/tasks/[id]/update — add a progress comment
+// POST /api/tasks/[id] — add a progress comment
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const token = authHeader.replace('Bearer ', '')
-    const supabase = supabaseAdmin()
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const user = await getUserFromRequest(req)
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { comment, progress_percent } = await req.json()
 
-    const { data, error } = await supabase.from('task_updates').insert({
-      task_id: id,
-      updated_by: user.id,
-      comment,
-      progress_percent: progress_percent || 0,
-    }).select().single()
+    const data = await queryOne(
+      `INSERT INTO task_updates (task_id, updated_by, comment, progress_percent)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [id, user.userId, comment, progress_percent || 0]
+    )
 
-    if (error) throw error
     return NextResponse.json(data)
   } catch (err: unknown) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })

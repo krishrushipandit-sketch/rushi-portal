@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { getInitials } from '@/lib/utils'
 import {
@@ -33,6 +33,7 @@ interface GlobalStats {
 }
 
 export default function PerformanceSection({ profile }: { profile: Profile }) {
+  const router = useRouter()
   const [performance, setPerformance] = useState<EmployeePerf[]>([])
   const [globalStats, setGlobalStats] = useState<GlobalStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -40,9 +41,11 @@ export default function PerformanceSection({ profile }: { profile: Profile }) {
   const [activeDate, setActiveDate] = useState<string | null>(null) // empId::date
 
   const fetchData = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
-    const token = session.access_token
+    const token = localStorage.getItem('rushi_token')
+    if (!token) {
+      router.push('/')
+      return
+    }
     const res = await fetch('/api/performance', { headers: { Authorization: `Bearer ${token}` } })
     const data = await res.json()
     if (data.performance) {
@@ -50,7 +53,7 @@ export default function PerformanceSection({ profile }: { profile: Profile }) {
       setGlobalStats(data.globalStats)
     }
     setLoading(false)
-  }, [])
+  }, [router])
 
   useEffect(() => { fetchData() }, [fetchData])
 

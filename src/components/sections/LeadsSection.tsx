@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { formatDate } from '@/lib/utils'
 import { 
@@ -65,6 +65,7 @@ const SOURCES = ['facebook_lead_ad', 'walk_in', 'referral', 'social_media', 'web
 const CHART_COLORS = ['#6366f1', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899']
 
 export default function LeadsSection({ profile }: Props) {
+  const router = useRouter()
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -89,18 +90,23 @@ export default function LeadsSection({ profile }: Props) {
     status: 'new', source: 'facebook_lead_ad', notes: '', follow_up_date: '', platform: 'Facebook'
   })
 
-  const getToken = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    return session?.access_token || ''
+  const getToken = () => {
+    const token = localStorage.getItem('rushi_token')
+    if (!token) {
+      router.push('/')
+      return null
+    }
+    return token
   }
 
   const fetchLeads = useCallback(async () => {
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
     const res = await fetch('/api/leads', { headers: { Authorization: `Bearer ${token}` } })
     const data = await res.json()
     if (Array.isArray(data)) setLeads(data)
     setLoading(false)
-  }, [])
+  }, [router])
 
   useEffect(() => { fetchLeads() }, [fetchLeads])
 
@@ -134,7 +140,8 @@ export default function LeadsSection({ profile }: Props) {
     setScheduledTime('')
     setLoadingFollowups(true)
 
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
     const res = await fetch(`/api/leads/${lead.id}/followups`, {
       headers: { Authorization: `Bearer ${token}` }
     })
@@ -146,7 +153,8 @@ export default function LeadsSection({ profile }: Props) {
   const handleLogFollowup = async () => {
     if (!selectedLeadForFollowup) return
     setSubmitting(true)
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
 
     const res = await fetch(`/api/leads/${selectedLeadForFollowup.id}/followups`, {
       method: 'POST',
@@ -176,7 +184,8 @@ export default function LeadsSection({ profile }: Props) {
   const handleSubmit = async () => {
     if (!form.client_name || !form.phone) return
     setSubmitting(true)
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
 
     if (editLead) {
       await fetch(`/api/leads/${editLead.id}`, {
@@ -199,7 +208,8 @@ export default function LeadsSection({ profile }: Props) {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this lead?')) return
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
     await fetch(`/api/leads/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
     fetchLeads()
   }

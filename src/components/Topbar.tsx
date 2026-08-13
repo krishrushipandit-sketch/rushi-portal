@@ -1,6 +1,7 @@
 'use client'
 
-import { Bell, Menu, Sun, Moon } from 'lucide-react'
+import { Bell, Menu, Sun, Moon, LogOut } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { getInitials } from '@/lib/utils'
 import { useTheme } from '@/lib/ThemeContext'
@@ -14,7 +15,15 @@ interface TopbarProps {
 
 export default function Topbar({ profile, unreadCount, onMenuClick, onNotificationsClick }: TopbarProps) {
   const { theme, toggleTheme } = useTheme()
+  const router = useRouter()
   const isLight = theme === 'light'
+
+  const handleLogout = async () => {
+    localStorage.removeItem('rushi_token')
+    localStorage.removeItem('rushi_user')
+    await fetch('/api/auth/logout', { method: 'POST' })
+    router.push('/')
+  }
 
   const greetingHour = new Date().getHours()
   const greeting = greetingHour < 12 ? 'Good morning' : greetingHour < 17 ? 'Good afternoon' : 'Good evening'
@@ -135,6 +144,16 @@ export default function Topbar({ profile, unreadCount, onMenuClick, onNotificati
             {getInitials(profile.full_name)}
           </div>
         )}
+
+        {/* Logout */}
+        <button
+          onClick={handleLogout}
+          className="btn btn-ghost"
+          title="Sign Out"
+          style={{ padding: '0.5rem', color: 'var(--text-muted)' }}
+        >
+          <LogOut size={18} />
+        </button>
       </div>
     </header>
   )

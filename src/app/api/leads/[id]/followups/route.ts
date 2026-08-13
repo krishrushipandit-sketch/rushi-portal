@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { query, queryOne } from '@/lib/db'
+import { getUserFromRequest } from '@/lib/auth'
 
 export async function GET(
   req: NextRequest,
@@ -7,30 +8,29 @@ export async function GET(
 ) {
   try {
     const { id: leadId } = await params
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const user = await getUserFromRequest(req)
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const token = authHeader.replace('Bearer ', '')
-    const supabase = supabaseAdmin()
+    const data = await query(
+      `
+      SELECT 
+        lf.*,
+        CASE WHEN p.id IS NOT NULL THEN json_build_object(
+          'id', p.id,
+          'full_name', p.full_name,
+          'email', p.email
+        ) ELSE NULL END AS sales_rep
+      FROM lead_followups lf
+      LEFT JOIN profiles p ON p.id = lf.sales_rep_id
+      WHERE lf.lead_id = $1
+      ORDER BY lf.created_at DESC
+      `,
+      [leadId]
+    )
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const { data, error } = await supabase
-      .from('lead_followups')
-      .select(`
-        *,
-        sales_rep:profiles!lead_followups_sales_rep_id_fkey(id, full_name, email)
-      `)
-      .eq('lead_id', leadId)
-      .order('created_at', { ascending: false })
-
-    if (error) throw error
     return NextResponse.json(data || [])
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+  } catch (err: unknown) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 })
   }
 }
 
@@ -40,16 +40,8 @@ export async function POST(
 ) {
   try {
     const { id: leadId } = await params
-    const authHeader = req.headers.get('authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const token = authHeader.replace('Bearer ', '')
-    const supabase = supabaseAdmin()
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const user = await getUserFromRequest(req)
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await req.json()
     const { call_status, notes, scheduled_at, whatsapp_visit } = body
@@ -59,13 +51,12 @@ export async function POST(
     }
 
     // Fetch existing lead to get current followup_count
-    const { data: lead, error: leadErr } = await supabase
-      .from('leads')
-      .select('followup_count, status')
-      .eq('id', leadId)
-      .single()
+    const lead = await queryOne<{ followup_count: number | null; status: string }>(
+      'SELECT followup_count, status FROM leads WHERE id = $1',
+      [leadId]
+    )
 
-    if (leadErr || !lead) {
+    if (!lead) {
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
     }
 
@@ -73,21 +64,30 @@ export async function POST(
     const now = new Date().toISOString()
 
     // 1. Insert follow-up record
-    const { data: followup, error: followupErr } = await supabase
-      .from('lead_followups')
-      .insert({
-        lead_id: leadId,
-        sales_rep_id: user.id,
-        followup_number: nextFollowupNum,
+    const followup = await queryOne(
+      `
+      INSERT INTO lead_followups (
+        lead_id,
+        sales_rep_id,
+        followup_number,
         call_status,
-        notes: notes || null,
-        scheduled_at: scheduled_at || null,
-        completed_at: now
-      })
-      .select()
-      .single()
-
-    if (followupErr) throw followupErr
+        notes,
+        scheduled_at,
+        completed_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+      `,
+      [
+        leadId,
+        user.userId,
+        nextFollowupNum,
+        call_status,
+        notes || null,
+        scheduled_at || null,
+        now,
+      ]
+    )
 
     // 2. Compute automatic next_followup_at based on call_status if not explicitly scheduled
     let nextFollowupDate = scheduled_at || null
@@ -103,30 +103,33 @@ export async function POST(
     }
 
     // 3. Update lead table
-    const updateData: any = {
-      status: call_status,
-      followup_count: nextFollowupNum,
-      last_followup_at: now,
-      ...(nextFollowupDate ? { next_followup_at: nextFollowupDate } : {}),
-      ...(whatsapp_visit ? { whatsapp_visit_msg_sent: true, whatsapp_msg_status: 'Sent' } : {})
+    const updateFields: string[] = ['status = $1', 'followup_count = $2', 'last_followup_at = $3']
+    const updateParams: unknown[] = [call_status, nextFollowupNum, now]
+
+    if (nextFollowupDate) {
+      updateParams.push(nextFollowupDate)
+      updateFields.push(`next_followup_at = $${updateParams.length}`)
     }
 
-    const { data: updatedLead, error: updateErr } = await supabase
-      .from('leads')
-      .update(updateData)
-      .eq('id', leadId)
-      .select()
-      .single()
+    if (whatsapp_visit) {
+      updateParams.push(true)
+      updateFields.push(`whatsapp_visit_msg_sent = $${updateParams.length}`)
+      updateParams.push('Sent')
+      updateFields.push(`whatsapp_msg_status = $${updateParams.length}`)
+    }
 
-    if (updateErr) throw updateErr
+    updateParams.push(leadId)
+    const updatedLead = await queryOne(
+      `UPDATE leads SET ${updateFields.join(', ')} WHERE id = $${updateParams.length} RETURNING *`,
+      updateParams
+    )
 
     return NextResponse.json({
       success: true,
       followup,
-      lead: updatedLead
+      lead: updatedLead,
     })
-
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+  } catch (err: unknown) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 })
   }
 }

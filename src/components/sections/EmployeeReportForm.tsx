@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 import { Mic, MicOff, Loader2, Plus, Trash2, X, SendHorizonal } from 'lucide-react'
 
 interface Row { responsibility: string; daily_target: number | null; description: string; count: string; isCustom?: boolean }
@@ -23,6 +23,7 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
   existingReport?: any; isAdmin?: boolean
   targetDate?: string; targetEmployeeId?: string
 }) {
+  const router = useRouter()
   const reportDate = isAdmin && targetDate ? targetDate : todayDate()
   const isLocked = !isAdmin && reportDate !== todayDate()
 
@@ -41,15 +42,18 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
   const recognitionRef = useRef<any>(null)
   const interimRef = useRef('')
 
-  const getToken = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    return session?.access_token || ''
+  const getToken = () => {
+    const token = localStorage.getItem('rushi_token')
+    if (!token) { router.push('/'); return '' }
+    return token
   }
 
   // Load responsibilities + today's assigned tasks
   useEffect(() => {
     (async () => {
-      const token = await getToken()
+      const token = getToken()
+      if (!token) return
+      
       const empId = isAdmin && targetEmployeeId ? `?employee_id=${targetEmployeeId}` : ''
       const res = await fetch(`/api/responsibilities${empId}`, { headers: { Authorization: `Bearer ${token}` } })
       const resps = await res.json()
@@ -160,7 +164,8 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
             reader.readAsDataURL(audioBlob)
           })
 
-          const token = await getToken()
+          const token = getToken()
+          if (!token) return
           const res = await fetch('/api/reports/transcribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -208,7 +213,8 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
     setMicMsg('AI is reading your narration...')
     try {
       const respNames = rows.map(r => r.responsibility).filter(Boolean)
-      const token = await getToken()
+      const token = getToken()
+      if (!token) return
       const res = await fetch('/api/reports/voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -250,7 +256,8 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
     const valid = rows.filter(r => r.responsibility.trim() && (r.description.trim() || r.count.trim()))
     if (!valid.length) return
     setSubmitting(true)
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
     const entries = valid.map(r => ({
       description: r.responsibility.trim(),
       notes: r.description.trim(),

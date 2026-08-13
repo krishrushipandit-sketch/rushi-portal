@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { formatDate, getStatusColor, getPriorityColor, isOverdue } from '@/lib/utils'
 import {
@@ -43,6 +43,7 @@ const STATUS_OPTIONS = ['pending', 'in_progress', 'completed', 'cancelled']
 const PRIORITY_OPTIONS = ['low', 'medium', 'high', 'urgent']
 
 export default function TasksSection({ profile }: Props) {
+  const router = useRouter()
   const [tasks, setTasks] = useState<Task[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
@@ -61,13 +62,15 @@ export default function TasksSection({ profile }: Props) {
   const [updateProgress, setUpdateProgress] = useState(0)
   const [updateStatus, setUpdateStatus] = useState('')
 
-  const getToken = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    return session?.access_token || ''
+  const getToken = () => {
+    const token = localStorage.getItem('rushi_token')
+    if (!token) { router.push('/'); return '' }
+    return token
   }
 
   const fetchTasks = useCallback(async () => {
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
     const res = await fetch('/api/tasks', { headers: { Authorization: `Bearer ${token}` } })
     const data = await res.json()
     if (Array.isArray(data)) setTasks(data)
@@ -76,7 +79,8 @@ export default function TasksSection({ profile }: Props) {
 
   const fetchEmployees = useCallback(async () => {
     if (profile.role !== 'admin') return
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
     const res = await fetch('/api/employees', { headers: { Authorization: `Bearer ${token}` } })
     const data = await res.json()
     if (Array.isArray(data)) setEmployees(data.filter((e: Employee & { role: string }) => e.role === 'employee'))
@@ -90,7 +94,8 @@ export default function TasksSection({ profile }: Props) {
   const handleCreateTask = async () => {
     if (!form.title || !form.assigned_to) return
     setSubmitting(true)
-    const token = await getToken()
+    const token = getToken()
+    if (!token) { setSubmitting(false); return }
 
     // datetime-local gives "2026-05-08T01:57" with no timezone.
     // Append +05:30 so the server stores the correct UTC equivalent.
@@ -113,7 +118,8 @@ export default function TasksSection({ profile }: Props) {
   }
 
   const handleStatusUpdate = async (taskId: string, status: string) => {
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
     await fetch(`/api/tasks/${taskId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -125,7 +131,8 @@ export default function TasksSection({ profile }: Props) {
   const handleUpdateSubmit = async () => {
     if (!showUpdateModal) return
     setSubmitting(true)
-    const token = await getToken()
+    const token = getToken()
+    if (!token) { setSubmitting(false); return }
 
     // 1. Insert a progress update into task_updates table
     await fetch(`/api/tasks/${showUpdateModal.id}`, {
@@ -155,7 +162,8 @@ export default function TasksSection({ profile }: Props) {
 
   const handleDelete = async (taskId: string) => {
     if (!confirm('Delete this task? This cannot be undone.')) return
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
     await fetch(`/api/tasks/${taskId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
@@ -251,7 +259,7 @@ export default function TasksSection({ profile }: Props) {
                         <div>
                           <p style={{ fontWeight: 500, fontSize: '0.875rem' }}>{task.title}</p>
                           {task.description && (
-                            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                         <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                               {task.description.slice(0, 60)}{task.description.length > 60 ? '...' : ''}
                             </p>
                           )}

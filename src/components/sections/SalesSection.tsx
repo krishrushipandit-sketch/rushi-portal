@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { Phone, Users, TrendingUp, FileText, ChevronDown, ChevronUp, Calendar, Target, CheckCircle2, AlertCircle } from 'lucide-react'
 
@@ -196,21 +196,25 @@ function EmployeeCard({ data, defaultOpen }: { data: EmployeeData; defaultOpen?:
 }
 
 export default function SalesSection({ profile }: { profile: Profile }) {
+  const router = useRouter()
   const [data, setData] = useState<{ team: EmployeeData[]; teamSummary: Record<string, number>; workingDaysSoFar: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data: { session } } = await supabase.auth.getSession()
-    const token = session?.access_token || ''
+    const token = localStorage.getItem('rushi_token')
+    if (!token) {
+      router.push('/')
+      return
+    }
     const res = await fetch(`/api/sales?month=${month}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
     const json = await res.json()
     setData(json)
     setLoading(false)
-  }, [month])
+  }, [month, router])
 
   useEffect(() => { load() }, [load])
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { Video, PlayCircle, Grid3x3, Plus, CheckCircle2, AlertCircle, Pencil, Trash2, X, UserPlus, Edit2, Upload, Image } from 'lucide-react'
 
@@ -45,6 +45,7 @@ const contentTypeColor = (type: string) => {
 }
 
 export default function StrategySection({ profile }: { profile: Profile }) {
+  const router = useRouter()
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [logModal, setLogModal] = useState<{ client: Client; deliverable: Deliverable } | null>(null)
@@ -83,27 +84,34 @@ export default function StrategySection({ profile }: { profile: Profile }) {
      profile.designation?.toLowerCase().includes('video') ||
      profile.designation?.toLowerCase().includes('editor'))
 
-  const getToken = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    return session?.access_token || ''
+  const getToken = () => {
+    const token = localStorage.getItem('rushi_token')
+    if (!token) {
+      router.push('/')
+      return null
+    }
+    return token
   }
 
   const load = useCallback(async () => {
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
     const res = await fetch(`/api/client-progress?month=${month}`, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
     })
     const data = await res.json()
     if (data.clients) setClients(data.clients)
     setLoading(false)
-  }, [month])
+  }, [month, router])
 
   useEffect(() => { load() }, [load])
 
   const handleLogWork = async () => {
     if (!logModal || !logCount) return
+    const token = getToken()
+    if (!token) return
     setSubmitting(true)
-    const token = await getToken()
+    
     await fetch('/api/client-progress', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -119,9 +127,10 @@ export default function StrategySection({ profile }: { profile: Profile }) {
     load()
   }
 
-  // Upload logo via server-side API (uses service role key, no RLS issues)
+  // Upload logo via server-side API
   const uploadLogo = async (file: File): Promise<string> => {
-    const token = await getToken()
+    const token = getToken()
+    if (!token) throw new Error('Unauthorized')
     const fd = new FormData()
     fd.append('file', file)
     const res = await fetch('/api/upload', {
@@ -136,8 +145,9 @@ export default function StrategySection({ profile }: { profile: Profile }) {
 
   const handleAddClient = async () => {
     if (!newClientName.trim()) return
+    const token = getToken()
+    if (!token) return
     setSubmitting(true)
-    const token = await getToken()
     const deliverables = newDeliverables
       .filter(d => Number(d.monthly_target) > 0)
       .map(d => ({ content_type: d.content_type, monthly_target: Number(d.monthly_target) }))
@@ -175,8 +185,9 @@ export default function StrategySection({ profile }: { profile: Profile }) {
 
   const handleEditClient = async () => {
     if (!editClientModal) return
+    const token = getToken()
+    if (!token) return
     setSubmitting(true)
-    const token = await getToken()
     const deliverables = editDeliverables
       .filter(d => Number(d.monthly_target) > 0)
       .map(d => ({ content_type: d.content_type, monthly_target: Number(d.monthly_target) }))
@@ -194,17 +205,17 @@ export default function StrategySection({ profile }: { profile: Profile }) {
 
   const handleDelete = async (logId: string) => {
     if (!confirm('Delete this entry?')) return
+    const token = getToken()
+    if (!token) return
     setDeleting(logId)
-    const token = await getToken()
     await fetch(`/api/client-progress?id=${logId}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
     })
     setDeleting(null)
     // Reload data and update the modal's deliverable reference
-    const token2 = await getToken()
     const res = await fetch(`/api/client-progress?month=${month}`, {
-      headers: { Authorization: `Bearer ${token2}` }
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
     })
     const data = await res.json()
     if (data.clients) {

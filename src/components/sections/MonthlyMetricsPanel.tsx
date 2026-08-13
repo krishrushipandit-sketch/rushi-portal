@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 import { getInitials, formatDate } from '@/lib/utils'
 import { Brain, TrendingUp, FileText, ChevronDown, ChevronUp } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
@@ -32,26 +32,32 @@ export default function MonthlyMetricsPanel({ isAdmin, employeeId }: {
   isAdmin: boolean
   employeeId?: string
 }) {
+  const router = useRouter()
   const [data, setData] = useState<EmployeeMetrics[]>([])
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7))
   const [loading, setLoading] = useState(true)
   const [expandedEmp, setExpandedEmp] = useState<string | null>(null)
 
-  const getToken = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    return session?.access_token || ''
+  const getToken = () => {
+    const token = localStorage.getItem('rushi_token')
+    if (!token) {
+      router.push('/')
+      return null
+    }
+    return token
   }
 
   const fetch_ = useCallback(async () => {
     setLoading(true)
-    const token = await getToken()
+    const token = getToken()
+    if (!token) return
     const params = new URLSearchParams({ month })
     if (employeeId && employeeId !== 'all') params.set('employee_id', employeeId)
-    const res = await fetch(`/api/reports/metrics?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+    const res = await fetch(`/api/reports/metrics?${params}`, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } })
     const json = await res.json()
     setData(Array.isArray(json.data) ? json.data : [])
     setLoading(false)
-  }, [month, employeeId])
+  }, [month, employeeId, router])
 
   useEffect(() => { fetch_() }, [fetch_])
 

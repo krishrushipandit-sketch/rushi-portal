@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { getInitials } from '@/lib/utils'
 import { Lock, Eye, EyeOff, CheckCircle, AlertCircle, User, Phone, Mail } from 'lucide-react'
@@ -11,6 +11,7 @@ interface SettingsSectionProps {
 }
 
 export default function SettingsSection({ profile }: SettingsSectionProps) {
+  const router = useRouter()
   // ── Password change state ──────────────────────────────────────────────────
   const [currentPwd, setCurrentPwd]     = useState('')
   const [newPwd, setNewPwd]             = useState('')
@@ -48,28 +49,30 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
 
     setPwdLoading(true)
 
-    // Step 1: Re-authenticate by signing in with current password
-    const { error: signInErr } = await supabase.auth.signInWithPassword({
-      email: profile.email,
-      password: currentPwd,
-    })
+    const token = localStorage.getItem('rushi_token')
+    if (!token) { router.push('/'); return }
 
-    if (signInErr) {
-      setPwdError('Current password is incorrect.')
-      setPwdLoading(false)
-      return
-    }
+    try {
+      const res = await fetch(`/api/employees/${profile.id}`, {
+        method: 'PATCH',
+        headers: { 
+          'Authorization': `Bearer ${token}`, 
+          'Content-Type': 'application/json' 
+        },
+        body: JSON.stringify({ currentPassword: currentPwd, password: newPwd })
+      })
 
-    // Step 2: Update to the new password
-    const { error: updateErr } = await supabase.auth.updateUser({ password: newPwd })
-
-    if (updateErr) {
-      setPwdError(updateErr.message)
-    } else {
-      setPwdSuccess(true)
-      setCurrentPwd('')
-      setNewPwd('')
-      setConfirmPwd('')
+      const data = await res.json()
+      if (!res.ok) {
+        setPwdError(data.error || 'Failed to update password')
+      } else {
+        setPwdSuccess(true)
+        setCurrentPwd('')
+        setNewPwd('')
+        setConfirmPwd('')
+      }
+    } catch (err: any) {
+      setPwdError(err.message || 'Failed to update password')
     }
 
     setPwdLoading(false)
@@ -81,16 +84,29 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
     setProfileSuccess(false)
     setProfileLoading(true)
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({ phone: phone.trim() })
-      .eq('id', profile.id)
+    const token = localStorage.getItem('rushi_token')
+    if (!token) { router.push('/'); return }
 
-    if (error) {
-      setProfileError(error.message)
-    } else {
-      setProfileSuccess(true)
+    try {
+      const res = await fetch(`/api/employees/${profile.id}`, {
+        method: 'PATCH',
+        headers: { 
+          'Authorization': `Bearer ${token}`, 
+          'Content-Type': 'application/json' 
+        },
+        body: JSON.stringify({ phone: phone.trim() })
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        setProfileError(data.error || 'Failed to update phone number')
+      } else {
+        setProfileSuccess(true)
+      }
+    } catch (err: any) {
+      setProfileError(err.message || 'Failed to update phone number')
     }
+    
     setProfileLoading(false)
   }
 
