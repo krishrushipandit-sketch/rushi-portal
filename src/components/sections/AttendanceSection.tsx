@@ -42,25 +42,32 @@ export default function AttendanceSection({ profile }: { profile: Profile }) {
   const loadData = useCallback(async () => {
     setLoading(true)
     const token = localStorage.getItem('rushi_token')
-    if (!token) { router.push('/'); return }
+    if (!token) { setLoading(false); return }
     
-    // Fetch records
-    const res = await fetch(`/api/attendance?month=${month}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    const json = await res.json()
-    setRecords(json || [])
-
-    // Fetch employees for admin view
-    if (isAdmin) {
-      const empsRes = await fetch('/api/employees', {
+    try {
+      // Fetch records
+      const res = await fetch(`/api/attendance?month=${month}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
-      const emps = await empsRes.json()
-      setEmployees(Array.isArray(emps) ? emps.filter((e: any) => e.role === 'employee' && e.is_active) : [])
+      const json = await res.json()
+      setRecords(Array.isArray(json) ? json : [])
+
+      // Fetch employees for admin view
+      if (isAdmin) {
+        const empsRes = await fetch('/api/employees', {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        const emps = await empsRes.json()
+        setEmployees(Array.isArray(emps) ? emps.filter((e: any) => e.role === 'employee' && e.is_active) : [])
+      }
+    } catch (err) {
+      console.error('Error loading attendance:', err)
+      setRecords([])
+      setEmployees([])
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
-  }, [month, isAdmin, router])
+  }, [month, isAdmin])
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -145,7 +152,8 @@ export default function AttendanceSection({ profile }: { profile: Profile }) {
             </thead>
             <tbody>
               {employees.map(emp => {
-                const empRecords = records.filter(r => r.employee_id === emp.id)
+                const safeRecords = Array.isArray(records) ? records : []
+                const empRecords = safeRecords.filter(r => r.employee_id === emp.id)
                 return (
                   <tr key={emp.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                     <td style={{ padding: '0.5rem', fontWeight: 600 }}>{emp.full_name}</td>

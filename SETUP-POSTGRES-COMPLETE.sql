@@ -1,10 +1,10 @@
 -- ============================================================
--- RushiPandit Staff Portal — Full PostgreSQL Schema & Migrations
+-- RushiPandit Staff Portal — Master Self-Hosted PostgreSQL Schema
 -- ============================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- PROFILES
+-- PROFILES (users / employees)
 CREATE TABLE IF NOT EXISTS profiles (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email           TEXT UNIQUE NOT NULL,
@@ -21,15 +21,29 @@ CREATE TABLE IF NOT EXISTS profiles (
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ATTENDANCE
+-- ATTENDANCE & EMPLOYEE_ATTENDANCE
 CREATE TABLE IF NOT EXISTS attendance (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   employee_id   UUID REFERENCES profiles(id) ON DELETE CASCADE,
   date          DATE NOT NULL,
   check_in      TIMESTAMPTZ,
   check_out     TIMESTAMPTZ,
-  status        TEXT DEFAULT 'present' CHECK (status IN ('present','absent','late','half_day','wfh','leave','leave_pending','sandwich_leave')),
+  status        TEXT DEFAULT 'present',
   notes         TEXT,
+  updated_at    TIMESTAMPTZ DEFAULT NOW(),
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(employee_id, date)
+);
+
+CREATE TABLE IF NOT EXISTS employee_attendance (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  employee_id   UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  date          DATE NOT NULL,
+  check_in      TIMESTAMPTZ,
+  check_out     TIMESTAMPTZ,
+  status        TEXT DEFAULT 'present',
+  notes         TEXT,
+  updated_at    TIMESTAMPTZ DEFAULT NOW(),
   created_at    TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(employee_id, date)
 );
@@ -41,11 +55,12 @@ CREATE TABLE IF NOT EXISTS tasks (
   description   TEXT,
   assigned_to   UUID REFERENCES profiles(id) ON DELETE CASCADE,
   assigned_by   UUID REFERENCES profiles(id),
-  task_type     TEXT DEFAULT 'regular' CHECK (task_type IN ('regular','adhoc','project','assigned')),
-  priority      TEXT DEFAULT 'medium' CHECK (priority IN ('low','medium','high','urgent')),
-  status        TEXT DEFAULT 'pending' CHECK (status IN ('pending','in_progress','completed','cancelled')),
+  task_type     TEXT DEFAULT 'regular',
+  priority      TEXT DEFAULT 'medium',
+  status        TEXT DEFAULT 'pending',
   due_date      DATE,
   deadline      TIMESTAMPTZ,
+  reminder_sent BOOLEAN DEFAULT FALSE,
   completed_at  TIMESTAMPTZ,
   notes         TEXT,
   created_at    TIMESTAMPTZ DEFAULT NOW(),
@@ -53,6 +68,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deadline TIMESTAMPTZ;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS reminder_sent BOOLEAN DEFAULT FALSE;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS notes TEXT;
 
 -- TASK UPDATES
@@ -65,6 +81,14 @@ CREATE TABLE IF NOT EXISTS task_updates (
   created_at       TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- TASK REMINDER LOG
+CREATE TABLE IF NOT EXISTS task_reminder_log (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_id       UUID REFERENCES tasks(id) ON DELETE CASCADE,
+  reminder_type TEXT DEFAULT 'deadline',
+  sent_at       TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- DAILY REPORTS
 CREATE TABLE IF NOT EXISTS daily_reports (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -75,7 +99,7 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   ai_summary        TEXT,
   ai_feedback       TEXT,
   admin_comment     TEXT,
-  performance_score INTEGER CHECK (performance_score BETWEEN 1 AND 10),
+  performance_score INTEGER,
   submitted_at      TIMESTAMPTZ DEFAULT NOW(),
   created_at        TIMESTAMPTZ DEFAULT NOW()
 );
@@ -116,7 +140,6 @@ CREATE TABLE IF NOT EXISTS clients (
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Ensure all client columns exist on pre-existing tables
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS slug TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS color TEXT DEFAULT '#6366f1';
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS logo_url TEXT;
@@ -131,8 +154,19 @@ CREATE TABLE IF NOT EXISTS client_deliverables (
   created_at     TIMESTAMPTZ DEFAULT NOW()
 );
 
--- CLIENT LOGS
+-- CLIENT LOGS & CLIENT_PROGRESS_LOG
 CREATE TABLE IF NOT EXISTS client_logs (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id      UUID REFERENCES clients(id) ON DELETE CASCADE,
+  deliverable_id UUID REFERENCES client_deliverables(id) ON DELETE CASCADE,
+  employee_id    UUID REFERENCES profiles(id),
+  log_date       DATE NOT NULL DEFAULT CURRENT_DATE,
+  count          INTEGER DEFAULT 1,
+  notes          TEXT,
+  created_at     TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS client_progress_log (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id      UUID REFERENCES clients(id) ON DELETE CASCADE,
   deliverable_id UUID REFERENCES client_deliverables(id) ON DELETE CASCADE,
@@ -173,7 +207,7 @@ CREATE TABLE IF NOT EXISTS lead_followups (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   lead_id       UUID REFERENCES leads(id) ON DELETE CASCADE,
   done_by       UUID REFERENCES profiles(id),
-  followup_num  INTEGER CHECK (followup_num BETWEEN 1 AND 10),
+  followup_num  INTEGER DEFAULT 1,
   outcome       TEXT,
   notes         TEXT,
   next_followup TIMESTAMPTZ,
@@ -206,6 +240,18 @@ CREATE TABLE IF NOT EXISTS employee_points (
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- STAR PERFORMERS
+CREATE TABLE IF NOT EXISTS star_performers (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  employee_id  UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  month_year   TEXT NOT NULL,
+  total_points INTEGER DEFAULT 0,
+  rank         INTEGER DEFAULT 1,
+  reward_notes TEXT,
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(employee_id, month_year)
+);
+
 -- RESPONSIBILITIES
 CREATE TABLE IF NOT EXISTS employee_responsibilities (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -217,6 +263,7 @@ CREATE TABLE IF NOT EXISTS employee_responsibilities (
 
 -- ============================================================
 -- SEED: All User Accounts
+-- Password for all: RushiPandit@2026
 -- ============================================================
 INSERT INTO profiles (email, full_name, password_hash, role, department, designation, is_active)
 VALUES
