@@ -358,3 +358,148 @@ ON CONFLICT DO NOTHING;
 INSERT INTO client_deliverables (client_id, content_type, monthly_target)
 SELECT id, 'Static Post', 20 FROM clients WHERE slug = 'rushipandit-institute' OR name = 'RushiPandit Institute'
 ON CONFLICT DO NOTHING;
+
+-- SEED: All Employee Responsibilities & Daily Targets
+DELETE FROM employee_responsibilities;
+
+-- Poonam Gaikwad (Sales)
+INSERT INTO employee_responsibilities (employee_id, title, daily_target, sort_order)
+SELECT id, title, target, ord FROM profiles p,
+(VALUES
+  ('Daily Calls',       15, 1),
+  ('Daily Follow-up',   25, 2),
+  ('DM Enrollment',     15, 3),
+  ('Amazon Enrollment', 10, 4)
+) AS r(title, target, ord)
+WHERE p.email = 'poonam@rushipandit.com';
+
+-- Shridhar (Sales)
+INSERT INTO employee_responsibilities (employee_id, title, daily_target, sort_order)
+SELECT id, title, target, ord FROM profiles p,
+(VALUES
+  ('SM Calling',    10, 1),
+  ('SM Follow-up',  20, 2),
+  ('SM Enrollment', 15, 3)
+) AS r(title, target, ord)
+WHERE p.email = 'shridhar@rushipandit.com';
+
+-- Naveen (Sales)
+INSERT INTO employee_responsibilities (employee_id, title, daily_target, sort_order)
+SELECT id, title, target, ord FROM profiles p,
+(VALUES
+  ('Daily Calls',     15, 1),
+  ('Daily Follow-up', 25, 2),
+  ('DM Enrollment',   15, 3)
+) AS r(title, target, ord)
+WHERE p.email = 'naveen@rushipandit.com';
+
+-- Kedar Lokhande (Media / Video Editor)
+INSERT INTO employee_responsibilities (employee_id, title, daily_target, sort_order)
+SELECT id, title, target, ord FROM profiles p,
+(VALUES
+  ('Client management',      0, 1),
+  ('Client reporting',       0, 2),
+  ('Client reel editing',    4, 3),
+  ('Client YouTube editing', 1, 4)
+) AS r(title, target, ord)
+WHERE p.email = 'kedar@rushipandit.com';
+
+-- Suyog Rane (Business / Media)
+INSERT INTO employee_responsibilities (employee_id, title, daily_target, sort_order)
+SELECT id, title, target, ord FROM profiles p,
+(VALUES
+  ('Internal reel editing',    4, 1),
+  ('Internal YouTube editing', 1, 2)
+) AS r(title, target, ord)
+WHERE p.email = 'suyog@rushipandit.com';
+
+-- Pooja Mali (Operations)
+INSERT INTO employee_responsibilities (employee_id, title, daily_target, sort_order)
+SELECT id, title, target, ord FROM profiles p,
+(VALUES
+  ('Client posting',    0, 1),
+  ('Content scripting', 3, 2),
+  ('Ads reporting',     0, 3),
+  ('Tech support',      0, 4)
+) AS r(title, target, ord)
+WHERE p.email = 'pooja@rushipandit.com';
+
+-- Rohan Solunke (Design / Creative)
+INSERT INTO employee_responsibilities (employee_id, title, daily_target, sort_order)
+SELECT id, title, target, ord FROM profiles p,
+(VALUES
+  ('Shoot',                  5, 1),
+  ('Design',                 2, 2),
+  ('Daily posting',          0, 3),
+  ('Webinar management',     0, 4),
+  ('Reminder management',    0, 5),
+  ('WhatsApp group creation',0, 6),
+  ('Webinar coordination',   0, 7)
+) AS r(title, target, ord)
+WHERE p.email = 'rohan@rushipandit.com';
+
+-- Swapnil Baviskar (Operations Manager)
+INSERT INTO employee_responsibilities (employee_id, title, daily_target, sort_order)
+SELECT id, title, target, ord FROM profiles p,
+(VALUES
+  ('Content scripting',     0, 1),
+  ('Shooting',              0, 2),
+  ('Google posting replies',0, 3)
+) AS r(title, target, ord)
+WHERE p.email = 'swapnil@rushipandit.com';
+
+-- Shreya Sargade (Operations / Employee)
+INSERT INTO employee_responsibilities (employee_id, title, daily_target, sort_order)
+SELECT id, title, target, ord FROM profiles p,
+(VALUES
+  ('Internal posting',   0, 1),
+  ('Leads management',   0, 2),
+  ('Comments management',0, 3),
+  ('Prospect handling',  0, 4)
+) AS r(title, target, ord)
+WHERE p.email = 'shreya@rushipandit.com';
+
+-- SEED: All Clients & Deliverables (Strategy Panel & Client Work Section)
+INSERT INTO clients (name, slug, color, is_active) VALUES
+  ('CA', 'ca', '#6366f1', true),
+  ('Advisor Alpha', 'advisor-alpha', '#10b981', true),
+  ('MBC', 'mbc', '#f59e0b', true),
+  ('AmicusClaims', 'amicusclaims', '#ef4444', true)
+ON CONFLICT (slug) DO NOTHING;
+
+INSERT INTO client_deliverables (client_id, content_type, monthly_target)
+SELECT id, 'Reel', 8 FROM clients WHERE slug = 'ca'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO client_deliverables (client_id, content_type, monthly_target)
+SELECT id, 'Reel', 8 FROM clients WHERE slug = 'advisor-alpha'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO client_deliverables (client_id, content_type, monthly_target)
+SELECT id, 'Reel', 12 FROM clients WHERE slug = 'mbc'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO client_deliverables (client_id, content_type, monthly_target)
+SELECT id, 'Reel', 8 FROM clients WHERE slug = 'amicusclaims'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO client_deliverables (client_id, content_type, monthly_target)
+SELECT id, 'YouTube', 4 FROM clients WHERE slug = 'amicusclaims'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO client_deliverables (client_id, content_type, monthly_target)
+SELECT id, 'Static Post', 4 FROM clients WHERE slug = 'amicusclaims'
+ON CONFLICT DO NOTHING;
+
+-- SEED: Sales Industry Skills
+INSERT INTO sales_industry_skills (employee_id, industry)
+SELECT id, 'Digital Marketing' FROM profiles WHERE department = 'Sales'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO sales_industry_skills (employee_id, industry)
+SELECT id, 'Share Market' FROM profiles WHERE department = 'Sales'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO sales_industry_skills (employee_id, industry)
+SELECT id, 'Amazon' FROM profiles WHERE department = 'Sales'
+ON CONFLICT DO NOTHING;
