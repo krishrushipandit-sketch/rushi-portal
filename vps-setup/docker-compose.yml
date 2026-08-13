@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: rushi_portal_db
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rushi_portal}
+      POSTGRES_USER: ${POSTGRES_USER:-rushi_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-RushiPanditPass2026!}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+
+  app:
+    build:
+      context: ..
+      dockerfile: vps-setup/Dockerfile
+    container_name: rushi_portal_app
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - PABBLY_WEBHOOK_SECRET=${PABBLY_WEBHOOK_SECRET:-rushi_pabbly_secret_2026}
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:

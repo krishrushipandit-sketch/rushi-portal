@@ -30,8 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files (keep secrets off git)
 .env*
+.env.local
+.env.vercel.test
 
 # vercel
 .vercel
@@ -39,3 +41,22 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# legacy debug & biometric scripts (not needed in prod)
+biometric-bridge.js
+biometric-sync.js
+cams-spy-proxy.js
+realtime-db-sync.js
+debug-cron.js
+test-*.js
+test-*.ps1
+reset-db*.js
+delete-*.js
+diagnose-*.js
+find-employees.js
+fix-*.js
+push-env.js
+add-vercel-envs.js
+resync-clients.js
+setup-kedar.js
+setup-windows-scheduler.ps1

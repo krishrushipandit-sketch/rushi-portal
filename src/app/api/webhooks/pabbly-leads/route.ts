@@ -1,0 +1,157 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+const getDb = () => createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
+export async function POST(req: NextRequest) {
+  try {
+    const db = getDb()
+    const body = await req.json().catch(() => null) || {}
+
+    // Security token check (optional secret token parameter)
+    const secret = req.nextUrl.searchParams.get('secret') || req.headers.get('x-pabbly-secret')
+    const expectedSecret = process.env.PABBLY_WEBHOOK_SECRET || 'rushi_pabbly_secret_2026'
+    
+    if (secret && secret !== expectedSecret) {
+      return NextResponse.json({ error: 'Unauthorized webhook request' }, { status: 401 })
+    }
+
+    // 1. Parse standard lead fields from Pabbly / Facebook Lead Ads payload
+    const rawName = body.full_name || body.name || body.Name || `${body.first_name || ''} ${body.last_name || ''}`.trim() || 'Unknown Lead'
+    const rawPhone = body.phone_number || body.phone || body.Phone || body.mobile || body.contact || ''
+    const rawEmail = body.email || body.Email || body.email_address || null
+    const platform = body.platform || body.Platform || body.source || 'Facebook'
+
+    // Normalize phone number
+    const cleanPhone = String(rawPhone).replace(/[^\d+]/g, '') || 'Not provided'
+
+    // 2. Identify Industry/Course
+    let industry = body.industry || body.Industry || body.course || body.Course || 'Digital Marketing'
+    const lowerInd = String(industry).toLowerCase()
+    if (lowerInd.includes('share') || lowerInd.includes('stock') || lowerInd.includes('trading')) {
+      industry = 'Share Market'
+    } else if (lowerInd.includes('digital') || lowerInd.includes('marketing')) {
+      industry = 'Digital Marketing'
+    } else if (lowerInd.includes('ai') || lowerInd.includes('artificial')) {
+      industry = 'AI Course'
+    }
+
+    // 3. Extract Dynamic Qualification Questions
+    // Put any non-standard fields into qualification_answers object
+    const knownKeys = ['full_name', 'name', 'first_name', 'last_name', 'phone_number', 'phone', 'Phone', 'mobile', 'contact', 'email', 'Email', 'email_address', 'platform', 'Platform', 'source', 'industry', 'Industry', 'course', 'Course', 'secret']
+    
+    const qualificationAnswers: Record<string, any> = {}
+    for (const [key, value] of Object.entries(body)) {
+      if (!knownKeys.includes(key) && value !== null && value !== undefined && value !== '') {
+        // Format key nicely (e.g. "where_do_you_live" -> "Where do you live")
+        const formattedKey = key
+          .replace(/_/g, ' ')
+          .replace(/\b\w/g, c => c.toUpperCase())
+        qualificationAnswers[formattedKey] = value
+      }
+    }
+
+    // 4. Industry Round-Robin Sales Representative Assignment
+    // First: find active sales reps mapped to this specific industry
+    const { data: industryReps } = await db
+      .from('sales_industry_skills')
+      .select('user_id, profiles!inner(id, full_name, is_active)')
+      .eq('industry', industry)
+      .eq('is_active', true)
+      .eq('profiles.is_active', true)
+
+    let eligibleRepIds: { id: string, name: string }[] = []
+    if (industryReps && industryReps.length > 0) {
+      eligibleRepIds = industryReps.map((r: any) => ({ id: r.user_id, name: r.profiles?.full_name || 'Sales Rep' }))
+    }
+
+    // Fallback: If no rep mapped to this industry, round-robin among all active employee-role profiles
+    if (eligibleRepIds.length === 0) {
+      const { data: allEmps } = await db
+        .from('profiles')
+        .select('id, full_name')
+        .eq('role', 'employee')
+        .eq('is_active', true)
+
+      if (allEmps && allEmps.length > 0) {
+        eligibleRepIds = allEmps.map(e => ({ id: e.id, name: e.full_name }))
+      }
+    }
+
+    let assignedToId: string | null = null
+    let assignedToName: string = 'Unassigned'
+
+    if (eligibleRepIds.length > 0) {
+      // Fetch current round-robin state for this industry
+      const { data: state } = await db
+        .from('industry_round_robin_state')
+        .select('last_assigned_index')
+        .eq('industry', industry)
+        .single()
+
+      let currentIndex = state ? state.last_assigned_index : -1
+      const nextIndex = (currentIndex + 1) % eligibleRepIds.length
+      
+      assignedToId = eligibleRepIds[nextIndex].id
+      assignedToName = eligibleRepIds[nextIndex].name
+
+      // Update state for next round
+      await db
+        .from('industry_round_robin_state')
+        .upsert({
+          industry,
+          last_assigned_index: nextIndex,
+          updated_at: new Date().toISOString()
+        })
+    }
+
+    // 5. Insert Lead into Database
+    const { data: newLead, error: insertError } = await db
+      .from('leads')
+      .insert({
+        client_name: rawName,
+        phone: cleanPhone,
+        email: rawEmail,
+        category: industry,
+        industry: industry,
+        platform: platform,
+        status: 'new',
+        assigned_to: assignedToId,
+        qualification_answers: qualificationAnswers,
+        notes: `Lead received via Pabbly Connect (${platform}). Industry: ${industry}`
+      })
+      .select()
+      .single()
+
+    if (insertError) {
+      console.error('Lead Insert Error:', insertError)
+      return NextResponse.json({ error: insertError.message }, { status: 500 })
+    }
+
+    // 6. Create Notification for Assigned Sales Rep
+    if (assignedToId) {
+      await db.from('notifications').insert({
+        user_id: assignedToId,
+        title: `🎯 New ${industry} Lead Assigned!`,
+        message: `New Lead: ${rawName} (${cleanPhone}). Industry: ${industry}`,
+        type: 'info'
+      })
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Lead created successfully',
+      lead_id: newLead.id,
+      assigned_to: assignedToName,
+      industry,
+      qualification_count: Object.keys(qualificationAnswers).length
+    })
+
+  } catch (err: any) {
+    console.error('Pabbly Webhook Error:', err)
+    return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 })
+  }
+}
