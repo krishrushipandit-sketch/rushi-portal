@@ -235,13 +235,23 @@ CREATE TABLE IF NOT EXISTS sales_industry_skills (
 
 -- POINTS / LEADERBOARD
 CREATE TABLE IF NOT EXISTS employee_points (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  employee_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  points      INTEGER DEFAULT 0,
-  reason      TEXT,
-  given_by    UUID REFERENCES profiles(id),
-  created_at  TIMESTAMPTZ DEFAULT NOW()
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  employee_id   UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  report_date   DATE DEFAULT CURRENT_DATE,
+  points        INTEGER DEFAULT 0,
+  targets_hit   INTEGER DEFAULT 0,
+  targets_total INTEGER DEFAULT 0,
+  reason        TEXT,
+  given_by      UUID REFERENCES profiles(id),
+  updated_at    TIMESTAMPTZ DEFAULT NOW(),
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(employee_id, report_date)
 );
+
+ALTER TABLE employee_points ADD COLUMN IF NOT EXISTS report_date DATE DEFAULT CURRENT_DATE;
+ALTER TABLE employee_points ADD COLUMN IF NOT EXISTS targets_hit INTEGER DEFAULT 0;
+ALTER TABLE employee_points ADD COLUMN IF NOT EXISTS targets_total INTEGER DEFAULT 0;
+ALTER TABLE employee_points ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
 -- STAR PERFORMERS
 CREATE TABLE IF NOT EXISTS star_performers (

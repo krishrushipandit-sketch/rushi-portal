@@ -17,37 +17,49 @@ export async function PATCH(
     if (body.status === 'completed' && !body.completed_at) {
       body.completed_at = new Date().toISOString()
 
-      // Award flat 20 points for task completion
-      const task = await queryOne<{ assigned_to: string; title: string }>(
-        'SELECT assigned_to, title FROM tasks WHERE id = $1',
-        [id]
-      )
-      if (task && task.assigned_to) {
-        const newPoints = 20
-        const addedReason = `Task "${task.title}" completed! 🏆 (+20)`
-
-        const d = new Date()
-        const offset = d.getTimezoneOffset() * 60000
-        const istTime = new Date(d.getTime() + offset + (330 * 60000))
-        const todayStr = istTime.toISOString().slice(0, 10)
-
-        const existingPoint = await queryOne<{ points: number; reason: string }>(
-          'SELECT points, reason FROM employee_points WHERE employee_id = $1 AND report_date = $2',
-          [task.assigned_to, todayStr]
+      // Award flat 20 points for task completion (wrapped in try/catch so task status update always succeeds)
+      try {
+        const task = await queryOne<{ assigned_to: string; title: string }>(
+          'SELECT assigned_to, title FROM tasks WHERE id = $1',
+          [id]
         )
+        if (task && task.assigned_to) {
+          const newPoints = 20
+          const addedReason = `Task "${task.title}" completed! 🏆 (+20)`
 
-        const totalPoints = (existingPoint?.points || 0) + newPoints
-        const totalReason = existingPoint?.reason ? existingPoint.reason + ' | ' + addedReason : addedReason
+          const d = new Date()
+          const offset = d.getTimezoneOffset() * 60000
+          const istTime = new Date(d.getTime() + offset + (330 * 60000))
+          const todayStr = istTime.toISOString().slice(0, 10)
 
-        await execute(
-          `INSERT INTO employee_points (employee_id, report_date, points, reason, updated_at)
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (employee_id, report_date) DO UPDATE SET
-             points = EXCLUDED.points,
-             reason = EXCLUDED.reason,
-             updated_at = EXCLUDED.updated_at`,
-          [task.assigned_to, todayStr, totalPoints, totalReason, new Date().toISOString()]
-        )
+          const existingPoint = await queryOne<{ points: number; reason: string }>(
+            'SELECT points, reason FROM employee_points WHERE employee_id = $1 AND report_date = $2',
+            [task.assigned_to, todayStr]
+          )
+
+          const totalPoints = (existingPoint?.points || 0) + newPoints
+          const totalReason = existingPoint?.reason ? existingPoint.reason + ' | ' + addedReason : addedReason
+
+          try {
+            await execute(
+              `INSERT INTO employee_points (employee_id, report_date, points, reason, updated_at)
+               VALUES ($1, $2, $3, $4, $5)
+               ON CONFLICT (employee_id, report_date) DO UPDATE SET
+                 points = EXCLUDED.points,
+                 reason = EXCLUDED.reason,
+                 updated_at = EXCLUDED.updated_at`,
+              [task.assigned_to, todayStr, totalPoints, totalReason, new Date().toISOString()]
+            )
+          } catch {
+            // Fallback if unique constraint isn't on report_date
+            await execute(
+              `INSERT INTO employee_points (employee_id, points, reason) VALUES ($1, $2, $3)`,
+              [task.assigned_to, newPoints, addedReason]
+            )
+          }
+        }
+      } catch (ptsErr) {
+        console.error('Points awarding notice:', ptsErr)
       }
     }
 
