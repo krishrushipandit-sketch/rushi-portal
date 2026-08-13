@@ -1,5 +1,6 @@
 -- ============================================================
 -- RushiPandit Staff Portal — Master Self-Hosted PostgreSQL Schema
+-- Run this EVERY time to safely migrate / create all tables
 -- ============================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -16,10 +17,15 @@ CREATE TABLE IF NOT EXISTS profiles (
   phone           TEXT,
   whatsapp_number TEXT,
   avatar_url      TEXT,
+  bio             TEXT,
   is_active       BOOLEAN DEFAULT TRUE,
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS bio TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS whatsapp_number TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
 
 -- ATTENDANCE & EMPLOYEE_ATTENDANCE
 CREATE TABLE IF NOT EXISTS attendance (
@@ -55,7 +61,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   description   TEXT,
   assigned_to   UUID REFERENCES profiles(id) ON DELETE CASCADE,
   assigned_by   UUID REFERENCES profiles(id),
-  task_type     TEXT DEFAULT 'regular',
+  task_type     TEXT DEFAULT 'assigned',
   priority      TEXT DEFAULT 'medium',
   status        TEXT DEFAULT 'pending',
   due_date      DATE,
@@ -73,6 +79,8 @@ ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_status_check;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deadline TIMESTAMPTZ;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS reminder_sent BOOLEAN DEFAULT FALSE;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
 -- TASK UPDATES
 CREATE TABLE IF NOT EXISTS task_updates (
@@ -93,21 +101,49 @@ CREATE TABLE IF NOT EXISTS task_reminder_log (
 );
 
 -- DAILY REPORTS
+-- Column reference: entries (JSONB), note (TEXT), check_in_time, check_out_time, updated_by_admin
 CREATE TABLE IF NOT EXISTS daily_reports (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   employee_id       UUID REFERENCES profiles(id) ON DELETE CASCADE,
   report_date       DATE NOT NULL DEFAULT CURRENT_DATE,
+  entries           JSONB DEFAULT '[]',
+  note              TEXT DEFAULT '',
+  check_in_time     TIME,
+  check_out_time    TIME,
   content           TEXT,
   audio_url         TEXT,
   ai_summary        TEXT,
   ai_feedback       TEXT,
   admin_comment     TEXT,
   performance_score INTEGER,
+  updated_at        TIMESTAMPTZ DEFAULT NOW(),
+  updated_by_admin  BOOLEAN DEFAULT FALSE,
   submitted_at      TIMESTAMPTZ DEFAULT NOW(),
-  created_at        TIMESTAMPTZ DEFAULT NOW()
+  created_at        TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(employee_id, report_date)
 );
 
+ALTER TABLE daily_reports ADD COLUMN IF NOT EXISTS entries JSONB DEFAULT '[]';
+ALTER TABLE daily_reports ADD COLUMN IF NOT EXISTS note TEXT DEFAULT '';
+ALTER TABLE daily_reports ADD COLUMN IF NOT EXISTS check_in_time TIME;
+ALTER TABLE daily_reports ADD COLUMN IF NOT EXISTS check_out_time TIME;
+ALTER TABLE daily_reports ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE daily_reports ADD COLUMN IF NOT EXISTS updated_by_admin BOOLEAN DEFAULT FALSE;
 ALTER TABLE daily_reports ADD COLUMN IF NOT EXISTS admin_comment TEXT;
+ALTER TABLE daily_reports ADD COLUMN IF NOT EXISTS content TEXT;
+ALTER TABLE daily_reports ADD COLUMN IF NOT EXISTS ai_summary TEXT;
+ALTER TABLE daily_reports ADD COLUMN IF NOT EXISTS ai_feedback TEXT;
+ALTER TABLE daily_reports ADD COLUMN IF NOT EXISTS performance_score INTEGER;
+
+-- Safe UNIQUE constraint for daily_reports (skip if already exists)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'daily_reports_employee_id_report_date_key'
+  ) THEN
+    ALTER TABLE daily_reports ADD CONSTRAINT daily_reports_employee_id_report_date_key UNIQUE (employee_id, report_date);
+  END IF;
+END $$;
 
 -- NOTIFICATIONS
 CREATE TABLE IF NOT EXISTS notifications (
@@ -244,8 +280,7 @@ CREATE TABLE IF NOT EXISTS employee_points (
   reason        TEXT,
   given_by      UUID REFERENCES profiles(id),
   updated_at    TIMESTAMPTZ DEFAULT NOW(),
-  created_at    TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(employee_id, report_date)
+  created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
 ALTER TABLE employee_points ADD COLUMN IF NOT EXISTS report_date DATE DEFAULT CURRENT_DATE;
@@ -253,11 +288,15 @@ ALTER TABLE employee_points ADD COLUMN IF NOT EXISTS targets_hit INTEGER DEFAULT
 ALTER TABLE employee_points ADD COLUMN IF NOT EXISTS targets_total INTEGER DEFAULT 0;
 ALTER TABLE employee_points ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
+-- Safe UNIQUE constraint on employee_points
+CREATE UNIQUE INDEX IF NOT EXISTS employee_points_emp_date_idx ON employee_points(employee_id, report_date);
+
 -- STAR PERFORMERS
 CREATE TABLE IF NOT EXISTS star_performers (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   employee_id  UUID REFERENCES profiles(id) ON DELETE CASCADE,
   month_year   TEXT NOT NULL,
+  month        TEXT,
   total_points INTEGER DEFAULT 0,
   rank         INTEGER DEFAULT 1,
   reward_notes TEXT,
@@ -265,14 +304,24 @@ CREATE TABLE IF NOT EXISTS star_performers (
   UNIQUE(employee_id, month_year)
 );
 
+ALTER TABLE star_performers ADD COLUMN IF NOT EXISTS month TEXT;
+
+-- Sync month column from month_year for existing rows
+UPDATE star_performers SET month = month_year WHERE month IS NULL;
+
 -- RESPONSIBILITIES
 CREATE TABLE IF NOT EXISTS employee_responsibilities (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   employee_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
   title       TEXT NOT NULL,
   description TEXT,
+  daily_target INTEGER DEFAULT 0,
+  sort_order  INTEGER DEFAULT 0,
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE employee_responsibilities ADD COLUMN IF NOT EXISTS daily_target INTEGER DEFAULT 0;
+ALTER TABLE employee_responsibilities ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
 
 -- ============================================================
 -- SEED: All User Accounts

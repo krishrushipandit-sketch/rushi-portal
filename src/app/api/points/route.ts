@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
        WHERE role = 'employee' AND is_active = true`
     )
 
-    // Get star performers for current month
+    // Get star performers for current month (use month_year or month column)
     const stars = await query<StarPerformerRow>(
       `SELECT 
          sp.*,
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
          ) ELSE NULL END AS employee
        FROM star_performers sp
        LEFT JOIN profiles p ON p.id = sp.employee_id
-       WHERE sp.month = $1
+       WHERE sp.month_year = $1 OR sp.month = $1
        ORDER BY sp.rank ASC`,
       [month]
     )
@@ -249,7 +249,7 @@ export async function POST(req: NextRequest) {
     if (isFirstOfMonth) {
       // Check if already announced
       const existing = await query<{ id: string }>(
-        `SELECT id FROM star_performers WHERE month = $1 LIMIT 1`,
+        `SELECT id FROM star_performers WHERE month_year = $1 LIMIT 1`,
         [lastMonthStr]
       )
 
@@ -261,30 +261,29 @@ export async function POST(req: NextRequest) {
           .slice(0, 10)
 
         const lmPoints = await query<{ employee_id: string; points: number }>(
-          `SELECT employee_id, points
+          `SELECT employee_id, SUM(points) as points
            FROM employee_points
-           WHERE report_date >= $1 AND report_date < $2`,
+           WHERE report_date >= $1 AND report_date < $2
+           GROUP BY employee_id`,
           [lmFrom, lmTo]
         )
 
         // Aggregate per employee
-        const empTotals: Record<string, number> = {}
-        ;(lmPoints || []).forEach((p) => {
-          empTotals[p.employee_id] = (empTotals[p.employee_id] || 0) + p.points
-        })
-
-        const sorted = Object.entries(empTotals).sort(([, a], [, b]) => b - a)
+        const sorted = (lmPoints || []).sort((a, b) => b.points - a.points)
 
         // Upsert top 2
         for (let i = 0; i < Math.min(2, sorted.length); i++) {
-          await execute(
-            `INSERT INTO star_performers (employee_id, month, rank, total_points)
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT (month, rank) DO UPDATE SET
-               employee_id = EXCLUDED.employee_id,
-               total_points = EXCLUDED.total_points`,
-            [sorted[i][0], lastMonthStr, i + 1, sorted[i][1]]
-          )
+          try {
+            await execute(
+              `INSERT INTO star_performers (employee_id, month_year, month, rank, total_points)
+               VALUES ($1, $2, $2, $3, $4)
+               ON CONFLICT (employee_id, month_year) DO UPDATE SET
+                 rank = EXCLUDED.rank,
+                 total_points = EXCLUDED.total_points,
+                 month = EXCLUDED.month`,
+              [sorted[i].employee_id, lastMonthStr, i + 1, sorted[i].points]
+            )
+          } catch { /* skip if constraint error */ }
         }
       }
     }
