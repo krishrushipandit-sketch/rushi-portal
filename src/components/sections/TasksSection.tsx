@@ -124,12 +124,25 @@ export default function TasksSection({ profile }: Props) {
   const handleStatusUpdate = async (taskId: string, status: string) => {
     const token = getToken()
     if (!token) return
-    await fetch(`/api/tasks/${taskId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ status }),
-    })
-    fetchTasks()
+
+    // Optimistic UI update for instant click response
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status } : t))
+
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        alert('Could not update status: ' + (data.error || 'Unknown error'))
+      }
+    } catch (err: any) {
+      alert('Error updating status: ' + err.message)
+    } finally {
+      fetchTasks()
+    }
   }
 
   const handleUpdateSubmit = async () => {
