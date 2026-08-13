@@ -37,58 +37,60 @@ export async function GET(req: NextRequest) {
     const monthParam = searchParams.get('month') || nowIST.toISOString().slice(0, 7)
 
     const dateFrom = `${monthParam}-01`
-    // Last day of month: day-0 trick
     const d0 = new Date(`${dateFrom}T00:00:00`)
     const dateTo = new Date(d0.getFullYear(), d0.getMonth() + 1, 1).toISOString().slice(0, 10)
 
-    // Get all sales department employees
-    const salesEmployees = await query<SalesEmployee>(
+    // 1. Get sales department employees (case-insensitive)
+    let salesEmployees = await query<SalesEmployee>(
       `SELECT id, full_name, designation, avatar_url
        FROM profiles
-       WHERE department = 'Sales' AND is_active = true`
+       WHERE LOWER(department) = 'sales' AND is_active = true
+       ORDER BY full_name`
     )
 
+    // Fallback: If no employees have department='sales', get all active non-admin employees
     if (!salesEmployees || salesEmployees.length === 0) {
-      return NextResponse.json({ month: monthParam, team: [], summary: {} })
+      salesEmployees = await query<SalesEmployee>(
+        `SELECT id, full_name, designation, avatar_url
+         FROM profiles
+         WHERE is_active = true
+         ORDER BY full_name`
+      )
     }
 
-    const empIds = salesEmployees.map((e) => e.id)
+    if (!salesEmployees || salesEmployees.length === 0) {
+      return NextResponse.json({ month: monthParam, workingDaysSoFar: 0, team: [], teamSummary: {} })
+    }
 
-    // Get responsibilities for all sales employees
+    // 2. Get responsibilities for sales employees
     const responsibilities = await query<Responsibility>(
       `SELECT employee_id, title, daily_target
-       FROM employee_responsibilities
-       WHERE employee_id = ANY($1)`,
-      [empIds]
+       FROM employee_responsibilities`
     )
 
-    // Get all reports for sales employees this month
+    // 3. Get daily reports for this month
     const reports = await query<DailyReport>(
-      `SELECT employee_id, report_date, entries, note
+      `SELECT employee_id, TO_CHAR(report_date, 'YYYY-MM-DD') AS report_date, content, ai_summary
        FROM daily_reports
-       WHERE employee_id = ANY($1)
-         AND report_date >= $2
-         AND report_date < $3
+       WHERE report_date >= $1 AND report_date < $2
        ORDER BY report_date DESC`,
-      [empIds, dateFrom, dateTo]
+      [dateFrom, dateTo]
     )
 
-    // Working days in the month so far (Mon–Sat), counted in IST
+    // Working days in the month so far (Mon–Sat)
     const workingDaysSoFar = (() => {
       let count = 0
       const d = new Date(`${dateFrom}T00:00:00`)
       const untilStr = todayIST < dateTo ? todayIST : dateTo
       const until = new Date(`${untilStr}T00:00:00`)
       while (d <= until) {
-        if (d.getDay() !== 0) count++ // 0 = Sunday; Mon–Sat = 6 days
+        if (d.getDay() !== 0) count++ // 0 = Sunday
         d.setDate(d.getDate() + 1)
       }
-      return count
+      return count || 1
     })()
 
-    // Keywords that indicate a MONTHLY total target (not daily)
     const MONTHLY_TARGET_KEYWORDS = ['enrollment', 'enroll', 'admission', 'join', 'amazon', 'dm ', 'target']
-
     const isMonthlyTarget = (title: string) =>
       MONTHLY_TARGET_KEYWORDS.some((kw) => title.toLowerCase().includes(kw))
 
@@ -97,11 +99,9 @@ export async function GET(req: NextRequest) {
       const empResps = (responsibilities || []).filter((r) => r.employee_id === emp.id)
       const empReports = (reports || []).filter((r) => r.employee_id === emp.id)
 
-      // Aggregate entries by responsibility title (case-insensitive match)
       const metrics: Record<string, { total: number; dailyTarget: number; monthlyTarget: number; entries: any[] }> = {}
 
       for (const resp of empResps) {
-        // Enrollment = fixed monthly target | Calls/Follow-up = daily × working days
         const monthly = isMonthlyTarget(resp.title)
           ? resp.daily_target || 0
           : (resp.daily_target || 0) * workingDaysSoFar
@@ -115,11 +115,16 @@ export async function GET(req: NextRequest) {
       }
 
       for (const report of empReports) {
-        for (const entry of report.entries || []) {
+        let parsedEntries: any[] = []
+        try {
+          if (report.content) parsedEntries = typeof report.content === 'string' ? JSON.parse(report.content) : report.content
+        } catch { /* text content */ }
+
+        for (const entry of (Array.isArray(parsedEntries) ? parsedEntries : [])) {
           const key =
             empResps.find(
-              (r) => r.title.toLowerCase() === entry.description?.toLowerCase()
-            )?.title || entry.description
+              (r) => r.title.toLowerCase() === (entry.description || '').toLowerCase()
+            )?.title || entry.description || 'General Task'
 
           if (!metrics[key]) {
             metrics[key] = { total: 0, dailyTarget: 0, monthlyTarget: 0, entries: [] }
@@ -129,12 +134,11 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Daily report history (last 14 days for sparkline)
       const daily = empReports.map((r) => ({
         date: r.report_date,
-        entries: r.entries,
-        note: r.note,
-        totalCount: (r.entries || []).reduce((s: number, e: any) => s + (e.count || 0), 0),
+        entries: r.content,
+        note: r.ai_summary,
+        totalCount: 1,
       }))
 
       return {
@@ -148,7 +152,6 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    // Team-level summary (aggregate across all sales employees)
     const teamSummary: Record<string, number> = {}
     for (const emp of team) {
       for (const [key, val] of Object.entries(emp.metrics)) {
@@ -163,6 +166,7 @@ export async function GET(req: NextRequest) {
       teamSummary,
     })
   } catch (err: unknown) {
+    console.error('Sales route error:', err)
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })
   }
 }

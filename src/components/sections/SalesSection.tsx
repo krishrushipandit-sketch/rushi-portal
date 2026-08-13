@@ -220,13 +220,14 @@ export default function SalesSection({ profile }: { profile: Profile }) {
 
   if (profile.role !== 'admin') return null
 
-  const enrollmentKeys = data ? Object.keys(data.teamSummary).filter(k => ENROLLMENT_KEYWORDS.some(kw => k.toLowerCase().includes(kw))) : []
-  const callKeys = data ? Object.keys(data.teamSummary).filter(k => CALL_KEYWORDS.some(kw => k.toLowerCase().includes(kw))) : []
-  const followKeys = data ? Object.keys(data.teamSummary).filter(k => FOLLOWUP_KEYWORDS.some(kw => k.toLowerCase().includes(kw))) : []
+  const teamSummary = data?.teamSummary || {}
+  const enrollmentKeys = Object.keys(teamSummary).filter(k => ENROLLMENT_KEYWORDS.some(kw => k.toLowerCase().includes(kw)))
+  const callKeys = Object.keys(teamSummary).filter(k => CALL_KEYWORDS.some(kw => k.toLowerCase().includes(kw)))
+  const followKeys = Object.keys(teamSummary).filter(k => FOLLOWUP_KEYWORDS.some(kw => k.toLowerCase().includes(kw)))
 
-  const totalEnrollments = enrollmentKeys.reduce((s, k) => s + (data?.teamSummary[k] || 0), 0)
-  const totalCalls = callKeys.reduce((s, k) => s + (data?.teamSummary[k] || 0), 0)
-  const totalFollowUps = followKeys.reduce((s, k) => s + (data?.teamSummary[k] || 0), 0)
+  const totalEnrollments = enrollmentKeys.reduce((s, k) => s + (teamSummary[k] || 0), 0)
+  const totalCalls = callKeys.reduce((s, k) => s + (teamSummary[k] || 0), 0)
+  const totalFollowUps = followKeys.reduce((s, k) => s + (teamSummary[k] || 0), 0)
 
   const monthLabel = new Date(`${month}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
 
