@@ -42,11 +42,7 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
   const recognitionRef = useRef<any>(null)
   const interimRef = useRef('')
 
-  const getToken = () => {
-    const token = localStorage.getItem('rushi_token')
-    if (!token) { router.push('/'); return '' }
-    return token
-  }
+  const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
 
   // Load responsibilities + today's assigned tasks
   useEffect(() => {

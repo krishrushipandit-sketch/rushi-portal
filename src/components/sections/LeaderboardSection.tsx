@@ -51,14 +51,7 @@ export default function LeaderboardSection({ profile }: Props) {
   const [pastStars, setPastStars] = useState<Record<string, StarPerformer[]>>({})
   const [loading, setLoading] = useState(true)
 
-  const getToken = () => {
-    const token = localStorage.getItem('rushi_token')
-    if (!token) {
-      router.push('/')
-      return null
-    }
-    return token
-  }
+  const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
 
   const fetchMonth = async (month: string) => {
     const token = getToken()

@@ -62,11 +62,7 @@ export default function TasksSection({ profile }: Props) {
   const [updateProgress, setUpdateProgress] = useState(0)
   const [updateStatus, setUpdateStatus] = useState('')
 
-  const getToken = () => {
-    const token = localStorage.getItem('rushi_token')
-    if (!token) { router.push('/'); return '' }
-    return token
-  }
+  const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
 
   const fetchTasks = useCallback(async () => {
     const token = getToken()

@@ -38,14 +38,7 @@ export default function MonthlyMetricsPanel({ isAdmin, employeeId }: {
   const [loading, setLoading] = useState(true)
   const [expandedEmp, setExpandedEmp] = useState<string | null>(null)
 
-  const getToken = () => {
-    const token = localStorage.getItem('rushi_token')
-    if (!token) {
-      router.push('/')
-      return null
-    }
-    return token
-  }
+  const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
 
   const fetch_ = useCallback(async () => {
     setLoading(true)

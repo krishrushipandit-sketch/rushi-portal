@@ -84,14 +84,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
      profile.designation?.toLowerCase().includes('video') ||
      profile.designation?.toLowerCase().includes('editor'))
 
-  const getToken = () => {
-    const token = localStorage.getItem('rushi_token')
-    if (!token) {
-      router.push('/')
-      return null
-    }
-    return token
-  }
+  const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
 
   const load = useCallback(async () => {
     const token = getToken()

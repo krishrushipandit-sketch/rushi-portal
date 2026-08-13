@@ -49,14 +49,7 @@ export default function ReportsSection({ profile }: { profile: Profile }) {
   
   const isAdmin = profile.role === 'admin'
 
-  const getToken = () => {
-    const token = localStorage.getItem('rushi_token')
-    if (!token) {
-      router.push('/')
-      return null
-    }
-    return token
-  }
+  const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
 
   const load = useCallback(async () => {
     const token = getToken()

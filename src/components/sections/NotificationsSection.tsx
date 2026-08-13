@@ -33,14 +33,7 @@ export default function NotificationsSection({ profile, onRead }: Props) {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
 
-  const getToken = () => {
-    const token = localStorage.getItem('rushi_token')
-    if (!token) {
-      router.push('/')
-      return null
-    }
-    return token
-  }
+  const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
 
   const fetchNotifications = useCallback(async () => {
     const token = getToken()

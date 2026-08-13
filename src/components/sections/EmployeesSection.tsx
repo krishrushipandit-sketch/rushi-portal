@@ -37,11 +37,7 @@ export default function EmployeesSection({ profile }: Props) {
     department: '', designation: '', phone: '', whatsapp_number: '', avatar_url: ''
   })
 
-  const getToken = () => {
-    const token = localStorage.getItem('rushi_token')
-    if (!token) { router.push('/'); return '' }
-    return token
-  }
+  const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
 
   const fetchEmployees = useCallback(async () => {
     const token = getToken()

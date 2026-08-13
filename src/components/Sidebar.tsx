@@ -20,6 +20,7 @@ interface SidebarProps {
 
 const baseEmployeeNavItems = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard, salesOnly: false, mediaOnly: false },
+  { id: 'leads', label: 'Leads & Follow-ups', icon: TrendingUp, salesOnly: true, mediaOnly: false },
   { id: 'tasks', label: 'My Tasks', icon: CheckSquare, salesOnly: false, mediaOnly: false },
   { id: 'reports', label: 'Daily Report', icon: ClipboardList, salesOnly: false, mediaOnly: false },
   { id: 'attendance', label: 'Attendance', icon: Calendar, salesOnly: false, mediaOnly: false },
@@ -29,17 +30,18 @@ const baseEmployeeNavItems = [
 ]
 
 const adminNavItems = [
-  { id: 'overview',      label: 'Overview',        icon: LayoutDashboard, badge: false },
-  { id: 'tasks',         label: 'Task Management', icon: CheckSquare,     badge: false },
-  { id: 'reports',       label: 'Daily Reports',   icon: ClipboardList,   badge: false },
-  { id: 'sales',         label: 'Sales & Leads',   icon: TrendingUp,      badge: false },
-  { id: 'strategy',      label: 'Strategy Panel',  icon: Clapperboard,    badge: false },
-  { id: 'attendance',    label: 'Attendance',      icon: Calendar,        badge: false },
-  { id: 'performance',   label: 'Performance',     icon: BarChart3,       badge: false },
-  { id: 'leaderboard',   label: 'Leaderboard',     icon: Trophy,          badge: false },
-  { id: 'employees',     label: 'Employees',       icon: Users,           badge: false },
-  { id: 'notifications', label: 'Notifications',   icon: Bell,            badge: true  },
-  { id: 'settings',      label: 'Settings',        icon: Settings,        badge: false },
+  { id: 'overview',      label: 'Overview',           icon: LayoutDashboard, badge: false },
+  { id: 'leads',         label: 'FB Leads & Follow-ups', icon: TrendingUp,   badge: false },
+  { id: 'tasks',         label: 'Task Management',    icon: CheckSquare,     badge: false },
+  { id: 'reports',       label: 'Daily Reports',      icon: ClipboardList,   badge: false },
+  { id: 'sales',         label: 'Sales Metrics',      icon: BarChart3,       badge: false },
+  { id: 'strategy',      label: 'Strategy Panel',     icon: Clapperboard,    badge: false },
+  { id: 'attendance',    label: 'Attendance',         icon: Calendar,        badge: false },
+  { id: 'performance',   label: 'Performance',        icon: BarChart3,       badge: false },
+  { id: 'leaderboard',   label: 'Leaderboard',        icon: Trophy,          badge: false },
+  { id: 'employees',     label: 'Employees',          icon: Users,           badge: false },
+  { id: 'notifications', label: 'Notifications',      icon: Bell,            badge: true  },
+  { id: 'settings',      label: 'Settings',           icon: Settings,        badge: false },
 ]
 
 const isSalesEmployee = (p: Profile) => p.department?.toLowerCase() === 'sales'

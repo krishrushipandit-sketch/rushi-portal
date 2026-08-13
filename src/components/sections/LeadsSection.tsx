@@ -90,14 +90,7 @@ export default function LeadsSection({ profile }: Props) {
     status: 'new', source: 'facebook_lead_ad', notes: '', follow_up_date: '', platform: 'Facebook'
   })
 
-  const getToken = () => {
-    const token = localStorage.getItem('rushi_token')
-    if (!token) {
-      router.push('/')
-      return null
-    }
-    return token
-  }
+  const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
 
   const fetchLeads = useCallback(async () => {
     const token = getToken()
