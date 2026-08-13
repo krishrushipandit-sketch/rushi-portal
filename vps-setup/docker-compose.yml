@@ -26,6 +26,7 @@ services:
     restart: always
     ports:
       - "3000:3000"
+      - "3005:3000"
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://rushi_admin:RushiPanditPass2026!@postgres:5432/rushi_portal
