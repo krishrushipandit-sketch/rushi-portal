@@ -1,10 +1,10 @@
 -- ============================================================
--- RushiPandit Staff Portal — Full PostgreSQL Schema
+-- RushiPandit Staff Portal — Full PostgreSQL Schema & Migrations
 -- ============================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- PROFILES (users / employees)
+-- PROFILES
 CREATE TABLE IF NOT EXISTS profiles (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email           TEXT UNIQUE NOT NULL,
@@ -52,6 +52,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   updated_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deadline TIMESTAMPTZ;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS notes TEXT;
+
 -- TASK UPDATES
 CREATE TABLE IF NOT EXISTS task_updates (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -77,6 +80,8 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   created_at        TIMESTAMPTZ DEFAULT NOW()
 );
 
+ALTER TABLE daily_reports ADD COLUMN IF NOT EXISTS admin_comment TEXT;
+
 -- NOTIFICATIONS
 CREATE TABLE IF NOT EXISTS notifications (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -88,6 +93,8 @@ CREATE TABLE IF NOT EXISTS notifications (
   is_read       BOOLEAN DEFAULT FALSE,
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS task_id UUID REFERENCES tasks(id) ON DELETE CASCADE;
 
 -- CLIENTS
 CREATE TABLE IF NOT EXISTS clients (
@@ -109,7 +116,13 @@ CREATE TABLE IF NOT EXISTS clients (
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- CLIENT DELIVERABLES (monthly targets per client)
+-- Ensure all client columns exist on pre-existing tables
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS slug TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS color TEXT DEFAULT '#6366f1';
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS logo_url TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
+
+-- CLIENT DELIVERABLES
 CREATE TABLE IF NOT EXISTS client_deliverables (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id      UUID REFERENCES clients(id) ON DELETE CASCADE,
@@ -118,7 +131,7 @@ CREATE TABLE IF NOT EXISTS client_deliverables (
   created_at     TIMESTAMPTZ DEFAULT NOW()
 );
 
--- CLIENT LOGS (daily work logged by team)
+-- CLIENT LOGS
 CREATE TABLE IF NOT EXISTS client_logs (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id      UUID REFERENCES clients(id) ON DELETE CASCADE,
@@ -130,7 +143,7 @@ CREATE TABLE IF NOT EXISTS client_logs (
   created_at     TIMESTAMPTZ DEFAULT NOW()
 );
 
--- LEADS (Facebook/Pabbly integration)
+-- LEADS
 CREATE TABLE IF NOT EXISTS leads (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name                  TEXT NOT NULL,
@@ -149,6 +162,11 @@ CREATE TABLE IF NOT EXISTS leads (
   created_at            TIMESTAMPTZ DEFAULT NOW(),
   updated_at            TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'Digital Marketing';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'facebook_lead_ad';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS follow_up_date TIMESTAMPTZ;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS qualification_answers JSONB DEFAULT '{}';
 
 -- LEAD FOLLOW-UPS
 CREATE TABLE IF NOT EXISTS lead_followups (
@@ -199,7 +217,6 @@ CREATE TABLE IF NOT EXISTS employee_responsibilities (
 
 -- ============================================================
 -- SEED: All User Accounts
--- Password for all: RushiPandit@2026
 -- ============================================================
 INSERT INTO profiles (email, full_name, password_hash, role, department, designation, is_active)
 VALUES
@@ -222,13 +239,13 @@ VALUES ('RushiPandit Institute', 'rushipandit-institute', '#6366f1', true)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO client_deliverables (client_id, content_type, monthly_target)
-SELECT id, 'Reel', 15 FROM clients WHERE slug = 'rushipandit-institute'
+SELECT id, 'Reel', 15 FROM clients WHERE slug = 'rushipandit-institute' OR name = 'RushiPandit Institute'
 ON CONFLICT DO NOTHING;
 
 INSERT INTO client_deliverables (client_id, content_type, monthly_target)
-SELECT id, 'YouTube', 8 FROM clients WHERE slug = 'rushipandit-institute'
+SELECT id, 'YouTube', 8 FROM clients WHERE slug = 'rushipandit-institute' OR name = 'RushiPandit Institute'
 ON CONFLICT DO NOTHING;
 
 INSERT INTO client_deliverables (client_id, content_type, monthly_target)
-SELECT id, 'Static Post', 20 FROM clients WHERE slug = 'rushipandit-institute'
+SELECT id, 'Static Post', 20 FROM clients WHERE slug = 'rushipandit-institute' OR name = 'RushiPandit Institute'
 ON CONFLICT DO NOTHING;
