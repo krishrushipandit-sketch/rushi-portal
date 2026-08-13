@@ -290,7 +290,7 @@ function runClientSync(
           '[]'::json
         ) AS deliverables
       FROM clients c
-      WHERE c.is_active = true`
+      WHERE c.is_active = true OR c.status = 'active'`
     )
 
     if (!clients || clients.length === 0) return

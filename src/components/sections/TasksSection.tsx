@@ -79,7 +79,7 @@ export default function TasksSection({ profile }: Props) {
     if (!token) return
     const res = await fetch('/api/employees', { headers: { Authorization: `Bearer ${token}` } })
     const data = await res.json()
-    if (Array.isArray(data)) setEmployees(data.filter((e: Employee & { role: string }) => e.role === 'employee'))
+    if (Array.isArray(data)) setEmployees(data)
   }, [profile.role])
 
   useEffect(() => {
@@ -88,29 +88,37 @@ export default function TasksSection({ profile }: Props) {
   }, [fetchTasks, fetchEmployees])
 
   const handleCreateTask = async () => {
-    if (!form.title || !form.assigned_to) return
+    if (!form.title) { alert('Please enter a task title'); return }
+    if (!form.assigned_to) { alert('Please select an employee to assign this task to'); return }
     setSubmitting(true)
     const token = getToken()
     if (!token) { setSubmitting(false); return }
 
-    // datetime-local gives "2026-05-08T01:57" with no timezone.
-    // Append +05:30 so the server stores the correct UTC equivalent.
     const payload = {
       ...form,
       deadline: form.deadline ? `${form.deadline}:00+05:30` : null
     }
 
-    const res = await fetch('/api/tasks', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(payload),
-    })
-    if (res.ok) {
-      setShowModal(false)
-      setForm({ title: '', description: '', assigned_to: '', task_type: 'assigned', priority: 'medium', deadline: '', notes: '' })
-      fetchTasks()
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+
+      if (res.ok) {
+        setShowModal(false)
+        setForm({ title: '', description: '', assigned_to: '', task_type: 'assigned', priority: 'medium', deadline: '', notes: '' })
+        fetchTasks()
+      } else {
+        alert('Failed to assign task: ' + (data.error || 'Unknown error'))
+      }
+    } catch (err: any) {
+      alert('Error creating task: ' + err.message)
+    } finally {
+      setSubmitting(false)
     }
-    setSubmitting(false)
   }
 
   const handleStatusUpdate = async (taskId: string, status: string) => {

@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   audio_url         TEXT,
   ai_summary        TEXT,
   ai_feedback       TEXT,
+  admin_comment     TEXT,
   performance_score INTEGER CHECK (performance_score BETWEEN 1 AND 10),
   submitted_at      TIMESTAMPTZ DEFAULT NOW(),
   created_at        TIMESTAMPTZ DEFAULT NOW()
@@ -83,6 +84,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   title         TEXT NOT NULL,
   message       TEXT,
   type          TEXT DEFAULT 'info',
+  task_id       UUID REFERENCES tasks(id) ON DELETE CASCADE,
   is_read       BOOLEAN DEFAULT FALSE,
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );

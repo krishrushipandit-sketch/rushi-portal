@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
     try {
       const clientsList = await query<any>(
-        'SELECT id, name, slug FROM clients WHERE is_active = true'
+        "SELECT id, name, slug FROM clients WHERE is_active = true OR status = 'active'"
       )
       const deliverablesList = await query<any>(
         'SELECT id, client_id, content_type FROM client_deliverables'
@@ -33,15 +33,15 @@ export async function GET(req: NextRequest) {
 
     if (clientErr) {
       return NextResponse.json({
-        error: 'clients table error — did you run SETUP-CLIENTS.sql?',
+        error: 'clients table error',
         details: clientErr.message || String(clientErr)
       }, { status: 500 })
     }
 
-    // 2. Check client_progress_log exists
+    // 2. Check client_logs exists
     let logErr: any = null
     try {
-      await query('SELECT id FROM client_progress_log LIMIT 1')
+      await query('SELECT id FROM client_logs LIMIT 1')
     } catch (err: any) {
       logErr = err
     }

@@ -43,17 +43,9 @@ export async function GET(req: NextRequest) {
   try {
     // Get all active clients with their deliverables
     let clients: any[] = []
-    try {
-      clients = await query<any>(
-        'SELECT id, name, slug, color, logo_url FROM clients WHERE is_active = true ORDER BY name'
-      )
-    } catch {
-      // logo_url column might not exist yet — query without it
-      const clientsNoLogo = await query<any>(
-        'SELECT id, name, slug, color FROM clients WHERE is_active = true ORDER BY name'
-      )
-      clients = (clientsNoLogo || []).map((c: any) => ({ ...c, logo_url: null }))
-    }
+    clients = await query<any>(
+      "SELECT id, name, slug, color, logo_url FROM clients WHERE is_active = true OR status = 'active' ORDER BY name"
+    )
 
     const deliverables = await query<any>(
       'SELECT id, client_id, content_type, monthly_target FROM client_deliverables'
