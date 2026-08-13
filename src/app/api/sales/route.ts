@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
 
     // 3. Get daily reports for this month
     const reports = await query<DailyReport>(
-      `SELECT employee_id, TO_CHAR(report_date, 'YYYY-MM-DD') AS report_date, content, ai_summary
+      `SELECT employee_id, TO_CHAR(report_date, 'YYYY-MM-DD') AS report_date, entries, note
        FROM daily_reports
        WHERE report_date >= $1 AND report_date < $2
        ORDER BY report_date DESC`,
@@ -115,12 +115,9 @@ export async function GET(req: NextRequest) {
       }
 
       for (const report of empReports) {
-        let parsedEntries: any[] = []
-        try {
-          if (report.content) parsedEntries = typeof report.content === 'string' ? JSON.parse(report.content) : report.content
-        } catch { /* text content */ }
+        const parsedEntries: any[] = Array.isArray(report.entries) ? report.entries : []
 
-        for (const entry of (Array.isArray(parsedEntries) ? parsedEntries : [])) {
+        for (const entry of parsedEntries) {
           const key =
             empResps.find(
               (r) => r.title.toLowerCase() === (entry.description || '').toLowerCase()
@@ -136,9 +133,9 @@ export async function GET(req: NextRequest) {
 
       const daily = empReports.map((r) => ({
         date: r.report_date,
-        entries: r.content,
-        note: r.ai_summary,
-        totalCount: 1,
+        entries: r.entries,
+        note: r.note,
+        totalCount: Array.isArray(r.entries) ? r.entries.reduce((s: number, e: any) => s + (e.count || 0), 0) : 0,
       }))
 
       return {
