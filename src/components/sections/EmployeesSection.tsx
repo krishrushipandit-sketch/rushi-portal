@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { getInitials, formatDate } from '@/lib/utils'
-import { Plus, Trash2, X, Loader2, Users, Phone, Mail, Edit2, ToggleLeft, ToggleRight, Upload } from 'lucide-react'
+import { Plus, Trash2, X, Loader2, Users, Phone, Mail, Edit2, ToggleLeft, ToggleRight, Upload, Tag } from 'lucide-react'
 
 interface Props { profile: Profile }
 
@@ -23,6 +23,7 @@ interface Employee {
 }
 
 const DEPARTMENTS = ['Sales', 'Administration', 'Academic', 'Finance', 'Operations', 'Marketing', 'IT']
+const ALL_INDUSTRIES = ['Digital Marketing', 'Share Market', 'Amazon', 'AI Course', 'BBA/MBA', 'Other']
 
 export default function EmployeesSection({ profile }: Props) {
   const router = useRouter()
@@ -31,6 +32,13 @@ export default function EmployeesSection({ profile }: Props) {
   const [showModal, setShowModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null)
+
+  // Industry Skills Manager state
+  const [skillsEmployee, setSkillsEmployee] = useState<Employee | null>(null)
+  const [selectedIndustries, setSelectedIndustries] = useState<string[]>([])
+  const [customIndustry, setCustomIndustry] = useState('')
+  const [allSkills, setAllSkills] = useState<{ employee_id?: string; user_id?: string; industry: string }[]>([])
+  const [savingSkills, setSavingSkills] = useState(false)
 
   const [form, setForm] = useState({
     full_name: '', email: '', password: '', role: 'employee',
@@ -48,7 +56,47 @@ export default function EmployeesSection({ profile }: Props) {
     setLoading(false)
   }, [])
 
-  useEffect(() => { fetchEmployees() }, [fetchEmployees])
+  useEffect(() => {
+    fetchEmployees()
+    fetchAllSkills()
+  }, [fetchEmployees])
+
+  const fetchAllSkills = async () => {
+    const token = getToken()
+    if (!token) return
+    const res = await fetch('/api/employees/skills', { headers: { Authorization: `Bearer ${token}` } })
+    const data = await res.json()
+    if (Array.isArray(data)) setAllSkills(data)
+  }
+
+  const openSkillsManager = (emp: Employee) => {
+    setSkillsEmployee(emp)
+    const empId = emp.id
+    const current = allSkills
+      .filter(s => (s.employee_id || s.user_id) === empId)
+      .map(s => s.industry)
+    setSelectedIndustries(current)
+    setCustomIndustry('')
+  }
+
+  const saveSkills = async () => {
+    if (!skillsEmployee) return
+    setSavingSkills(true)
+    const token = getToken()
+    if (!token) return
+    const industries = [
+      ...selectedIndustries,
+      ...(customIndustry.trim() ? [customIndustry.trim()] : [])
+    ]
+    await fetch('/api/employees/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ user_id: skillsEmployee.id, industries })
+    })
+    await fetchAllSkills()
+    setSkillsEmployee(null)
+    setSavingSkills(false)
+  }
 
   const openCreate = () => {
     setEditEmployee(null)
@@ -245,7 +293,7 @@ export default function EmployeesSection({ profile }: Props) {
                       </span>
                     </td>
                     <td>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                         <button
                           className="btn btn-secondary btn-sm"
                           onClick={() => {
@@ -262,6 +310,17 @@ export default function EmployeesSection({ profile }: Props) {
                         >
                           <Edit2 size={13} />
                         </button>
+                        {/* Industry Skills Manager — for Sales employees */}
+                        {emp.department?.toLowerCase() === 'sales' && (
+                          <button
+                            className="btn btn-sm"
+                            style={{ background: 'rgba(99,102,241,0.12)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.2)' }}
+                            onClick={() => openSkillsManager(emp)}
+                            data-tooltip="Manage Lead Industries (Round-Robin)"
+                          >
+                            <Tag size={13} />
+                          </button>
+                        )}
                         {emp.id !== profile.id && (
                           <button
                             className="btn btn-danger btn-sm"
@@ -366,6 +425,105 @@ export default function EmployeesSection({ profile }: Props) {
                 disabled={submitting || !form.full_name || !form.email || (!editEmployee && !form.password)}
               >
                 {submitting ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Saving...</> : (editEmployee ? 'Update Employee' : 'Create Employee')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Industry Skills Manager Modal ── */}
+      {skillsEmployee && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setSkillsEmployee(null)}>
+          <div className="modal-content" style={{ maxWidth: '480px' }}>
+            <div className="modal-header">
+              <div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>🎯 Sales Lead Industries</h3>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '2px 0 0' }}>
+                  {skillsEmployee.full_name} — Assign industries for round-robin lead routing
+                </p>
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => setSkillsEmployee(null)}><X size={18} /></button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                Select which course categories this salesperson handles. Incoming Facebook leads will be
+                automatically assigned via round-robin among reps tagged with the same industry.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.25rem' }}>
+                {ALL_INDUSTRIES.map(ind => (
+                  <label key={ind} style={{
+                    display: 'flex', alignItems: 'center', gap: '0.75rem',
+                    padding: '0.625rem 0.875rem', borderRadius: '10px', cursor: 'pointer',
+                    background: selectedIndustries.includes(ind) ? 'rgba(99,102,241,0.1)' : 'var(--bg-surface)',
+                    border: `1px solid ${selectedIndustries.includes(ind) ? 'rgba(99,102,241,0.3)' : 'var(--border-default)'}`,
+                    transition: 'all 0.15s'
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedIndustries.includes(ind)}
+                      onChange={e => {
+                        if (e.target.checked) setSelectedIndustries(p => [...p, ind])
+                        else setSelectedIndustries(p => p.filter(x => x !== ind))
+                      }}
+                      style={{ width: '16px', height: '16px', accentColor: '#6366f1' }}
+                    />
+                    <span style={{ fontSize: '0.875rem', fontWeight: selectedIndustries.includes(ind) ? 600 : 400, color: selectedIndustries.includes(ind) ? '#6366f1' : 'var(--text-primary)' }}>
+                      {ind}
+                    </span>
+                    {selectedIndustries.includes(ind) && (
+                      <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '2px 8px', borderRadius: '99px' }}>Active</span>
+                    )}
+                  </label>
+                ))}
+              </div>
+              {/* Custom industry input */}
+              <div className="form-group">
+                <label className="form-label">Add Custom Course / Industry</label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input
+                    className="form-input"
+                    placeholder="e.g. Forex Trading, Graphic Design..."
+                    value={customIndustry}
+                    onChange={e => setCustomIndustry(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && customIndustry.trim()) {
+                        setSelectedIndustries(p => p.includes(customIndustry.trim()) ? p : [...p, customIndustry.trim()])
+                        setCustomIndustry('')
+                      }
+                    }}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      if (customIndustry.trim()) {
+                        setSelectedIndustries(p => p.includes(customIndustry.trim()) ? p : [...p, customIndustry.trim()])
+                        setCustomIndustry('')
+                      }
+                    }}
+                  >Add</button>
+                </div>
+                <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>Press Enter or click Add</p>
+              </div>
+              {selectedIndustries.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem', marginTop: '0.5rem' }}>
+                  {selectedIndustries.map(ind => (
+                    <span key={ind} style={{
+                      fontSize: '0.75rem', padding: '3px 10px', borderRadius: '99px',
+                      background: 'rgba(99,102,241,0.12)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.2)',
+                      display: 'flex', alignItems: 'center', gap: '4px'
+                    }}>
+                      {ind}
+                      <button onClick={() => setSelectedIndustries(p => p.filter(x => x !== ind))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6366f1', padding: 0, lineHeight: 1 }}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setSkillsEmployee(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={saveSkills} disabled={savingSkills}>
+                {savingSkills ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Saving...</> : '💾 Save Industries'}
               </button>
             </div>
           </div>

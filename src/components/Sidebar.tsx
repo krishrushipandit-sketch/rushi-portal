@@ -21,6 +21,7 @@ interface SidebarProps {
 const baseEmployeeNavItems = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard, salesOnly: false, mediaOnly: false },
   { id: 'leads', label: 'Leads & Follow-ups', icon: TrendingUp, salesOnly: true, mediaOnly: false },
+  { id: 'sales', label: 'Sales Metrics', icon: BarChart3, salesOnly: true, mediaOnly: false },
   { id: 'tasks', label: 'My Tasks', icon: CheckSquare, salesOnly: false, mediaOnly: false },
   { id: 'reports', label: 'Daily Report', icon: ClipboardList, salesOnly: false, mediaOnly: false },
   { id: 'attendance', label: 'Attendance', icon: Calendar, salesOnly: false, mediaOnly: false },
