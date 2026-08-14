@@ -30,21 +30,22 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { user_id, industries } = body // e.g. industries: ['Digital Marketing', 'Share Market']
+    const { user_id, industries } = body
 
     if (!user_id || !Array.isArray(industries)) {
       return NextResponse.json({ error: 'user_id and industries array are required' }, { status: 400 })
     }
 
     // Delete existing skills for user
-    await execute('DELETE FROM sales_industry_skills WHERE user_id = $1', [user_id])
+    await execute('DELETE FROM sales_industry_skills WHERE employee_id = $1', [user_id])
 
     // Insert new skills
     if (industries.length > 0) {
       for (const ind of industries) {
         await execute(
-          `INSERT INTO sales_industry_skills (user_id, industry, is_active) VALUES ($1, $2, $3)`,
-          [user_id, ind, true]
+          `INSERT INTO sales_industry_skills (employee_id, industry) VALUES ($1, $2)
+           ON CONFLICT (employee_id, industry) DO NOTHING`,
+          [user_id, ind]
         )
       }
     }

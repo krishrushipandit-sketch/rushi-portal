@@ -50,23 +50,23 @@ export async function POST(req: NextRequest) {
 
     // 4. Industry Round-Robin Sales Representative Assignment
     // First: find active sales reps mapped to this specific industry
-    const industryReps = await query<{ user_id: string; full_name: string }>(
-      `SELECT s.user_id, p.full_name
+    const industryReps = await query<{ employee_id: string; full_name: string }>(
+      `SELECT s.employee_id, p.full_name
        FROM sales_industry_skills s
-       INNER JOIN profiles p ON s.user_id = p.id
-       WHERE s.industry = $1 AND s.is_active = true AND p.is_active = true`,
+       INNER JOIN profiles p ON s.employee_id = p.id
+       WHERE s.industry = $1 AND p.is_active = true`,
       [industry]
     )
 
     let eligibleRepIds: { id: string; name: string }[] = []
     if (industryReps && industryReps.length > 0) {
-      eligibleRepIds = industryReps.map(r => ({ id: r.user_id, name: r.full_name || 'Sales Rep' }))
+      eligibleRepIds = industryReps.map(r => ({ id: r.employee_id, name: r.full_name || 'Sales Rep' }))
     }
 
     // Fallback: If no rep mapped to this industry, round-robin among all active employee-role profiles
     if (eligibleRepIds.length === 0) {
       const allEmps = await query<{ id: string; full_name: string }>(
-        `SELECT id, full_name FROM profiles WHERE role = 'employee' AND is_active = true`
+        `SELECT id, full_name FROM profiles WHERE role = 'employee' AND is_active = true AND LOWER(department) = 'sales'`
       )
       if (allEmps && allEmps.length > 0) {
         eligibleRepIds = allEmps.map(e => ({ id: e.id, name: e.full_name }))
