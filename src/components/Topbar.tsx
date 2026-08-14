@@ -1,6 +1,7 @@
 'use client'
 
-import { Bell, Menu, Sun, Moon, LogOut } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Bell, Menu, Sun, Moon, LogOut, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { getInitials } from '@/lib/utils'
@@ -9,14 +10,38 @@ import { useTheme } from '@/lib/ThemeContext'
 interface TopbarProps {
   profile: Profile
   unreadCount: number
-  onMenuClick: () => void
+  sidebarCollapsed: boolean
+  onToggleSidebar: () => void
   onNotificationsClick: () => void
 }
 
-export default function Topbar({ profile, unreadCount, onMenuClick, onNotificationsClick }: TopbarProps) {
+export default function Topbar({
+  profile,
+  unreadCount,
+  sidebarCollapsed,
+  onToggleSidebar,
+  onNotificationsClick
+}: TopbarProps) {
   const { theme, toggleTheme } = useTheme()
   const router = useRouter()
   const isLight = theme === 'light'
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement)
+    }
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  }, [])
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {})
+    } else {
+      document.exitFullscreen().catch(() => {})
+    }
+  }
 
   const handleLogout = async () => {
     localStorage.removeItem('rushi_token')
@@ -30,32 +55,62 @@ export default function Topbar({ profile, unreadCount, onMenuClick, onNotificati
 
   return (
     <header className="topbar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <button className="btn btn-ghost sidebar-toggle" onClick={onMenuClick} style={{ padding: '0.375rem' }}>
-          <Menu size={20} />
+      {/* Left side: Toggle Sidebar & Greeting */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <button
+          onClick={onToggleSidebar}
+          className="btn btn-ghost"
+          style={{
+            padding: '0.4rem 0.6rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            borderRadius: '8px',
+            color: 'var(--text-secondary)'
+          }}
+          title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar to Full Width'}
+        >
+          {sidebarCollapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
+          <span className="hidden-mobile" style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+            {sidebarCollapsed ? 'Expand' : 'Collapse'}
+          </span>
         </button>
-        <div>
-          <p className="hidden-mobile" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{greeting},</p>
-          <h2 style={{ fontSize: '1rem', fontWeight: 700, lineHeight: 1.2 }}>
+
+        <div className="hidden-mobile" style={{ borderLeft: '1px solid var(--border-default)', paddingLeft: '0.875rem' }}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>{greeting},</p>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 800, lineHeight: 1.2, margin: 0, color: 'var(--text-primary)' }}>
             {profile.full_name}
           </h2>
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+      {/* Right side: Actions, Theme, Fullscreen, Profile */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
         {/* Role Badge */}
         <span className="badge hidden-mobile" style={{
           background: profile.role === 'admin' ? 'rgba(99, 102, 241, 0.12)' : 'rgba(16, 185, 129, 0.12)',
-          color: profile.role === 'admin' ? '#6366f1' : '#10b981',
-          border: `1px solid ${profile.role === 'admin' ? 'rgba(99, 102, 241, 0.2)' : 'rgba(16, 185, 129, 0.2)'}`,
+          color: profile.role === 'admin' ? '#6366f1' : '#16a34a',
+          border: `1px solid ${profile.role === 'admin' ? 'rgba(99, 102, 241, 0.25)' : 'rgba(16, 185, 129, 0.25)'}`,
+          fontWeight: 700
         }}>
           {profile.role === 'admin' ? 'Administrator' : profile.designation || 'Employee'}
         </span>
 
-        {/* ====== THEME TOGGLE ====== */}
+        {/* Fullscreen Toggle */}
+        <button
+          onClick={toggleFullscreen}
+          className="btn btn-ghost"
+          style={{ padding: '0.5rem', color: 'var(--text-secondary)', borderRadius: '8px' }}
+          title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+        >
+          {isFullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+        </button>
+
+        {/* Theme Toggle */}
         <button
           onClick={toggleTheme}
           aria-label={isLight ? 'Switch to dark mode' : 'Switch to light mode'}
+          title={isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -67,34 +122,27 @@ export default function Topbar({ profile, unreadCount, onMenuClick, onNotificati
             borderRadius: '99px',
           }}
         >
-          {/* Moon icon */}
           <Moon
             size={14}
             style={{ color: !isLight ? '#6366f1' : '#94a3b8', transition: 'color 0.2s', flexShrink: 0 }}
           />
-
-          {/* Toggle track */}
           <div
             style={{
               width: '44px',
               height: '24px',
               borderRadius: '99px',
-              background: isLight
-                ? 'linear-gradient(135deg, #0e3d35, #1a5c4f)'
-                : '#1f2937',
-              border: isLight ? 'none' : '1px solid rgba(255,255,255,0.1)',
+              background: isLight ? '#0e3d35' : '#1f2937',
+              border: isLight ? '1px solid #0e3d35' : '1px solid rgba(255,255,255,0.1)',
               position: 'relative',
               transition: 'background 0.25s ease',
               flexShrink: 0,
-              boxShadow: isLight ? '0 2px 8px rgba(14,61,53,0.35)' : 'none',
             }}
           >
-            {/* Thumb */}
             <div
               style={{
                 position: 'absolute',
-                top: '3px',
-                left: isLight ? 'calc(100% - 19px)' : '3px',
+                top: '2px',
+                left: isLight ? 'calc(100% - 20px)' : '2px',
                 width: '18px',
                 height: '18px',
                 borderRadius: '50%',
@@ -107,26 +155,24 @@ export default function Topbar({ profile, unreadCount, onMenuClick, onNotificati
               }}
             >
               {isLight
-                ? <Sun size={10} style={{ color: '#f59e0b' }} />
+                ? <Sun size={10} style={{ color: '#d97706' }} />
                 : <Moon size={10} style={{ color: '#6366f1' }} />
               }
             </div>
           </div>
-
-          {/* Sun icon */}
           <Sun
             size={14}
-            style={{ color: isLight ? '#f59e0b' : '#64748b', transition: 'color 0.2s', flexShrink: 0 }}
+            style={{ color: isLight ? '#d97706' : '#64748b', transition: 'color 0.2s', flexShrink: 0 }}
           />
         </button>
-        {/* ====== END TOGGLE ====== */}
 
         {/* Notification Bell */}
         <button
           onClick={onNotificationsClick}
           className="btn btn-ghost"
-          style={{ padding: '0.5rem', position: 'relative' }}
+          style={{ padding: '0.5rem', position: 'relative', borderRadius: '8px', color: 'var(--text-secondary)' }}
           aria-label="Notifications"
+          title="Notifications"
         >
           <Bell size={18} />
           {unreadCount > 0 && (
@@ -136,7 +182,7 @@ export default function Topbar({ profile, unreadCount, onMenuClick, onNotificati
           )}
         </button>
 
-        {/* Avatar */}
+        {/* Profile Avatar */}
         {profile.avatar_url ? (
           <img src={profile.avatar_url} alt="Profile" className="avatar avatar-sm" style={{ objectFit: 'cover', cursor: 'default' }} />
         ) : (
@@ -150,7 +196,7 @@ export default function Topbar({ profile, unreadCount, onMenuClick, onNotificati
           onClick={handleLogout}
           className="btn btn-ghost"
           title="Sign Out"
-          style={{ padding: '0.5rem', color: 'var(--text-muted)' }}
+          style={{ padding: '0.5rem', color: 'var(--text-muted)', borderRadius: '8px' }}
         >
           <LogOut size={18} />
         </button>

@@ -50,7 +50,24 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [activeSection, setActiveSection] = useState<ActiveSection>('overview')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+
+  // Initialize sidebar collapsed state from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('rp-sidebar-collapsed')
+      if (saved === 'true') setSidebarCollapsed(true)
+    } catch { /* silent */ }
+  }, [])
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(prev => {
+      const next = !prev
+      try { localStorage.setItem('rp-sidebar-collapsed', String(next)) } catch { /* silent */ }
+      return next
+    })
+  }
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -201,14 +218,16 @@ export default function DashboardPage() {
           setSidebarOpen(false)
         }}
         isOpen={sidebarOpen}
+        collapsed={sidebarCollapsed}
         unreadCount={unreadCount}
       />
 
-      <div className="main-content">
+      <div className={`main-content ${sidebarCollapsed ? 'expanded' : ''}`}>
         <Topbar
           profile={profile}
           unreadCount={unreadCount}
-          onMenuClick={() => setSidebarOpen(!sidebarOpen)}
+          sidebarCollapsed={sidebarCollapsed}
+          onToggleSidebar={toggleSidebar}
           onNotificationsClick={() => setActiveSection('notifications')}
         />
         <div className="page-container animate-fade-in">

@@ -15,6 +15,7 @@ interface SidebarProps {
   activeSection: string
   onNavigate: (section: string) => void
   isOpen: boolean
+  collapsed?: boolean
   unreadCount: number
 }
 
@@ -102,7 +103,7 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, un
 
   return (
     <aside
-      className={`sidebar ${isOpen ? 'open' : ''}`}
+      className={`sidebar ${isOpen ? 'open' : ''} ${collapsed ? 'collapsed' : ''}`}
       style={{
         background: sidebarBg,
         borderRight: sidebarBorderRight,

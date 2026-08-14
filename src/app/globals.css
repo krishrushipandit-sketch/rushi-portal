@@ -613,11 +613,34 @@ h1, h2, h3, h4, h5, h6 {
   min-height: 100vh;
 }
 
+/* Sidebar */
+.sidebar {
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-default);
+  height: 100vh;
+  position: fixed;
+  top: 0; left: 0;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  z-index: 50;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar.collapsed {
+  transform: translateX(-100%);
+}
+
 .main-content {
   flex: 1;
   margin-left: 260px;
   min-height: 100vh;
   background: var(--bg-base);
+  transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.main-content.expanded {
+  margin-left: 0 !important;
 }
 
 .page-container {
