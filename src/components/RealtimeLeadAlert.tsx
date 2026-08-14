@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { playLeadChime, requestNotificationPermission, showDesktopLeadNotification } from '@/lib/sound'
-import { BellRing, PhoneCall, X, Sparkles, Volume2, VolumeX, ShieldAlert } from 'lucide-react'
+import { BellRing, PhoneCall, X } from 'lucide-react'
 
 interface NewLeadAlert {
   id: string
@@ -21,8 +21,9 @@ interface Props {
 export default function RealtimeLeadAlert({ onViewLead, userRole }: Props) {
   const [activeAlert, setActiveAlert] = useState<NewLeadAlert | null>(null)
   const [soundEnabled, setSoundEnabled] = useState(true)
-  const lastKnownLeadIdRef = useRef<string | null>(null)
+  const seenLeadIdsRef = useRef<Set<string>>(new Set())
   const isInitialLoadRef = useRef(true)
+  const autoDismissTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
 
@@ -31,7 +32,20 @@ export default function RealtimeLeadAlert({ onViewLead, userRole }: Props) {
     requestNotificationPermission()
   }, [])
 
-  // Poll for latest leads every 6 seconds
+  // Auto-dismiss alert after 8 seconds
+  useEffect(() => {
+    if (activeAlert) {
+      if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current)
+      autoDismissTimerRef.current = setTimeout(() => {
+        setActiveAlert(null)
+      }, 8000)
+    }
+    return () => {
+      if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current)
+    }
+  }, [activeAlert])
+
+  // Poll for genuine newly captured leads every 6 seconds
   const checkNewLeads = useCallback(async () => {
     const token = getToken()
     if (!token) return
@@ -45,43 +59,54 @@ export default function RealtimeLeadAlert({ onViewLead, userRole }: Props) {
       const data = await res.json()
       if (!Array.isArray(data) || data.length === 0) return
 
-      const latest = data[0]
-
-      // On initial load, record latest ID without alerting
+      // On first load, mark all existing leads as already seen so we NEVER alert for old leads
       if (isInitialLoadRef.current) {
-        lastKnownLeadIdRef.current = latest.id
+        data.forEach((l: any) => {
+          if (l.id) seenLeadIdsRef.current.add(l.id)
+        })
         isInitialLoadRef.current = false
         return
       }
 
-      // If a brand new lead arrives
-      if (lastKnownLeadIdRef.current && latest.id !== lastKnownLeadIdRef.current) {
-        lastKnownLeadIdRef.current = latest.id
+      // Check for brand new leads that were just inserted (within last 90 seconds)
+      const nowMs = Date.now()
+      for (const lead of data) {
+        const leadAgeMs = nowMs - new Date(lead.created_at).getTime()
+        const isVeryRecent = leadAgeMs < 90000 // created less than 90 seconds ago
 
-        const newLead: NewLeadAlert = {
-          id: latest.id,
-          name: latest.client_name || latest.name || 'New Candidate',
-          phone: latest.phone || 'Not provided',
-          industry: latest.industry || latest.category || 'Digital Marketing',
-          platform: latest.platform || latest.source || 'Facebook',
-          created_at: latest.created_at || new Date().toISOString()
+        // If this is a brand new lead we have never seen and was created in the last 90s
+        if (!seenLeadIdsRef.current.has(lead.id) && isVeryRecent) {
+          seenLeadIdsRef.current.add(lead.id)
+
+          const newLead: NewLeadAlert = {
+            id: lead.id,
+            name: lead.client_name || lead.name || 'New Candidate',
+            phone: lead.phone || 'Not provided',
+            industry: lead.industry || lead.category || 'Digital Marketing',
+            platform: lead.platform || lead.source || 'Facebook',
+            created_at: lead.created_at || new Date().toISOString()
+          }
+
+          // 1. Play Web Audio Chime
+          if (soundEnabled) {
+            playLeadChime()
+          }
+
+          // 2. Trigger Desktop Push Notification
+          showDesktopLeadNotification(
+            newLead.name,
+            newLead.industry,
+            newLead.platform,
+            onViewLead
+          )
+
+          // 3. Set In-App Floating Toast
+          setActiveAlert(newLead)
+          break // Alert for the newest one
+        } else {
+          // Add to seen set anyway
+          seenLeadIdsRef.current.add(lead.id)
         }
-
-        // 1. Play Web Audio Chime
-        if (soundEnabled) {
-          playLeadChime()
-        }
-
-        // 2. Trigger Desktop Push Notification
-        showDesktopLeadNotification(
-          newLead.name,
-          newLead.industry,
-          newLead.platform,
-          onViewLead
-        )
-
-        // 3. Set In-App Floating Toast
-        setActiveAlert(newLead)
       }
     } catch (e) {
       /* silent poll error */
@@ -111,8 +136,8 @@ export default function RealtimeLeadAlert({ onViewLead, userRole }: Props) {
       <div style={{
         background: 'var(--bg-elevated)',
         borderRadius: '16px',
-        border: '1px solid #6366f1',
-        boxShadow: '0 20px 50px rgba(99, 102, 241, 0.35), 0 0 0 1px rgba(99, 102, 241, 0.4)',
+        border: '1px solid #10b981',
+        boxShadow: '0 20px 50px rgba(16, 185, 129, 0.25), 0 0 0 1px rgba(16, 185, 129, 0.3)',
         padding: '1.25rem',
         backdropFilter: 'blur(20px)',
         position: 'relative',
@@ -121,16 +146,16 @@ export default function RealtimeLeadAlert({ onViewLead, userRole }: Props) {
         {/* Glow accent bar */}
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, height: '3px',
-          background: 'linear-gradient(90deg, #6366f1, #06b6d4, #10b981)'
+          background: 'linear-gradient(90deg, #10b981, #059669, #34d399)'
         }} />
 
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
           {/* Pulsing Bell Icon */}
           <div style={{
             width: 38, height: 38, borderRadius: '10px',
-            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+            background: 'linear-gradient(135deg, #10b981, #047857)',
             color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0, boxShadow: '0 4px 12px rgba(99, 102, 241, 0.4)',
+            flexShrink: 0, boxShadow: '0 4px 12px rgba(16, 185, 129, 0.35)',
             animation: 'pulseGlow 2s infinite'
           }}>
             <BellRing size={18} />
@@ -138,7 +163,7 @@ export default function RealtimeLeadAlert({ onViewLead, userRole }: Props) {
 
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#6366f1', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                 ⚡ New Inbound Lead
               </span>
               <button
@@ -154,7 +179,7 @@ export default function RealtimeLeadAlert({ onViewLead, userRole }: Props) {
             </h4>
 
             <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '2px 0 0' }}>
-              {activeAlert.industry} &nbsp;·&nbsp; <strong style={{ color: '#1877F2' }}>{activeAlert.platform}</strong>
+              {activeAlert.industry} &nbsp;·&nbsp; <strong style={{ color: '#059669' }}>{activeAlert.platform}</strong>
             </p>
 
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
@@ -164,7 +189,7 @@ export default function RealtimeLeadAlert({ onViewLead, userRole }: Props) {
                   setActiveAlert(null)
                 }}
                 className="btn btn-primary btn-sm"
-                style={{ flex: 1, justifyContent: 'center', fontSize: '0.75rem', padding: '0.4rem 0.6rem' }}
+                style={{ flex: 1, justifyContent: 'center', fontSize: '0.75rem', padding: '0.4rem 0.6rem', background: '#0e3d35', borderColor: '#0e3d35', color: '#ffffff' }}
               >
                 <PhoneCall size={12} /> View &amp; Call Lead
               </button>
