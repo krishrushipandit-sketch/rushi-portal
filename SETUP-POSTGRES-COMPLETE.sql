@@ -236,32 +236,56 @@ CREATE TABLE IF NOT EXISTS leads (
   updated_at            TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Ensure all leads columns exist
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'Digital Marketing';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS industry TEXT DEFAULT 'Digital Marketing';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS platform TEXT DEFAULT 'Facebook';
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'facebook_lead_ad';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'new';
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS follow_up_date TIMESTAMPTZ;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS qualification_answers JSONB DEFAULT '{}';
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS client_name TEXT;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS followup_count INTEGER DEFAULT 0;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_followup_at TIMESTAMPTZ;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS next_followup_at TIMESTAMPTZ;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS whatsapp_visit_msg_sent BOOLEAN DEFAULT FALSE;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS whatsapp_msg_status TEXT;
+
 -- Drop old restrictive CHECK constraints on status so any status value is accepted
 ALTER TABLE leads DROP CONSTRAINT IF EXISTS leads_status_check;
 -- Backfill client_name from name for existing rows
 UPDATE leads SET client_name = name WHERE client_name IS NULL AND name IS NOT NULL;
-
--- Make client_name the primary name column going forward (keep name in sync via trigger or just use client_name)
 ALTER TABLE leads ALTER COLUMN client_name SET DEFAULT '';
-
 
 -- LEAD FOLLOW-UPS
 CREATE TABLE IF NOT EXISTS lead_followups (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   lead_id       UUID REFERENCES leads(id) ON DELETE CASCADE,
   done_by       UUID REFERENCES profiles(id),
+  sales_rep_id  UUID REFERENCES profiles(id),
   followup_num  INTEGER DEFAULT 1,
+  followup_number INTEGER DEFAULT 1,
   outcome       TEXT,
+  call_status   TEXT,
   notes         TEXT,
   next_followup TIMESTAMPTZ,
+  scheduled_at  TIMESTAMPTZ,
+  completed_at  TIMESTAMPTZ DEFAULT NOW(),
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Ensure all lead_followups columns exist
+ALTER TABLE lead_followups ADD COLUMN IF NOT EXISTS sales_rep_id UUID REFERENCES profiles(id);
+ALTER TABLE lead_followups ADD COLUMN IF NOT EXISTS done_by UUID REFERENCES profiles(id);
+ALTER TABLE lead_followups ADD COLUMN IF NOT EXISTS followup_number INTEGER DEFAULT 1;
+ALTER TABLE lead_followups ADD COLUMN IF NOT EXISTS followup_num INTEGER DEFAULT 1;
+ALTER TABLE lead_followups ADD COLUMN IF NOT EXISTS call_status TEXT;
+ALTER TABLE lead_followups ADD COLUMN IF NOT EXISTS outcome TEXT;
+ALTER TABLE lead_followups ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ;
+ALTER TABLE lead_followups ADD COLUMN IF NOT EXISTS next_followup TIMESTAMPTZ;
+ALTER TABLE lead_followups ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ DEFAULT NOW();
+
 
 -- INDUSTRY ROUND-ROBIN STATE
 CREATE TABLE IF NOT EXISTS industry_round_robin_state (

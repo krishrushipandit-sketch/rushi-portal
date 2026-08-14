@@ -14,33 +14,78 @@ export async function POST(req: NextRequest) {
     }
 
     // 1. Parse standard lead fields from Pabbly / Facebook Lead Ads payload
-    const rawName = body.full_name || body.name || body.Name || `${body.first_name || ''} ${body.last_name || ''}`.trim() || 'Unknown Lead'
-    const rawPhone = body.phone_number || body.phone || body.Phone || body.mobile || body.contact || ''
-    const rawEmail = body.email || body.Email || body.email_address || null
+    const rawName =
+      body.full_name ||
+      body.name ||
+      body.Name ||
+      body.client_name ||
+      body.ClientName ||
+      `${body.first_name || ''} ${body.last_name || ''}`.trim() ||
+      'Unknown Lead'
+
+    const rawPhone =
+      body.phone_number ||
+      body.phone ||
+      body.Phone ||
+      body.mobile ||
+      body.Mobile ||
+      body.contact ||
+      body.Contact ||
+      ''
+
+    const rawEmail = body.email || body.Email || body.email_address || body.EmailAddress || null
     const platform = body.platform || body.Platform || body.source || 'Facebook'
 
     // Normalize phone number
     const cleanPhone = String(rawPhone).replace(/[^\d+]/g, '') || 'Not provided'
 
     // 2. Identify Industry/Course
-    let industry = body.industry || body.Industry || body.course || body.Course || 'Digital Marketing'
+    let industry = body.industry || body.Industry || body.course || body.Course || body.category || 'Digital Marketing'
     const lowerInd = String(industry).toLowerCase()
     if (lowerInd.includes('share') || lowerInd.includes('stock') || lowerInd.includes('trading')) {
       industry = 'Share Market'
     } else if (lowerInd.includes('digital') || lowerInd.includes('marketing')) {
       industry = 'Digital Marketing'
-    } else if (lowerInd.includes('ai') || lowerInd.includes('artificial')) {
+    } else if (lowerInd.includes('ai') || lowerInd.includes('artificial') || lowerInd.includes('intelligence')) {
       industry = 'AI Course'
+    } else if (lowerInd.includes('amazon')) {
+      industry = 'Amazon'
+    } else if (lowerInd.includes('bba') || lowerInd.includes('mba')) {
+      industry = 'BBA/MBA'
     }
 
-    // 3. Extract Dynamic Qualification Questions
-    // Put any non-standard fields into qualification_answers object
-    const knownKeys = ['full_name', 'name', 'first_name', 'last_name', 'phone_number', 'phone', 'Phone', 'mobile', 'contact', 'email', 'Email', 'email_address', 'platform', 'Platform', 'source', 'industry', 'Industry', 'course', 'Course', 'secret']
+    // 3. Extract ALL Dynamic Qualification Questions / Custom Form Parameters
+    const standardKeys = new Set([
+      'full_name', 'name', 'first_name', 'last_name', 'client_name', 'clientname',
+      'phone_number', 'phone', 'mobile', 'contact',
+      'email', 'email_address', 'emailaddress',
+      'platform', 'source',
+      'industry', 'course', 'category',
+      'secret'
+    ])
 
     const qualificationAnswers: Record<string, any> = {}
+
+    // Check if a pre-bundled qualification_answers or custom_questions object is passed
+    if (body.qualification_answers && typeof body.qualification_answers === 'object') {
+      Object.assign(qualificationAnswers, body.qualification_answers)
+    }
+
+    if (Array.isArray(body.custom_questions)) {
+      for (const q of body.custom_questions) {
+        if (q && typeof q === 'object') {
+          const key = q.key || q.name || q.question || 'Question'
+          const val = q.value || q.answer || q.val || ''
+          if (val !== '') qualificationAnswers[key] = val
+        }
+      }
+    }
+
+    // Capture every other top-level key dynamically
     for (const [key, value] of Object.entries(body)) {
-      if (!knownKeys.includes(key) && value !== null && value !== undefined && value !== '') {
-        // Format key nicely (e.g. "where_do_you_live" -> "Where do you live")
+      const lowerKey = key.toLowerCase().replace(/[^a-z0-9]/g, '')
+      if (!standardKeys.has(lowerKey) && value !== null && value !== undefined && value !== '' && typeof value !== 'object') {
+        // Format key nicely (e.g. "where_do_you_live" -> "Where Do You Live")
         const formattedKey = key
           .replace(/_/g, ' ')
           .replace(/\b\w/g, c => c.toUpperCase())
@@ -49,7 +94,6 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Industry Round-Robin Sales Representative Assignment
-    // First: find active sales reps mapped to this specific industry
     const industryReps = await query<{ employee_id: string; full_name: string }>(
       `SELECT s.employee_id, p.full_name
        FROM sales_industry_skills s
@@ -63,7 +107,7 @@ export async function POST(req: NextRequest) {
       eligibleRepIds = industryReps.map(r => ({ id: r.employee_id, name: r.full_name || 'Sales Rep' }))
     }
 
-    // Fallback: If no rep mapped to this industry, round-robin among all active employee-role profiles
+    // Fallback: If no rep mapped to this industry, round-robin among all active sales reps
     if (eligibleRepIds.length === 0) {
       const allEmps = await query<{ id: string; full_name: string }>(
         `SELECT id, full_name FROM profiles WHERE role = 'employee' AND is_active = true AND LOWER(department) = 'sales'`
@@ -73,23 +117,31 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Final fallback: any active employee
+    if (eligibleRepIds.length === 0) {
+      const anyEmps = await query<{ id: string; full_name: string }>(
+        `SELECT id, full_name FROM profiles WHERE role = 'employee' AND is_active = true`
+      )
+      if (anyEmps && anyEmps.length > 0) {
+        eligibleRepIds = anyEmps.map(e => ({ id: e.id, name: e.full_name }))
+      }
+    }
+
     let assignedToId: string | null = null
     let assignedToName: string = 'Unassigned'
 
     if (eligibleRepIds.length > 0) {
-      // Fetch current round-robin state for this industry
       const state = await queryOne<{ last_assigned_index: number }>(
         `SELECT last_assigned_index FROM industry_round_robin_state WHERE industry = $1`,
         [industry]
       )
 
-      let currentIndex = state ? state.last_assigned_index : -1
+      const currentIndex = state ? state.last_assigned_index : -1
       const nextIndex = (currentIndex + 1) % eligibleRepIds.length
 
       assignedToId = eligibleRepIds[nextIndex].id
       assignedToName = eligibleRepIds[nextIndex].name
 
-      // Update state for next round
       await execute(
         `INSERT INTO industry_round_robin_state (industry, last_assigned_index, updated_at)
          VALUES ($1, $2, $3)
@@ -99,11 +151,23 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 5. Insert Lead into Database
+    // 5. Insert Lead into Database with full qualification answers
     const newLead = await queryOne<{ id: string }>(
-      `INSERT INTO leads (name, client_name, phone, email, category, industry, platform, status, assigned_to, qualification_answers, notes)
-       VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
-       RETURNING id`,
+      `INSERT INTO leads (
+        name,
+        client_name,
+        phone,
+        email,
+        category,
+        industry,
+        platform,
+        status,
+        assigned_to,
+        qualification_answers,
+        notes
+      )
+      VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
+      RETURNING id`,
       [
         rawName,
         cleanPhone,
@@ -114,12 +178,11 @@ export async function POST(req: NextRequest) {
         'new',
         assignedToId,
         JSON.stringify(qualificationAnswers),
-        `Lead received via Pabbly Connect (${platform}). Industry: ${industry}`,
+        `Inbound lead via Pabbly Connect (${platform}). Industry: ${industry}`,
       ]
     )
 
     if (!newLead) {
-      console.error('Lead Insert Error')
       return NextResponse.json({ error: 'Failed to insert lead' }, { status: 500 })
     }
 
@@ -131,8 +194,8 @@ export async function POST(req: NextRequest) {
            VALUES ($1, $2, $3, $4)`,
           [
             assignedToId,
-            `🎯 New ${industry} Lead Assigned!`,
-            `New Lead: ${rawName} (${cleanPhone}). Industry: ${industry}`,
+            `New ${industry} Lead Assigned!`,
+            `Lead: ${rawName} (${cleanPhone}). Industry: ${industry}`,
             'info',
           ]
         )
@@ -148,6 +211,7 @@ export async function POST(req: NextRequest) {
       assigned_to: assignedToName,
       industry,
       qualification_count: Object.keys(qualificationAnswers).length,
+      qualification_answers: qualificationAnswers,
     })
 
   } catch (err: any) {

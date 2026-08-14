@@ -14,14 +14,21 @@ export async function PATCH(
     const body = await req.json()
     const allowedFields = [
       'client_name',
+      'name',
       'phone',
       'email',
       'category',
+      'industry',
+      'platform',
       'status',
       'source',
       'notes',
       'follow_up_date',
       'assigned_to',
+      'qualification_answers',
+      'followup_count',
+      'last_followup_at',
+      'next_followup_at',
       'updated_at',
     ]
 
@@ -30,11 +37,21 @@ export async function PATCH(
 
     for (const key of Object.keys(body)) {
       if (allowedFields.includes(key)) {
-        values.push(body[key])
-        updates.push(`${key} = $${values.length}`)
-        // Keep name in sync with client_name
-        if (key === 'client_name') {
+        if (key === 'qualification_answers' && typeof body[key] === 'object') {
+          values.push(JSON.stringify(body[key]))
+          updates.push(`${key} = $${values.length}::jsonb`)
+        } else {
+          values.push(body[key])
+          updates.push(`${key} = $${values.length}`)
+        }
+
+        // Keep name and client_name in sync
+        if (key === 'client_name' && !body['name']) {
+          values.push(body[key])
           updates.push(`name = $${values.length}`)
+        } else if (key === 'name' && !body['client_name']) {
+          values.push(body[key])
+          updates.push(`client_name = $${values.length}`)
         }
       }
     }
@@ -43,6 +60,9 @@ export async function PATCH(
       const existing = await queryOne('SELECT * FROM leads WHERE id = $1', [id])
       return NextResponse.json(existing)
     }
+
+    // Always touch updated_at
+    updates.push('updated_at = NOW()')
 
     values.push(id)
     const sql = `UPDATE leads SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`

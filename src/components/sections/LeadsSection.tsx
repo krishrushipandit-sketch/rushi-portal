@@ -11,7 +11,7 @@ import {
   SlidersHorizontal, ArrowUpDown, CircleDot, TrendingUp,
   CheckCircle, XCircle, PhoneOff, PhoneMissed, Voicemail,
   AlertCircle, Zap, MapPin, Activity, BarChart2, Filter,
-  ClipboardList, Send, RefreshCw
+  ClipboardList, Send, RefreshCw, Check
 } from 'lucide-react'
 
 interface Props { profile: Profile }
@@ -19,6 +19,7 @@ interface Props { profile: Profile }
 interface Lead {
   id: string
   client_name: string
+  name?: string
   phone: string
   email: string | null
   category: string
@@ -67,30 +68,59 @@ const STATUS_CONFIG: {
 
 const statusMap = STATUS_CONFIG.reduce((a, s) => ({ ...a, [s.id]: s }), {} as Record<string, typeof STATUS_CONFIG[0]>)
 
-// ─── Status Badge ──────────────────────────────────────────────────────────
-function StatusBadge({ status }: { status: string }) {
-  const cfg = statusMap[status] || { label: status, color: '#6366f1', bg: 'rgba(99,102,241,0.08)', icon: <CircleDot size={12} /> }
+// ─── Status Badge with Quick Status Change Dropdown ────────────────────────
+function InlineStatusSelector({
+  currentStatus,
+  onSelect
+}: {
+  currentStatus: string
+  onSelect: (status: string) => void
+}) {
+  const cfg = statusMap[currentStatus] || { label: currentStatus, color: '#6366f1', bg: 'rgba(99,102,241,0.08)', icon: <CircleDot size={12} /> }
+
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: '5px',
-      padding: '3px 10px', borderRadius: '99px',
-      background: cfg.bg, color: cfg.color,
-      fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap',
-      border: `1px solid ${cfg.color}25`
-    }}>
-      {cfg.icon} {cfg.label}
-    </span>
+    <div style={{ position: 'relative', display: 'inline-block' }}>
+      <select
+        value={currentStatus}
+        onChange={e => onSelect(e.target.value)}
+        style={{
+          appearance: 'none',
+          WebkitAppearance: 'none',
+          padding: '4px 22px 4px 10px',
+          borderRadius: '99px',
+          background: cfg.bg,
+          color: cfg.color,
+          fontSize: '0.72rem',
+          fontWeight: 700,
+          border: `1px solid ${cfg.color}35`,
+          cursor: 'pointer',
+          outline: 'none',
+          textAlign: 'left'
+        }}
+      >
+        {STATUS_CONFIG.map(s => (
+          <option key={s.id} value={s.id} style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>
+            {s.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        size={11}
+        color={cfg.color}
+        style={{ position: 'absolute', right: '7px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+      />
+    </div>
   )
 }
 
-// ─── Qualification Answers Panel (dynamic, scalable) ──────────────────────
+// ─── Dynamic Qualification Answers Panel ───────────────────────────────────
 function QualificationPanel({ answers }: { answers: Record<string, any> }) {
   const entries = Object.entries(answers)
   if (entries.length === 0) return null
   return (
     <div style={{
       borderRadius: '10px', border: '1px solid var(--border-default)',
-      background: 'var(--bg-surface)', overflow: 'hidden'
+      background: 'var(--bg-surface)', overflow: 'hidden', marginTop: '4px'
     }}>
       <div style={{
         padding: '0.5rem 0.875rem', background: 'rgba(99,102,241,0.05)',
@@ -99,18 +129,18 @@ function QualificationPanel({ answers }: { answers: Record<string, any> }) {
       }}>
         <ClipboardList size={13} color="#6366f1" />
         <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#6366f1', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          Form Responses
+          Form Responses & Lead Questionnaire
         </span>
         <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-          {entries.length} field{entries.length !== 1 ? 's' : ''}
+          {entries.length} captured field{entries.length !== 1 ? 's' : ''}
         </span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
         {entries.map(([key, val], i) => (
           <div key={key} style={{
             padding: '0.625rem 0.875rem',
-            borderRight: i % 2 === 0 ? '1px solid var(--border-default)' : 'none',
-            borderBottom: i < entries.length - 2 ? '1px solid var(--border-default)' : 'none'
+            borderRight: '1px solid var(--border-default)',
+            borderBottom: '1px solid var(--border-default)'
           }}>
             <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
               {key}
@@ -125,14 +155,15 @@ function QualificationPanel({ answers }: { answers: Record<string, any> }) {
   )
 }
 
-// ─── Lead Card (expandable row in table) ──────────────────────────────────
+// ─── Lead Table Row ────────────────────────────────────────────────────────
 function LeadRow({
   lead, isAdmin,
-  onFollowup, onEdit, onDelete, onWhatsapp
+  onFollowup, onEdit, onDelete, onWhatsapp, onStatusChange
 }: {
   lead: Lead; isAdmin: boolean
   onFollowup: () => void; onEdit: () => void
   onDelete: () => void; onWhatsapp: () => void
+  onStatusChange: (newStatus: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const qual = lead.qualification_answers || {}
@@ -146,18 +177,17 @@ function LeadRow({
         {/* Lead identity */}
         <td style={{ padding: '0.875rem 1rem' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.625rem' }}>
-            {/* Avatar circle with initial */}
             <div style={{
               width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
               background: `${cfg.color}18`, color: cfg.color,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.7rem', fontWeight: 700, letterSpacing: 0
+              fontSize: '0.7rem', fontWeight: 700
             }}>
-              {lead.client_name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+              {(lead.client_name || lead.name || 'L').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
             </div>
             <div style={{ minWidth: 0 }}>
               <p style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--text-primary)', margin: 0, whiteSpace: 'nowrap' }}>
-                {lead.client_name}
+                {lead.client_name || lead.name}
               </p>
               <div style={{ display: 'flex', gap: '0.625rem', marginTop: '3px', flexWrap: 'wrap' }}>
                 <a href={`tel:${lead.phone}`} style={{
@@ -184,7 +214,7 @@ function LeadRow({
           </div>
         </td>
 
-        {/* Course / Industry */}
+        {/* Program / Industry */}
         <td style={{ padding: '0.875rem 0.75rem' }}>
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: '4px',
@@ -196,10 +226,10 @@ function LeadRow({
           </span>
         </td>
 
-        {/* Form responses — dynamic */}
+        {/* Dynamic Form Responses */}
         <td style={{ padding: '0.875rem 0.75rem' }}>
           {qualCount === 0 ? (
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>No form data</span>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Standard Form</span>
           ) : (
             <button
               onClick={() => setExpanded(e => !e)}
@@ -217,12 +247,15 @@ function LeadRow({
           )}
         </td>
 
-        {/* Status */}
+        {/* Call Status Selector */}
         <td style={{ padding: '0.875rem 0.75rem' }}>
-          <StatusBadge status={lead.status} />
+          <InlineStatusSelector
+            currentStatus={lead.status}
+            onSelect={onStatusChange}
+          />
         </td>
 
-        {/* Follow-ups */}
+        {/* Followups */}
         <td style={{ padding: '0.875rem 0.75rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
             <Activity size={12} color="var(--text-muted)" />
@@ -235,7 +268,7 @@ function LeadRow({
           )}
         </td>
 
-        {/* Assigned — admin only */}
+        {/* Assigned To (Admin only) */}
         {isAdmin && (
           <td style={{ padding: '0.875rem 0.75rem' }}>
             <span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
@@ -261,7 +294,7 @@ function LeadRow({
             </button>
             <button
               onClick={onWhatsapp}
-              title="Send WhatsApp"
+              title="Send WhatsApp Message"
               style={{
                 padding: '5px 8px', borderRadius: '7px', border: 'none', cursor: 'pointer',
                 background: 'rgba(37,211,102,0.08)', color: '#25D366', display: 'flex', alignItems: 'center',
@@ -272,7 +305,7 @@ function LeadRow({
             </button>
             <button
               onClick={onEdit}
-              title="Edit"
+              title="Edit Lead"
               style={{
                 padding: '5px 8px', borderRadius: '7px', border: 'none', cursor: 'pointer',
                 background: 'var(--bg-surface)', color: 'var(--text-muted)', display: 'flex', alignItems: 'center',
@@ -284,7 +317,7 @@ function LeadRow({
             {isAdmin && (
               <button
                 onClick={onDelete}
-                title="Delete"
+                title="Delete Lead"
                 style={{
                   padding: '5px 8px', borderRadius: '7px', border: 'none', cursor: 'pointer',
                   background: 'rgba(239,68,68,0.07)', color: '#ef4444', display: 'flex', alignItems: 'center',
@@ -298,7 +331,7 @@ function LeadRow({
         </td>
       </tr>
 
-      {/* Expandable qualification answers row */}
+      {/* Expandable row for qualification answers */}
       {expanded && qualCount > 0 && (
         <tr>
           <td colSpan={isAdmin ? 7 : 6} style={{ padding: '0 1rem 0.875rem', background: 'var(--bg-surface)' }}>
@@ -310,11 +343,15 @@ function LeadRow({
   )
 }
 
-// ─── Followup Side Panel ───────────────────────────────────────────────────
+// ─── Followup Slide-Over Drawer ────────────────────────────────────────────
 function FollowupPanel({
-  lead, onClose, onSaved
+  lead,
+  onClose,
+  onSaved
 }: {
-  lead: Lead; onClose: () => void; onSaved: () => void
+  lead: Lead
+  onClose: () => void
+  onSaved: (newStatus: string) => void
 }) {
   const [history, setHistory] = useState<FollowupRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -331,42 +368,59 @@ function FollowupPanel({
     fetch(`/api/leads/${lead.id}/followups`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setHistory(d) })
+      .catch(console.error)
       .finally(() => setLoading(false))
   }, [lead.id])
 
   const handleSave = async () => {
     setSaving(true)
     const token = getToken()
-    const res = await fetch(`/api/leads/${lead.id}/followups`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ call_status: callStatus, notes, scheduled_at: scheduledAt || null })
-    })
-    if (res.ok) {
-      setNotes(''); setScheduledAt('')
-      const updated = await fetch(`/api/leads/${lead.id}/followups`, { headers: { Authorization: `Bearer ${token}` } })
-      const d = await updated.json()
-      if (Array.isArray(d)) setHistory(d)
-      onSaved()
+    try {
+      const res = await fetch(`/api/leads/${lead.id}/followups`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ call_status: callStatus, notes, scheduled_at: scheduledAt || null })
+      })
+
+      if (res.ok) {
+        setNotes('')
+        setScheduledAt('')
+        const updated = await fetch(`/api/leads/${lead.id}/followups`, { headers: { Authorization: `Bearer ${token}` } })
+        const d = await updated.json()
+        if (Array.isArray(d)) setHistory(d)
+        onSaved(callStatus)
+      } else {
+        const err = await res.json().catch(() => ({}))
+        alert('Error saving status: ' + (err.error || 'Server error'))
+      }
+    } catch (err: any) {
+      alert('Failed to connect: ' + err.message)
+    } finally {
+      setSaving(false)
     }
-    setSaving(false)
   }
 
   const qual = lead.qualification_answers || {}
   const qualEntries = Object.entries(qual)
+  const currentCfg = statusMap[lead.status] || statusMap['new']
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 999,
-      background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
-      display: 'flex', justifyContent: 'flex-end'
-    }} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{
-        width: '100%', maxWidth: '520px', height: '100%',
-        background: 'var(--bg-elevated)', display: 'flex', flexDirection: 'column',
-        boxShadow: '-20px 0 60px rgba(0,0,0,0.4)',
-        borderLeft: '1px solid var(--border-default)'
-      }}>
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 999,
+        background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+        display: 'flex', justifyContent: 'flex-end'
+      }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        style={{
+          width: '100%', maxWidth: '540px', height: '100%',
+          background: 'var(--bg-elevated)', display: 'flex', flexDirection: 'column',
+          boxShadow: '-20px 0 60px rgba(0,0,0,0.5)',
+          borderLeft: '1px solid var(--border-default)'
+        }}
+      >
         {/* Header */}
         <div style={{
           padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-default)',
@@ -374,15 +428,16 @@ function FollowupPanel({
         }}>
           <div style={{
             width: 40, height: 40, borderRadius: '10px', flexShrink: 0,
-            background: `${(statusMap[lead.status] || statusMap['new']).color}18`,
-            color: (statusMap[lead.status] || statusMap['new']).color,
+            background: `${currentCfg.color}18`, color: currentCfg.color,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: '0.75rem', fontWeight: 700
           }}>
-            {lead.client_name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+            {(lead.client_name || lead.name || 'L').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
           </div>
           <div style={{ flex: 1 }}>
-            <h3 style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', margin: 0 }}>{lead.client_name}</h3>
+            <h3 style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--text-primary)', margin: 0 }}>
+              {lead.client_name || lead.name}
+            </h3>
             <div style={{ display: 'flex', gap: '0.75rem', marginTop: '4px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px' }}>
                 <Phone size={11} /> {lead.phone}
@@ -390,14 +445,17 @@ function FollowupPanel({
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px' }}>
                 <Layers size={11} /> {lead.industry || lead.category}
               </span>
-              {lead.assigned_to_profile && (
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                  <User size={11} /> {lead.assigned_to_profile.full_name}
-                </span>
-              )}
             </div>
             <div style={{ marginTop: '6px' }}>
-              <StatusBadge status={lead.status} />
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                padding: '3px 10px', borderRadius: '99px',
+                background: currentCfg.bg, color: currentCfg.color,
+                fontSize: '0.72rem', fontWeight: 700,
+                border: `1px solid ${currentCfg.color}25`
+              }}>
+                {currentCfg.icon} {currentCfg.label}
+              </span>
             </div>
           </div>
           <button
@@ -411,13 +469,13 @@ function FollowupPanel({
         {/* Scrollable body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
-          {/* Dynamic Qualification Answers */}
+          {/* Dynamic Qualification Answers from Pabbly */}
           {qualEntries.length > 0 && (
             <section>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.625rem' }}>
                 <ClipboardList size={14} color="#6366f1" />
                 <h4 style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
-                  Form Responses
+                  Form Responses & Survey Data
                 </h4>
               </div>
               <div style={{ borderRadius: '10px', border: '1px solid var(--border-default)', overflow: 'hidden' }}>
@@ -436,7 +494,7 @@ function FollowupPanel({
             </section>
           )}
 
-          {/* Log New Followup */}
+          {/* Log New Followup Action */}
           <section style={{ borderRadius: '12px', border: '1px solid var(--border-default)', overflow: 'hidden' }}>
             <div style={{
               padding: '0.75rem 1rem', background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-default)',
@@ -444,13 +502,13 @@ function FollowupPanel({
             }}>
               <PhoneCall size={14} color="#6366f1" />
               <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Log Call — Followup #{(lead.followup_count || 0) + 1}
+                Update Status & Log Outcome (Followup #{(lead.followup_count || 0) + 1})
               </span>
             </div>
             <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
               <div>
                 <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '6px' }}>
-                  Call Outcome
+                  Select Call Status
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                   {STATUS_CONFIG.map(s => (
@@ -458,8 +516,8 @@ function FollowupPanel({
                       key={s.id}
                       onClick={() => setCallStatus(s.id)}
                       style={{
-                        padding: '6px 10px', borderRadius: '8px', cursor: 'pointer', textAlign: 'left',
-                        border: `1px solid ${callStatus === s.id ? s.color + '60' : 'var(--border-default)'}`,
+                        padding: '7px 10px', borderRadius: '8px', cursor: 'pointer', textAlign: 'left',
+                        border: `1px solid ${callStatus === s.id ? s.color + '70' : 'var(--border-default)'}`,
                         background: callStatus === s.id ? s.bg : 'transparent',
                         display: 'flex', alignItems: 'center', gap: '6px',
                         color: callStatus === s.id ? s.color : 'var(--text-muted)',
@@ -475,11 +533,11 @@ function FollowupPanel({
 
               <div>
                 <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '6px' }}>
-                  Notes / Remarks
+                  Followup Notes / Remarks
                 </label>
                 <textarea
                   rows={3}
-                  placeholder="Customer response, key details, next steps..."
+                  placeholder="Enter call outcome, student requirements, objections..."
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
                   style={{
@@ -493,7 +551,7 @@ function FollowupPanel({
 
               <div>
                 <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '6px' }}>
-                  Schedule Next Followup
+                  Schedule Next Followup Date & Time
                 </label>
                 <input
                   type="datetime-local"
@@ -516,11 +574,11 @@ function FollowupPanel({
                   background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
                   color: 'white', border: 'none', cursor: 'pointer', fontWeight: 600,
                   fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                  opacity: saving ? 0.7 : 1, transition: 'opacity 0.15s'
+                  opacity: saving ? 0.7 : 1
                 }}
               >
                 {saving ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />}
-                Save Outcome
+                Save Outcome & Update Status
               </button>
             </div>
           </section>
@@ -530,15 +588,17 @@ function FollowupPanel({
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
               <Activity size={14} color="var(--text-muted)" />
               <h4 style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
-                Call History
+                Followup History Timeline
               </h4>
               {history.length > 0 && (
-                <span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: 'var(--text-muted)' }}>{history.length} call{history.length !== 1 ? 's' : ''}</span>
+                <span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  {history.length} call{history.length !== 1 ? 's' : ''} logged
+                </span>
               )}
             </div>
 
             {loading ? (
-              <div style={{ height: '80px', borderRadius: '10px', background: 'var(--bg-surface)', animation: 'pulse 1.5s ease-in-out infinite' }} />
+              <div style={{ height: '80px', borderRadius: '10px', background: 'var(--bg-surface)' }} />
             ) : history.length === 0 ? (
               <div style={{ padding: '1.5rem', textAlign: 'center', borderRadius: '10px', border: '1px dashed var(--border-default)', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
                 No followups recorded yet
@@ -549,7 +609,6 @@ function FollowupPanel({
                   const s = statusMap[item.call_status] || { color: '#6366f1', bg: 'rgba(99,102,241,0.08)', label: item.call_status, icon: <CircleDot size={12} /> }
                   return (
                     <div key={item.id} style={{ display: 'flex', gap: '0.75rem', position: 'relative' }}>
-                      {/* Timeline line */}
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '20px', flexShrink: 0 }}>
                         <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color, marginTop: '14px', flexShrink: 0, boxShadow: `0 0 0 3px ${s.color}20` }} />
                         {idx < history.length - 1 && (
@@ -561,7 +620,9 @@ function FollowupPanel({
                         padding: '0.625rem 0.875rem', marginBottom: '0.5rem', background: 'var(--bg-surface)'
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '4px' }}>
-                          <StatusBadge status={item.call_status} />
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: '99px', background: s.bg, color: s.color, border: `1px solid ${s.color}25` }}>
+                            {s.label}
+                          </span>
                           <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
                             {formatDate(item.completed_at, 'dd MMM, hh:mm a')}
                           </span>
@@ -610,28 +671,59 @@ export default function LeadsSection({ profile }: Props) {
 
   const fetchLeads = useCallback(async () => {
     const token = getToken()
-    if (!token) { router.push('/login'); return }
-    const res = await fetch('/api/leads', { headers: { Authorization: `Bearer ${token}` } })
-    const data = await res.json()
-    if (Array.isArray(data)) setLeads(data)
-    setLoading(false)
+    if (!token) { router.push('/'); return }
+    try {
+      const res = await fetch('/api/leads', { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      if (Array.isArray(data)) setLeads(data)
+    } catch (err) {
+      console.error('Failed to fetch leads:', err)
+    } finally {
+      setLoading(false)
+    }
   }, [router])
 
   useEffect(() => { fetchLeads() }, [fetchLeads])
+
+  // Direct quick status change handler
+  const handleQuickStatusChange = async (leadId: string, newStatus: string) => {
+    // Optimistic UI update
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status: newStatus } : l))
+
+    const token = getToken()
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: newStatus })
+      })
+      if (!res.ok) {
+        fetchLeads() // Rollback on error
+      }
+    } catch (err) {
+      fetchLeads()
+    }
+  }
 
   const openCreate = () => {
     setEditLead(null)
     setForm({ client_name: '', phone: '', email: '', industry: 'Digital Marketing', category: 'Digital Marketing', status: 'new', source: 'facebook_lead_ad', notes: '', follow_up_date: '', platform: 'Facebook' })
     setShowModal(true)
   }
+
   const openEdit = (lead: Lead) => {
     setEditLead(lead)
     setForm({
-      client_name: lead.client_name, phone: lead.phone, email: lead.email || '',
+      client_name: lead.client_name || lead.name || '',
+      phone: lead.phone,
+      email: lead.email || '',
       industry: lead.industry || lead.category || 'Digital Marketing',
       category: lead.category || lead.industry || 'Digital Marketing',
-      status: lead.status, source: lead.source || 'facebook_lead_ad',
-      notes: lead.notes || '', follow_up_date: lead.follow_up_date || '', platform: lead.platform || 'Facebook'
+      status: lead.status,
+      source: lead.source || 'facebook_lead_ad',
+      notes: lead.notes || '',
+      follow_up_date: lead.follow_up_date || '',
+      platform: lead.platform || 'Facebook'
     })
     setShowModal(true)
   }
@@ -640,25 +732,39 @@ export default function LeadsSection({ profile }: Props) {
     if (!form.client_name || !form.phone) return
     setSaving(true)
     const token = getToken()
-    if (editLead) {
-      await fetch(`/api/leads/${editLead.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(form) })
-    } else {
-      await fetch('/api/leads', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(form) })
+    try {
+      if (editLead) {
+        await fetch(`/api/leads/${editLead.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(form)
+        })
+      } else {
+        await fetch('/api/leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(form)
+        })
+      }
+      setShowModal(false)
+      fetchLeads()
+    } catch (err: any) {
+      alert('Error saving lead: ' + err.message)
+    } finally {
+      setSaving(false)
     }
-    setShowModal(false)
-    fetchLeads()
-    setSaving(false)
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Permanently delete this lead and all followup history?')) return
+    if (!confirm('Permanently delete this lead and its followup records?')) return
     const token = getToken()
     await fetch(`/api/leads/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
     fetchLeads()
   }
 
   const handleWhatsapp = (lead: Lead) => {
-    const msg = `Hello ${lead.client_name}, thank you for your interest in RushiPandit Institute (${lead.industry || 'Digital Marketing'})! Your personal counselling session has been scheduled. Please find our institute location here: https://maps.google.com. Looking forward to meeting you!`
+    const name = lead.client_name || lead.name || 'Student'
+    const msg = `Hello ${name}, thank you for contacting RushiPandit Institute for our ${lead.industry || 'Digital Marketing'} program! How can we assist you with your career goals?`
     window.open(`https://api.whatsapp.com/send?phone=${encodeURIComponent(lead.phone)}&text=${encodeURIComponent(msg)}`, '_blank')
   }
 
@@ -669,7 +775,8 @@ export default function LeadsSection({ profile }: Props) {
   const convRate = total > 0 ? Math.round((enrolled / total) * 100) : 0
 
   const filtered = leads.filter(l => {
-    const matchSearch = l.client_name.toLowerCase().includes(search.toLowerCase()) || l.phone.includes(search) || (l.email || '').toLowerCase().includes(search.toLowerCase())
+    const nameToMatch = (l.client_name || l.name || '').toLowerCase()
+    const matchSearch = nameToMatch.includes(search.toLowerCase()) || l.phone.includes(search) || (l.email || '').toLowerCase().includes(search.toLowerCase())
     const matchStatus = filterStatus === 'all' || l.status === filterStatus
     const matchIndustry = filterIndustry === 'all' || (l.industry || l.category) === filterIndustry
     return matchSearch && matchStatus && matchIndustry
@@ -678,133 +785,127 @@ export default function LeadsSection({ profile }: Props) {
   const isAdmin = profile.role === 'admin'
 
   return (
-    <div style={{ padding: '1.5rem', maxWidth: '1280px', margin: '0 auto' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
-      {/* ── Page Header ── */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.5rem', gap: '1rem', flexWrap: 'wrap' }}>
+      {/* ── Header ── */}
+      <div className="page-header" style={{ marginBottom: 0 }}>
         <div>
-          <h1 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-            {isAdmin ? 'Leads Pipeline' : 'My Leads'}
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em', margin: 0 }}>
+            {isAdmin ? 'Inbound Leads & Pipeline' : 'My Assigned Leads'}
           </h1>
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '4px 0 0' }}>
-            Manage leads, log calls, track qualification responses end-to-end
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+            Real-time Facebook lead capture, dynamic questionnaire answers, and call timeline
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.625rem' }}>
           <button
             onClick={fetchLeads}
-            style={{ padding: '0.5rem 0.75rem', borderRadius: '10px', border: '1px solid var(--border-default)', background: 'var(--bg-elevated)', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.8rem' }}
+            className="btn btn-secondary btn-sm"
           >
             <RefreshCw size={13} /> Refresh
           </button>
           <button
             onClick={openCreate}
-            style={{ padding: '0.5rem 1rem', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+            className="btn btn-primary btn-sm"
           >
             <Plus size={15} /> Add Lead
           </button>
         </div>
       </div>
 
-      {/* ── Metric Bar ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
+      {/* ── Metric Summary Bar ── */}
+      <div className="grid-4" style={{ gap: '1rem' }}>
         {[
-          { label: 'Total Leads', value: total,    color: '#6366f1', icon: <BarChart2 size={16} /> },
-          { label: 'Active Pipeline', value: pipeline, color: '#06b6d4', icon: <TrendingUp size={16} /> },
-          { label: 'Enrolled',   value: enrolled,  color: '#10b981', icon: <CheckCircle size={16} /> },
-          { label: 'Conv. Rate', value: `${convRate}%`, color: '#f59e0b', icon: <Activity size={16} /> },
+          { label: 'Total Inbound Leads', value: total,    color: '#6366f1', icon: <BarChart2 size={16} /> },
+          { label: 'Active Pipeline',     value: pipeline, color: '#06b6d4', icon: <TrendingUp size={16} /> },
+          { label: 'Enrolled (Won)',      value: enrolled,  color: '#10b981', icon: <CheckCircle size={16} /> },
+          { label: 'Conversion Rate',     value: `${convRate}%`, color: '#f59e0b', icon: <Activity size={16} /> },
         ].map(({ label, value, color, icon }) => (
-          <div key={label} style={{
-            padding: '0.875rem 1rem', borderRadius: '12px',
-            background: `${color}08`, border: `1px solid ${color}20`,
-            display: 'flex', alignItems: 'center', gap: '0.75rem'
-          }}>
-            <div style={{ width: 34, height: 34, borderRadius: '9px', background: `${color}15`, color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              {icon}
+          <div key={label} className="stat-card" style={{ padding: '1.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {label}
+              </span>
+              <div style={{ width: 28, height: 28, borderRadius: '8px', background: `${color}15`, color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {icon}
+              </div>
             </div>
-            <div>
-              <p style={{ fontSize: '1.35rem', fontWeight: 800, color, margin: 0, lineHeight: 1 }}>{value}</p>
-              <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', margin: '2px 0 0', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</p>
+            <div style={{ fontSize: '1.85rem', fontWeight: 800, color, lineHeight: 1 }}>
+              {value}
             </div>
           </div>
         ))}
       </div>
 
-      {/* ── Filter Bar ── */}
-      <div style={{ display: 'flex', gap: '0.625rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
-          <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+      {/* ── Search & Filter Controls ── */}
+      <div style={{ display: 'flex', gap: '0.625rem', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: '220px' }}>
+          <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
           <input
-            placeholder="Search by name, phone or email..."
-            value={search} onChange={e => setSearch(e.target.value)}
-            style={{
-              width: '100%', paddingLeft: '34px', padding: '0.5rem 0.75rem 0.5rem 34px',
-              borderRadius: '10px', border: '1px solid var(--border-default)',
-              background: 'var(--bg-elevated)', color: 'var(--text-primary)',
-              fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box'
-            }}
+            placeholder="Search by student name, phone or email..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="form-input"
+            style={{ paddingLeft: '34px', height: '36px', fontSize: '0.82rem' }}
           />
         </div>
+
         <div style={{ position: 'relative' }}>
-          <Filter size={13} style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+          <Filter size={13} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
           <select
-            value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-            style={{ paddingLeft: '28px', padding: '0.5rem 0.75rem 0.5rem 28px', borderRadius: '10px', border: '1px solid var(--border-default)', background: 'var(--bg-elevated)', color: 'var(--text-primary)', fontSize: '0.82rem', outline: 'none', minWidth: '160px' }}
+            value={filterStatus}
+            onChange={e => setFilterStatus(e.target.value)}
+            className="form-select"
+            style={{ paddingLeft: '28px', height: '36px', fontSize: '0.82rem', minWidth: '160px' }}
           >
-            <option value="all">All Statuses</option>
+            <option value="all">All Call Statuses</option>
             {STATUS_CONFIG.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
         </div>
+
         <div style={{ position: 'relative' }}>
-          <Layers size={13} style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+          <Layers size={13} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
           <select
-            value={filterIndustry} onChange={e => setFilterIndustry(e.target.value)}
-            style={{ paddingLeft: '28px', padding: '0.5rem 0.75rem 0.5rem 28px', borderRadius: '10px', border: '1px solid var(--border-default)', background: 'var(--bg-elevated)', color: 'var(--text-primary)', fontSize: '0.82rem', outline: 'none', minWidth: '160px' }}
+            value={filterIndustry}
+            onChange={e => setFilterIndustry(e.target.value)}
+            className="form-select"
+            style={{ paddingLeft: '28px', height: '36px', fontSize: '0.82rem', minWidth: '160px' }}
           >
-            <option value="all">All Courses</option>
+            <option value="all">All Courses / Programs</option>
             {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
           </select>
         </div>
       </div>
 
-      {/* ── Table ── */}
+      {/* ── Leads Data Table ── */}
       {loading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4rem', gap: '0.75rem', color: 'var(--text-muted)' }}>
           <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} />
           <span>Loading leads...</span>
         </div>
       ) : (
-        <div style={{ borderRadius: '14px', border: '1px solid var(--border-default)', background: 'var(--bg-elevated)', overflow: 'hidden' }}>
+        <div className="glass-card" style={{ overflow: 'hidden' }}>
           {filtered.length === 0 ? (
-            <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <TrendingUp size={36} style={{ opacity: 0.2, margin: '0 auto 0.75rem', display: 'block' }} />
-              <p style={{ fontSize: '0.875rem' }}>No leads found</p>
+            <div className="empty-state">
+              <div className="empty-state-icon">
+                <TrendingUp size={24} />
+              </div>
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                {total === 0 ? 'No leads received yet' : 'No leads match your filter'}
+              </p>
             </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <table className="data-table">
                 <thead>
-                  <tr style={{ background: 'var(--bg-surface)' }}>
-                    {[
-                      { label: 'Lead', icon: <User size={12} /> },
-                      { label: 'Course', icon: <Layers size={12} /> },
-                      { label: 'Form Responses', icon: <ClipboardList size={12} /> },
-                      { label: 'Status', icon: <CircleDot size={12} /> },
-                      { label: 'Followups', icon: <Activity size={12} /> },
-                      ...(isAdmin ? [{ label: 'Assigned To', icon: <User size={12} /> }] : []),
-                      { label: 'Actions', icon: null },
-                    ].map(({ label, icon }) => (
-                      <th key={label} style={{
-                        padding: '0.625rem 0.75rem', textAlign: 'left',
-                        fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700,
-                        textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap',
-                        borderBottom: '1px solid var(--border-default)'
-                      }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          {icon} {label}
-                        </span>
-                      </th>
-                    ))}
+                  <tr>
+                    <th>Lead Name & Contact</th>
+                    <th>Program</th>
+                    <th>Form Responses</th>
+                    <th>Status</th>
+                    <th>Followups</th>
+                    {isAdmin && <th>Assigned To</th>}
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -817,6 +918,7 @@ export default function LeadsSection({ profile }: Props) {
                       onEdit={() => openEdit(lead)}
                       onDelete={() => handleDelete(lead.id)}
                       onWhatsapp={() => handleWhatsapp(lead)}
+                      onStatusChange={(newStatus) => handleQuickStatusChange(lead.id, newStatus)}
                     />
                   ))}
                 </tbody>
@@ -824,84 +926,140 @@ export default function LeadsSection({ profile }: Props) {
             </div>
           )}
           {filtered.length > 0 && (
-            <div style={{ padding: '0.625rem 1rem', borderTop: '1px solid var(--border-default)', background: 'var(--bg-surface)' }}>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                Showing {filtered.length} of {total} leads
-                {search || filterStatus !== 'all' || filterIndustry !== 'all' ? ' (filtered)' : ''}
+            <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid var(--border-default)', background: 'var(--bg-surface)' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                Showing {filtered.length} of {total} total leads
               </span>
             </div>
           )}
         </div>
       )}
 
-      {/* ── Followup Side Panel ── */}
+      {/* ── Followup Slide-Over Drawer ── */}
       {followupLead && (
         <FollowupPanel
           lead={followupLead}
           onClose={() => setFollowupLead(null)}
-          onSaved={fetchLeads}
+          onSaved={(newStatus) => {
+            setFollowupLead(prev => prev ? { ...prev, status: newStatus } : null)
+            fetchLeads()
+          }}
         />
       )}
 
       {/* ── Create / Edit Modal ── */}
       {showModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 998, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
-          onClick={e => e.target === e.currentTarget && setShowModal(false)}>
-          <div style={{ background: 'var(--bg-elevated)', borderRadius: '16px', width: '100%', maxWidth: '560px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 80px rgba(0,0,0,0.4)' }}>
-            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <h3 style={{ fontWeight: 700, fontSize: '1rem', margin: 0 }}>{editLead ? 'Edit Lead' : 'Add New Lead'}</h3>
-              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', borderRadius: '8px' }}><X size={18} /></button>
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
+          <div className="modal-content" style={{ maxWidth: '580px' }}>
+            <div className="modal-header">
+              <h3 style={{ fontWeight: 700, fontSize: '1.05rem', margin: 0 }}>
+                {editLead ? 'Edit Lead Details' : 'Add Inbound Lead'}
+              </h3>
+              <button onClick={() => setShowModal(false)} className="btn btn-ghost btn-sm">
+                <X size={18} />
+              </button>
             </div>
-            <div style={{ padding: '1.25rem 1.5rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem' }}>
-                <div>
-                  <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '6px' }}>Full Name *</label>
-                  <input value={form.client_name} onChange={e => setForm({ ...form, client_name: e.target.value })} placeholder="Lead full name" style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-default)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }} />
+
+            <div className="modal-body">
+              <div className="grid-2">
+                <div className="form-group">
+                  <label className="form-label">Full Name *</label>
+                  <input
+                    className="form-input"
+                    value={form.client_name}
+                    onChange={e => setForm({ ...form, client_name: e.target.value })}
+                    placeholder="Candidate name"
+                  />
                 </div>
-                <div>
-                  <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '6px' }}>Phone *</label>
-                  <input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+91 98765 43210" style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-default)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }} />
+                <div className="form-group">
+                  <label className="form-label">Phone Number *</label>
+                  <input
+                    className="form-input"
+                    value={form.phone}
+                    onChange={e => setForm({ ...form, phone: e.target.value })}
+                    placeholder="+91 98765 43210"
+                  />
                 </div>
               </div>
-              <div>
-                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '6px' }}>Email</label>
-                <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="lead@email.com" style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-default)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }} />
+
+              <div className="form-group">
+                <label className="form-label">Email Address</label>
+                <input
+                  className="form-input"
+                  type="email"
+                  value={form.email}
+                  onChange={e => setForm({ ...form, email: e.target.value })}
+                  placeholder="candidate@email.com"
+                />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem' }}>
-                <div>
-                  <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '6px' }}>Course / Industry</label>
-                  <select value={form.industry} onChange={e => setForm({ ...form, industry: e.target.value, category: e.target.value })} style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-default)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}>
+
+              <div className="grid-2">
+                <div className="form-group">
+                  <label className="form-label">Program / Course</label>
+                  <select
+                    className="form-select"
+                    value={form.industry}
+                    onChange={e => setForm({ ...form, industry: e.target.value, category: e.target.value })}
+                  >
                     {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '6px' }}>Call Status</label>
-                  <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-default)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}>
+                <div className="form-group">
+                  <label className="form-label">Call Status</label>
+                  <select
+                    className="form-select"
+                    value={form.status}
+                    onChange={e => setForm({ ...form, status: e.target.value })}
+                  >
                     {STATUS_CONFIG.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                   </select>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem' }}>
-                <div>
-                  <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '6px' }}>Source</label>
-                  <select value={form.source} onChange={e => setForm({ ...form, source: e.target.value })} style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-default)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}>
+
+              <div className="grid-2">
+                <div className="form-group">
+                  <label className="form-label">Lead Source</label>
+                  <select
+                    className="form-select"
+                    value={form.source}
+                    onChange={e => setForm({ ...form, source: e.target.value })}
+                  >
                     {SOURCES.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '6px' }}>Follow-up Date</label>
-                  <input type="date" value={form.follow_up_date} onChange={e => setForm({ ...form, follow_up_date: e.target.value })} style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-default)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }} />
+                <div className="form-group">
+                  <label className="form-label">Follow-up Date</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={form.follow_up_date}
+                    onChange={e => setForm({ ...form, follow_up_date: e.target.value })}
+                  />
                 </div>
               </div>
-              <div>
-                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '6px' }}>Internal Notes</label>
-                <textarea rows={3} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Internal notes about this lead..." style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-default)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem', outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+
+              <div className="form-group">
+                <label className="form-label">Internal Notes</label>
+                <textarea
+                  className="form-textarea"
+                  rows={3}
+                  value={form.notes}
+                  onChange={e => setForm({ ...form, notes: e.target.value })}
+                  placeholder="Internal remarks regarding this student..."
+                />
               </div>
             </div>
-            <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border-default)', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowModal(false)} style={{ padding: '0.5rem 1rem', borderRadius: '9px', border: '1px solid var(--border-default)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 }}>Cancel</button>
-              <button onClick={handleSubmit} disabled={saving || !form.client_name || !form.phone} style={{ padding: '0.5rem 1.25rem', borderRadius: '9px', border: 'none', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', opacity: saving ? 0.7 : 1 }}>
-                {saving ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : null}
+
+            <div className="modal-footer">
+              <button onClick={() => setShowModal(false)} className="btn btn-secondary">
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={saving || !form.client_name || !form.phone}
+                className="btn btn-primary"
+              >
+                {saving && <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />}
                 {editLead ? 'Update Lead' : 'Create Lead'}
               </button>
             </div>
@@ -909,7 +1067,9 @@ export default function LeadsSection({ profile }: Props) {
         </div>
       )}
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } } @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.5 } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+      `}</style>
     </div>
   )
 }
