@@ -173,7 +173,7 @@ export default function DashboardPage() {
       case 'leads': return canAccessLeads
         ? <LeadsSection {...props} />
         : <OverviewSection {...props} onNavigate={setActiveSection} />
-      case 'sales': return profile.role === 'admin' ? <SalesSection {...props} /> : null
+      case 'sales': return canAccessLeads ? <SalesSection {...props} /> : null
       case 'performance': return <PerformanceSection {...props} />
       case 'employees': return profile.role === 'admin' ? <EmployeesSection {...props} /> : null
       case 'notifications': return <NotificationsSection {...props} onRead={fetchUnreadCount} />

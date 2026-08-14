@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getInitials } from '@/lib/utils'
-import { Trophy, Star } from 'lucide-react'
+import { Trophy, Award } from 'lucide-react'
 
 interface LeaderRow {
   employee: { id: string; full_name: string; designation: string | null; avatar_url?: string | null }
@@ -43,7 +43,7 @@ export default function PointsLeaderboard({ isLight }: Props) {
         })
         const data = await res.json()
         if (data.leaderboard) {
-          setLeaderboard(data.leaderboard.slice(0, 5)) // top 5 in sidebar
+          setLeaderboard(data.leaderboard.slice(0, 5))
           setStars(data.stars || [])
         }
       } catch (err) {
@@ -59,10 +59,7 @@ export default function PointsLeaderboard({ isLight }: Props) {
   const borderColor = isLight ? 'rgba(255,255,255,0.1)' : 'var(--border-subtle)'
   const cardBg = isLight ? 'rgba(255,255,255,0.07)' : 'var(--bg-elevated)'
 
-  const rankColors = ['#f59e0b', '#94a3b8', '#cd7f32'] // gold, silver, bronze
-  const rankEmoji = ['🥇', '🥈', '🥉']
-
-  const currentMonth = new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+  const rankColors = ['#f59e0b', '#94a3b8', '#cd7f32']
 
   if (loading) {
     return (
@@ -77,19 +74,21 @@ export default function PointsLeaderboard({ isLight }: Props) {
 
   return (
     <div style={{ borderTop: `1px solid ${borderColor}`, padding: '0.75rem 0.875rem' }}>
-      {/* Star Performers Banner — shows if current month's 1st has been announced */}
+      {/* Star Performers Banner */}
       {stars.length > 0 && (
         <div style={{
-          background: 'linear-gradient(135deg, rgba(245,158,11,0.15), rgba(251,191,36,0.05))',
-          border: '1px solid rgba(245,158,11,0.25)',
+          background: 'linear-gradient(135deg, rgba(245,158,11,0.12), rgba(251,191,36,0.04))',
+          border: '1px solid rgba(245,158,11,0.22)',
           borderRadius: '8px', padding: '0.625rem 0.75rem', marginBottom: '0.75rem'
         }}>
           <p style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#f59e0b', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <Star size={10} fill="#f59e0b" /> Star Performers
+            <Award size={11} /> Top Performers
           </p>
           {stars.map(s => (
             <div key={s.rank} style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '2px' }}>
-              <span style={{ fontSize: '0.7rem' }}>{rankEmoji[s.rank - 1]}</span>
+              <span style={{ fontSize: '0.65rem', fontWeight: 700, color: rankColors[s.rank - 1] || '#f59e0b', width: '14px' }}>
+                #{s.rank}
+              </span>
               <span style={{ fontSize: '0.72rem', fontWeight: 600, color: textColor, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {s.employee.full_name}
               </span>
@@ -113,7 +112,7 @@ export default function PointsLeaderboard({ isLight }: Props) {
       </div>
 
       {leaderboard.length === 0 ? (
-        <p style={{ fontSize: '0.72rem', color: mutedColor, fontStyle: 'italic' }}>No points yet this month</p>
+        <p style={{ fontSize: '0.72rem', color: mutedColor, fontStyle: 'italic' }}>No points logged yet</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
           {leaderboard.map((row, i) => (
@@ -122,9 +121,13 @@ export default function PointsLeaderboard({ isLight }: Props) {
               padding: '5px 8px', borderRadius: '7px', background: i === 0 ? 'rgba(245,158,11,0.1)' : cardBg,
               border: i === 0 ? '1px solid rgba(245,158,11,0.2)' : `1px solid ${borderColor}`
             }}>
-              {/* Rank */}
-              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: rankColors[i] || mutedColor, minWidth: '14px', textAlign: 'center' }}>
-                {i < 3 ? rankEmoji[i] : `#${i + 1}`}
+              {/* Rank Badge */}
+              <span style={{
+                fontSize: '0.65rem', fontWeight: 800,
+                color: rankColors[i] || mutedColor,
+                minWidth: '16px', textAlign: 'center'
+              }}>
+                #{i + 1}
               </span>
               {/* Avatar */}
               {row.employee.avatar_url ? (
