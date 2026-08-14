@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
-import { formatDate } from '@/lib/utils'
+import { formatDate, timeAgo } from '@/lib/utils'
 import {
   Plus, Search, X, Loader2, Phone, Mail, Edit2, Trash2,
   MessageSquare, PhoneCall, Clock, ChevronDown, ChevronRight,
@@ -11,7 +11,7 @@ import {
   SlidersHorizontal, ArrowUpDown, CircleDot, TrendingUp,
   CheckCircle, XCircle, PhoneOff, PhoneMissed, Voicemail,
   AlertCircle, Zap, MapPin, Activity, BarChart2, Filter,
-  ClipboardList, Send, RefreshCw, Check
+  ClipboardList, Send, RefreshCw, Check, CalendarDays, ArrowDownUp
 } from 'lucide-react'
 
 interface Props { profile: Profile }
@@ -48,8 +48,9 @@ interface FollowupRecord {
 }
 
 const INDUSTRIES = ['Digital Marketing', 'Share Market', 'AI Course', 'Amazon', 'BBA/MBA', 'Other']
-const SOURCES = ['facebook_lead_ad', 'walk_in', 'referral', 'social_media', 'website', 'cold_call', 'other']
+const SOURCES = ['facebook_lead_ad', 'instagram_lead_ad', 'walk_in', 'referral', 'social_media', 'website', 'cold_call', 'other']
 
+// ─── 10 Call Status Definitions ──────────────────────────────────────────
 const STATUS_CONFIG: {
   id: string; label: string; color: string; bg: string;
   icon: React.ReactNode; group: 'active' | 'hot' | 'closed'
@@ -68,7 +69,72 @@ const STATUS_CONFIG: {
 
 const statusMap = STATUS_CONFIG.reduce((a, s) => ({ ...a, [s.id]: s }), {} as Record<string, typeof STATUS_CONFIG[0]>)
 
-// ─── Status Badge with Quick Status Change Dropdown ────────────────────────
+// ─── Platform Brand Badges (FB / IG / Web) ─────────────────────────────────
+function PlatformBadge({ platform }: { platform?: string | null }) {
+  const p = (platform || 'Facebook').toLowerCase()
+
+  if (p.includes('fb') || p.includes('facebook')) {
+    return (
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: '4px',
+        padding: '2px 7px', borderRadius: '5px',
+        background: 'rgba(24, 119, 242, 0.12)', color: '#1877F2',
+        border: '1px solid rgba(24, 119, 242, 0.25)',
+        fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.04em'
+      }}>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+        </svg>
+        FB
+      </span>
+    )
+  }
+
+  if (p.includes('ig') || p.includes('instagram')) {
+    return (
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: '4px',
+        padding: '2px 7px', borderRadius: '5px',
+        background: 'rgba(228, 64, 95, 0.12)', color: '#E4405F',
+        border: '1px solid rgba(228, 64, 95, 0.25)',
+        fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.04em'
+      }}>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+        </svg>
+        IG
+      </span>
+    )
+  }
+
+  if (p.includes('web') || p.includes('site')) {
+    return (
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: '4px',
+        padding: '2px 7px', borderRadius: '5px',
+        background: 'rgba(6, 182, 212, 0.12)', color: '#06b6d4',
+        border: '1px solid rgba(6, 182, 212, 0.25)',
+        fontSize: '0.68rem', fontWeight: 800
+      }}>
+        WEB
+      </span>
+    )
+  }
+
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: '4px',
+      padding: '2px 7px', borderRadius: '5px',
+      background: 'rgba(99, 102, 241, 0.1)', color: '#818cf8',
+      border: '1px solid rgba(99, 102, 241, 0.2)',
+      fontSize: '0.68rem', fontWeight: 800
+    }}>
+      {platform?.toUpperCase() || 'FB'}
+    </span>
+  )
+}
+
+// ─── Inline Quick Status Selector Dropdown ─────────────────────────────────
 function InlineStatusSelector({
   currentStatus,
   onSelect
@@ -113,7 +179,7 @@ function InlineStatusSelector({
   )
 }
 
-// ─── Dynamic Qualification Answers Panel ───────────────────────────────────
+// ─── Dynamic Questionnaire Answers Panel ───────────────────────────────────
 function QualificationPanel({ answers }: { answers: Record<string, any> }) {
   const entries = Object.entries(answers)
   if (entries.length === 0) return null
@@ -129,14 +195,14 @@ function QualificationPanel({ answers }: { answers: Record<string, any> }) {
       }}>
         <ClipboardList size={13} color="#6366f1" />
         <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#6366f1', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          Form Responses & Lead Questionnaire
+          Form Responses & Qualification Answers
         </span>
         <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-          {entries.length} captured field{entries.length !== 1 ? 's' : ''}
+          {entries.length} field{entries.length !== 1 ? 's' : ''} captured
         </span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
-        {entries.map(([key, val], i) => (
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+        {entries.map(([key, val]) => (
           <div key={key} style={{
             padding: '0.625rem 0.875rem',
             borderRight: '1px solid var(--border-default)',
@@ -174,24 +240,24 @@ function LeadRow({
   return (
     <>
       <tr style={{ borderTop: '1px solid var(--border-default)', transition: 'background 0.1s' }}>
-        {/* Lead identity */}
+        {/* 1. Lead Identity & Contact */}
         <td style={{ padding: '0.875rem 1rem' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.625rem' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
             <div style={{
-              width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+              width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
               background: `${cfg.color}18`, color: cfg.color,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.7rem', fontWeight: 700
+              fontSize: '0.75rem', fontWeight: 800, border: `1px solid ${cfg.color}30`
             }}>
               {(lead.client_name || lead.name || 'L').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
             </div>
             <div style={{ minWidth: 0 }}>
-              <p style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--text-primary)', margin: 0, whiteSpace: 'nowrap' }}>
+              <p style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', margin: 0, whiteSpace: 'nowrap' }}>
                 {lead.client_name || lead.name}
               </p>
               <div style={{ display: 'flex', gap: '0.625rem', marginTop: '3px', flexWrap: 'wrap' }}>
                 <a href={`tel:${lead.phone}`} style={{
-                  fontSize: '0.75rem', color: '#6366f1', textDecoration: 'none',
+                  fontSize: '0.78rem', color: '#6366f1', textDecoration: 'none',
                   display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 600
                 }}>
                   <Phone size={11} /> {lead.phone}
@@ -202,19 +268,28 @@ function LeadRow({
                   </span>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '4px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                  <RadioTower size={10} /> {lead.platform || 'Facebook'}
-                </span>
-                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-                  {formatDate(lead.created_at, 'dd MMM yyyy')}
-                </span>
-              </div>
             </div>
           </div>
         </td>
 
-        {/* Program / Industry */}
+        {/* 2. Platform (FB / IG) */}
+        <td style={{ padding: '0.875rem 0.75rem' }}>
+          <PlatformBadge platform={lead.platform || lead.source} />
+        </td>
+
+        {/* 3. Inbound Date & Time */}
+        <td style={{ padding: '0.875rem 0.75rem', whiteSpace: 'nowrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              {formatDate(lead.created_at, 'dd MMM yyyy')}
+            </span>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '3px', marginTop: '2px' }}>
+              <Clock size={10} /> {formatDate(lead.created_at, 'hh:mm a')}
+            </span>
+          </div>
+        </td>
+
+        {/* 4. Course / Industry */}
         <td style={{ padding: '0.875rem 0.75rem' }}>
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: '4px',
@@ -226,7 +301,7 @@ function LeadRow({
           </span>
         </td>
 
-        {/* Dynamic Form Responses */}
+        {/* 5. Dynamic Form Responses */}
         <td style={{ padding: '0.875rem 0.75rem' }}>
           {qualCount === 0 ? (
             <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Standard Form</span>
@@ -235,9 +310,9 @@ function LeadRow({
               onClick={() => setExpanded(e => !e)}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: '5px',
-                fontSize: '0.72rem', fontWeight: 600, padding: '3px 9px',
-                borderRadius: '6px', background: 'rgba(6,182,212,0.08)', color: '#06b6d4',
-                border: '1px solid rgba(6,182,212,0.2)', cursor: 'pointer'
+                fontSize: '0.72rem', fontWeight: 700, padding: '3px 9px',
+                borderRadius: '6px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4',
+                border: '1px solid rgba(6,182,212,0.25)', cursor: 'pointer'
               }}
             >
               <ClipboardList size={11} />
@@ -247,7 +322,7 @@ function LeadRow({
           )}
         </td>
 
-        {/* Call Status Selector */}
+        {/* 6. Call Status */}
         <td style={{ padding: '0.875rem 0.75rem' }}>
           <InlineStatusSelector
             currentStatus={lead.status}
@@ -255,7 +330,7 @@ function LeadRow({
           />
         </td>
 
-        {/* Followups */}
+        {/* 7. Followups */}
         <td style={{ padding: '0.875rem 0.75rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
             <Activity size={12} color="var(--text-muted)" />
@@ -268,16 +343,16 @@ function LeadRow({
           )}
         </td>
 
-        {/* Assigned To (Admin only) */}
+        {/* 8. Assigned To (Admin only) */}
         {isAdmin && (
           <td style={{ padding: '0.875rem 0.75rem' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
               {lead.assigned_to_profile?.full_name || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Unassigned</span>}
             </span>
           </td>
         )}
 
-        {/* Actions */}
+        {/* 9. Actions */}
         <td style={{ padding: '0.875rem 1rem' }}>
           <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
             <button
@@ -331,10 +406,10 @@ function LeadRow({
         </td>
       </tr>
 
-      {/* Expandable row for qualification answers */}
+      {/* Expandable row for dynamic questionnaire */}
       {expanded && qualCount > 0 && (
         <tr>
-          <td colSpan={isAdmin ? 7 : 6} style={{ padding: '0 1rem 0.875rem', background: 'var(--bg-surface)' }}>
+          <td colSpan={isAdmin ? 9 : 8} style={{ padding: '0 1rem 0.875rem', background: 'var(--bg-surface)' }}>
             <QualificationPanel answers={qual} />
           </td>
         </tr>
@@ -430,20 +505,23 @@ function FollowupPanel({
             width: 40, height: 40, borderRadius: '10px', flexShrink: 0,
             background: `${currentCfg.color}18`, color: currentCfg.color,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '0.75rem', fontWeight: 700
+            fontSize: '0.75rem', fontWeight: 800, border: `1px solid ${currentCfg.color}30`
           }}>
             {(lead.client_name || lead.name || 'L').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
           </div>
           <div style={{ flex: 1 }}>
-            <h3 style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--text-primary)', margin: 0 }}>
-              {lead.client_name || lead.name}
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <h3 style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--text-primary)', margin: 0 }}>
+                {lead.client_name || lead.name}
+              </h3>
+              <PlatformBadge platform={lead.platform || lead.source} />
+            </div>
             <div style={{ display: 'flex', gap: '0.75rem', marginTop: '4px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px' }}>
                 <Phone size={11} /> {lead.phone}
               </span>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                <Layers size={11} /> {lead.industry || lead.category}
+                <Clock size={11} /> {formatDate(lead.created_at, 'dd MMM, hh:mm a')}
               </span>
             </div>
             <div style={{ marginTop: '6px' }}>
@@ -469,7 +547,7 @@ function FollowupPanel({
         {/* Scrollable body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
-          {/* Dynamic Qualification Answers from Pabbly */}
+          {/* Dynamic Questionnaire Responses */}
           {qualEntries.length > 0 && (
             <section>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.625rem' }}>
@@ -502,7 +580,7 @@ function FollowupPanel({
             }}>
               <PhoneCall size={14} color="#6366f1" />
               <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Update Status & Log Outcome (Followup #{(lead.followup_count || 0) + 1})
+                Update Call Status (Followup #{(lead.followup_count || 0) + 1})
               </span>
             </div>
             <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
@@ -537,7 +615,7 @@ function FollowupPanel({
                 </label>
                 <textarea
                   rows={3}
-                  placeholder="Enter call outcome, student requirements, objections..."
+                  placeholder="Enter customer response, student needs, objections..."
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
                   style={{
@@ -646,7 +724,7 @@ function FollowupPanel({
   )
 }
 
-// ─── Main Component ─────────────────────────────────────────────────────────
+// ─── Main LeadsSection Component ──────────────────────────────────────────
 export default function LeadsSection({ profile }: Props) {
   const router = useRouter()
   const [leads, setLeads] = useState<Lead[]>([])
@@ -654,6 +732,10 @@ export default function LeadsSection({ profile }: Props) {
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterIndustry, setFilterIndustry] = useState('all')
+  const [filterPlatform, setFilterPlatform] = useState('all')
+  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'>('all')
+  const [customStartDate, setCustomStartDate] = useState('')
+  const [customEndDate, setCustomEndDate] = useState('')
 
   const [showModal, setShowModal] = useState(false)
   const [editLead, setEditLead] = useState<Lead | null>(null)
@@ -687,7 +769,6 @@ export default function LeadsSection({ profile }: Props) {
 
   // Direct quick status change handler
   const handleQuickStatusChange = async (leadId: string, newStatus: string) => {
-    // Optimistic UI update
     setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status: newStatus } : l))
 
     const token = getToken()
@@ -698,7 +779,7 @@ export default function LeadsSection({ profile }: Props) {
         body: JSON.stringify({ status: newStatus })
       })
       if (!res.ok) {
-        fetchLeads() // Rollback on error
+        fetchLeads()
       }
     } catch (err) {
       fetchLeads()
@@ -768,19 +849,57 @@ export default function LeadsSection({ profile }: Props) {
     window.open(`https://api.whatsapp.com/send?phone=${encodeURIComponent(lead.phone)}&text=${encodeURIComponent(msg)}`, '_blank')
   }
 
+  // Filter leads with Date & Multi-attribute filtering
+  const filtered = useMemo(() => {
+    const now = new Date()
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    const yesterdayStart = todayStart - 86400000
+    const weekStart = todayStart - 7 * 86400000
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+
+    return leads.filter(l => {
+      const nameToMatch = (l.client_name || l.name || '').toLowerCase()
+      const matchSearch = nameToMatch.includes(search.toLowerCase()) || l.phone.includes(search) || (l.email || '').toLowerCase().includes(search.toLowerCase())
+      const matchStatus = filterStatus === 'all' || l.status === filterStatus
+      const matchIndustry = filterIndustry === 'all' || (l.industry || l.category) === filterIndustry
+      
+      const p = (l.platform || l.source || '').toLowerCase()
+      let matchPlatform = true
+      if (filterPlatform === 'fb') matchPlatform = p.includes('fb') || p.includes('facebook')
+      else if (filterPlatform === 'ig') matchPlatform = p.includes('ig') || p.includes('instagram')
+      else if (filterPlatform === 'web') matchPlatform = p.includes('web') || p.includes('site')
+
+      // Date Filtering
+      const leadTime = new Date(l.created_at).getTime()
+      let matchDate = true
+      if (dateFilter === 'today') {
+        matchDate = leadTime >= todayStart
+      } else if (dateFilter === 'yesterday') {
+        matchDate = leadTime >= yesterdayStart && leadTime < todayStart
+      } else if (dateFilter === 'week') {
+        matchDate = leadTime >= weekStart
+      } else if (dateFilter === 'month') {
+        matchDate = leadTime >= monthStart
+      } else if (dateFilter === 'custom') {
+        if (customStartDate) {
+          matchDate = matchDate && leadTime >= new Date(customStartDate).getTime()
+        }
+        if (customEndDate) {
+          const endD = new Date(customEndDate)
+          endD.setHours(23, 59, 59, 999)
+          matchDate = matchDate && leadTime <= endD.getTime()
+        }
+      }
+
+      return matchSearch && matchStatus && matchIndustry && matchPlatform && matchDate
+    })
+  }, [leads, search, filterStatus, filterIndustry, filterPlatform, dateFilter, customStartDate, customEndDate])
+
   // Computed metrics
   const total = leads.length
   const enrolled = leads.filter(l => l.status === 'closed_won').length
   const pipeline = leads.filter(l => ['interested', 'visit_scheduled', 'busy_callback'].includes(l.status)).length
   const convRate = total > 0 ? Math.round((enrolled / total) * 100) : 0
-
-  const filtered = leads.filter(l => {
-    const nameToMatch = (l.client_name || l.name || '').toLowerCase()
-    const matchSearch = nameToMatch.includes(search.toLowerCase()) || l.phone.includes(search) || (l.email || '').toLowerCase().includes(search.toLowerCase())
-    const matchStatus = filterStatus === 'all' || l.status === filterStatus
-    const matchIndustry = filterIndustry === 'all' || (l.industry || l.category) === filterIndustry
-    return matchSearch && matchStatus && matchIndustry
-  })
 
   const isAdmin = profile.role === 'admin'
 
@@ -794,7 +913,7 @@ export default function LeadsSection({ profile }: Props) {
             {isAdmin ? 'Inbound Leads & Pipeline' : 'My Assigned Leads'}
           </h1>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Real-time Facebook lead capture, dynamic questionnaire answers, and call timeline
+            Real-time lead capture, dynamic questionnaire answers, and segregated date follow-up tracking
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.625rem' }}>
@@ -837,6 +956,58 @@ export default function LeadsSection({ profile }: Props) {
         ))}
       </div>
 
+      {/* ── Date Segregation & Quick Filter Pills ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', background: 'var(--bg-surface)', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid var(--border-default)' }}>
+        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '4px', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: '0.25rem' }}>
+          <CalendarDays size={13} color="#6366f1" /> Filter Date:
+        </span>
+
+        {[
+          { id: 'all', label: 'All Dates' },
+          { id: 'today', label: 'Today' },
+          { id: 'yesterday', label: 'Yesterday' },
+          { id: 'week', label: 'Last 7 Days' },
+          { id: 'month', label: 'This Month' },
+          { id: 'custom', label: 'Custom Range' },
+        ].map(pill => (
+          <button
+            key={pill.id}
+            onClick={() => setDateFilter(pill.id as any)}
+            style={{
+              padding: '4px 12px', borderRadius: '8px', cursor: 'pointer',
+              border: dateFilter === pill.id ? '1px solid #6366f1' : '1px solid var(--border-default)',
+              background: dateFilter === pill.id ? 'rgba(99,102,241,0.15)' : 'transparent',
+              color: dateFilter === pill.id ? '#6366f1' : 'var(--text-secondary)',
+              fontSize: '0.75rem', fontWeight: dateFilter === pill.id ? 700 : 500,
+              transition: 'all 0.15s'
+            }}
+          >
+            {pill.label}
+          </button>
+        ))}
+
+        {/* Custom date range picker if 'custom' is selected */}
+        {dateFilter === 'custom' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
+            <input
+              type="date"
+              value={customStartDate}
+              onChange={e => setCustomStartDate(e.target.value)}
+              className="form-input"
+              style={{ height: '30px', fontSize: '0.75rem', padding: '2px 8px' }}
+            />
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>to</span>
+            <input
+              type="date"
+              value={customEndDate}
+              onChange={e => setCustomEndDate(e.target.value)}
+              className="form-input"
+              style={{ height: '30px', fontSize: '0.75rem', padding: '2px 8px' }}
+            />
+          </div>
+        )}
+      </div>
+
       {/* ── Search & Filter Controls ── */}
       <div style={{ display: 'flex', gap: '0.625rem', flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', flex: 1, minWidth: '220px' }}>
@@ -850,28 +1021,45 @@ export default function LeadsSection({ profile }: Props) {
           />
         </div>
 
+        {/* Platform Filter (All / FB / IG) */}
+        <div style={{ position: 'relative' }}>
+          <select
+            value={filterPlatform}
+            onChange={e => setFilterPlatform(e.target.value)}
+            className="form-select"
+            style={{ height: '36px', fontSize: '0.82rem', minWidth: '130px' }}
+          >
+            <option value="all">All Sources</option>
+            <option value="fb">FB (Facebook)</option>
+            <option value="ig">IG (Instagram)</option>
+            <option value="web">Website</option>
+          </select>
+        </div>
+
+        {/* Call Status Filter */}
         <div style={{ position: 'relative' }}>
           <Filter size={13} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
           <select
             value={filterStatus}
             onChange={e => setFilterStatus(e.target.value)}
             className="form-select"
-            style={{ paddingLeft: '28px', height: '36px', fontSize: '0.82rem', minWidth: '160px' }}
+            style={{ paddingLeft: '28px', height: '36px', fontSize: '0.82rem', minWidth: '150px' }}
           >
-            <option value="all">All Call Statuses</option>
+            <option value="all">All Statuses</option>
             {STATUS_CONFIG.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
         </div>
 
+        {/* Industry / Course Filter */}
         <div style={{ position: 'relative' }}>
           <Layers size={13} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
           <select
             value={filterIndustry}
             onChange={e => setFilterIndustry(e.target.value)}
             className="form-select"
-            style={{ paddingLeft: '28px', height: '36px', fontSize: '0.82rem', minWidth: '160px' }}
+            style={{ paddingLeft: '28px', height: '36px', fontSize: '0.82rem', minWidth: '150px' }}
           >
-            <option value="all">All Courses / Programs</option>
+            <option value="all">All Courses</option>
             {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
           </select>
         </div>
@@ -891,7 +1079,7 @@ export default function LeadsSection({ profile }: Props) {
                 <TrendingUp size={24} />
               </div>
               <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                {total === 0 ? 'No leads received yet' : 'No leads match your filter'}
+                {total === 0 ? 'No leads received yet' : 'No leads match your filter criteria'}
               </p>
             </div>
           ) : (
@@ -900,9 +1088,11 @@ export default function LeadsSection({ profile }: Props) {
                 <thead>
                   <tr>
                     <th>Lead Name & Contact</th>
+                    <th>Source</th>
+                    <th>Date & Time</th>
                     <th>Program</th>
                     <th>Form Responses</th>
-                    <th>Status</th>
+                    <th>Call Status</th>
                     <th>Followups</th>
                     {isAdmin && <th>Assigned To</th>}
                     <th>Actions</th>
@@ -928,7 +1118,7 @@ export default function LeadsSection({ profile }: Props) {
           {filtered.length > 0 && (
             <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid var(--border-default)', background: 'var(--bg-surface)' }}>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Showing {filtered.length} of {total} total leads
+                Showing {filtered.length} of {total} total leads ({dateFilter === 'all' ? 'All Dates' : dateFilter.toUpperCase()})
               </span>
             </div>
           )}
@@ -1018,13 +1208,17 @@ export default function LeadsSection({ profile }: Props) {
 
               <div className="grid-2">
                 <div className="form-group">
-                  <label className="form-label">Lead Source</label>
+                  <label className="form-label">Lead Platform</label>
                   <select
                     className="form-select"
-                    value={form.source}
-                    onChange={e => setForm({ ...form, source: e.target.value })}
+                    value={form.platform}
+                    onChange={e => setForm({ ...form, platform: e.target.value, source: e.target.value })}
                   >
-                    {SOURCES.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+                    <option value="Facebook">FB (Facebook)</option>
+                    <option value="Instagram">IG (Instagram)</option>
+                    <option value="Website">Website</option>
+                    <option value="Walk In">Walk In</option>
+                    <option value="Referral">Referral</option>
                   </select>
                 </div>
                 <div className="form-group">
