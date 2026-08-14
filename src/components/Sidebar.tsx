@@ -8,7 +8,6 @@ import {
   LayoutDashboard, CheckSquare, TrendingUp, Users,
   Bell, LogOut, BarChart3, ClipboardList, Clapperboard, Settings, Trophy, Calendar
 } from 'lucide-react'
-import PointsLeaderboard from './PointsLeaderboard'
 
 interface SidebarProps {
   profile: Profile
@@ -72,26 +71,26 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
     router.push('/')
   }
 
-  // ---- THEMING TOKENS ----
-  const sidebarBg = isLight ? '#ffffff' : 'var(--bg-surface)'
-  const sidebarBorderColor = isLight ? '#e2e8f0' : 'var(--border-default)'
-  const sectionLabelColor = isLight ? '#94a3b8' : 'var(--text-muted)'
-  const profileNameColor = isLight ? '#0f172a' : 'var(--text-primary)'
-  const profileRoleColor = isLight ? '#64748b' : 'var(--text-muted)'
-  const logoutBtnColor = isLight ? '#94a3b8' : 'var(--text-muted)'
+  // ---- SIGNATURE GREEN THEME TOKENS ----
+  const sidebarBg = isLight ? '#0e3d35' : 'var(--bg-surface)'
+  const sidebarBorderColor = isLight ? 'rgba(255,255,255,0.08)' : 'var(--border-default)'
+  const sectionLabelColor = isLight ? 'rgba(255,255,255,0.45)' : 'var(--text-muted)'
+  const profileNameColor = isLight ? '#ffffff' : 'var(--text-primary)'
+  const profileRoleColor = isLight ? 'rgba(255,255,255,0.55)' : 'var(--text-muted)'
+  const logoutBtnColor = isLight ? 'rgba(255,255,255,0.65)' : 'var(--text-muted)'
 
   const getNavItemStyle = (id: string) => {
     const isActive = activeSection === id
     if (isLight) {
       return {
-        background: isActive ? '#ecfdf5' : 'transparent',
-        color: isActive ? '#059669' : '#475569',
-        border: `1px solid ${isActive ? '#a7f3d0' : 'transparent'}`,
+        background: isActive ? 'rgba(255, 179, 63, 0.18)' : 'transparent',
+        color: isActive ? '#ffb33f' : 'rgba(255, 255, 255, 0.78)',
+        border: `1px solid ${isActive ? 'rgba(255, 179, 63, 0.3)' : 'transparent'}`,
         fontWeight: isActive ? 700 : 500
       }
     }
     return {
-      background: isActive ? 'rgba(99,102,241,0.12)' : 'transparent',
+      background: isActive ? 'rgba(99,102,241,0.14)' : 'transparent',
       color: isActive ? '#818cf8' : 'var(--text-secondary)',
       border: `1px solid ${isActive ? 'rgba(99,102,241,0.25)' : 'transparent'}`,
       fontWeight: isActive ? 700 : 500
@@ -113,10 +112,11 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
         top: 0,
         left: 0,
         zIndex: 50,
-        overflow: 'hidden'
+        overflow: 'hidden',
+        boxShadow: isLight ? '4px 0 24px rgba(14, 61, 53, 0.25)' : 'none'
       }}
     >
-      {/* ── Logo Header (Height 64px to perfectly match Topbar) ── */}
+      {/* ── Logo Header (Height 64px - Aligned perfectly with Topbar) ── */}
       <div
         style={{
           height: '64px',
@@ -135,31 +135,40 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
               width: 38,
               height: 38,
               borderRadius: '10px',
-              background: 'linear-gradient(135deg, #10b981, #047857)',
+              background: 'linear-gradient(135deg, #ffb33f, #d97706)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: 'white',
+              color: '#0a1f1c',
               fontWeight: 900,
               fontSize: '0.88rem',
-              boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+              boxShadow: '0 2px 8px rgba(255, 179, 63, 0.3)',
               cursor: 'pointer'
             }}
           >
             RP
           </div>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-            <img
-              src="/logo.png"
-              alt="RushiPandit Logo"
-              style={{
-                height: '36px',
-                maxWidth: '180px',
-                objectFit: 'contain',
-                display: 'block'
-              }}
-            />
+          <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+            <div style={{
+              background: isLight ? 'rgba(255, 255, 255, 0.95)' : 'transparent',
+              padding: isLight ? '4px 10px' : '0',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              boxShadow: isLight ? '0 2px 8px rgba(0,0,0,0.12)' : 'none'
+            }}>
+              <img
+                src="/logo.png"
+                alt="RushiPandit Logo"
+                style={{
+                  height: '32px',
+                  maxWidth: '160px',
+                  objectFit: 'contain',
+                  display: 'block'
+                }}
+              />
+            </div>
           </div>
         )}
       </div>
@@ -168,12 +177,12 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
       <nav
         style={{
           flex: 1,
-          padding: collapsed ? '0.75rem 0.5rem' : '0.875rem 0.75rem',
+          padding: collapsed ? '0.75rem 0.5rem' : '1rem 0.75rem',
           overflowY: 'auto',
           overflowX: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          gap: '3px'
+          gap: '4px'
         }}
       >
         {!collapsed && (
@@ -181,12 +190,12 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
             style={{
               color: sectionLabelColor,
               paddingLeft: '0.625rem',
-              marginBottom: '0.375rem',
-              fontSize: '0.68rem',
+              marginBottom: '0.5rem',
+              fontSize: '0.7rem',
               fontWeight: 800,
               textTransform: 'uppercase',
               letterSpacing: '0.08em',
-              margin: '0.25rem 0 0.375rem 0'
+              margin: '0.25rem 0 0.5rem 0'
             }}
           >
             Menu
@@ -201,24 +210,24 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
               title={collapsed ? label : undefined}
               style={{
                 width: '100%',
-                height: collapsed ? '42px' : '38px',
-                borderRadius: '8px',
+                height: collapsed ? '44px' : '42px',
+                borderRadius: '9px',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: collapsed ? 'center' : 'flex-start',
-                padding: collapsed ? '0' : '0 0.75rem',
-                gap: '0.625rem',
+                padding: collapsed ? '0' : '0 0.875rem',
+                gap: '0.75rem',
                 position: 'relative',
                 transition: 'all 0.15s ease',
                 ...getNavItemStyle(id),
               }}
               onClick={() => onNavigate(id)}
             >
-              <Icon size={17} style={{ flexShrink: 0 }} />
+              <Icon size={18} style={{ flexShrink: 0 }} />
 
               {!collapsed && (
-                <span style={{ flex: 1, textAlign: 'left', fontSize: '0.82rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <span style={{ flex: 1, textAlign: 'left', fontSize: '0.88rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {label}
                 </span>
               )}
@@ -228,13 +237,13 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
                   position: collapsed ? 'absolute' : 'static',
                   top: collapsed ? '3px' : 'auto',
                   right: collapsed ? '6px' : 'auto',
-                  background: isLight ? '#10b981' : 'var(--brand-primary)',
-                  color: 'white',
-                  fontSize: '0.62rem',
+                  background: isLight ? '#ffb33f' : 'var(--brand-primary)',
+                  color: isLight ? '#0a1f1c' : 'white',
+                  fontSize: '0.65rem',
                   fontWeight: 800,
-                  padding: '1px 5px',
+                  padding: '2px 6px',
                   borderRadius: '99px',
-                  minWidth: '16px',
+                  minWidth: '18px',
                   textAlign: 'center',
                 }}>
                   {unreadCount > 99 ? '99+' : unreadCount}
@@ -245,23 +254,16 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
         })}
       </nav>
 
-      {/* ── Admin Points Leaderboard (Expanded mode only) ── */}
-      {!collapsed && profile.role === 'admin' && (
-        <div style={{ padding: '0 0.75rem 0.5rem' }}>
-          <PointsLeaderboard isLight={isLight} />
-        </div>
-      )}
-
       {/* ── User Profile Footer (Height ~64px) ── */}
       <div
         style={{
           borderTop: `1px solid ${sidebarBorderColor}`,
-          padding: collapsed ? '0.75rem 0.5rem' : '0.75rem 1rem',
+          padding: collapsed ? '0.75rem 0.5rem' : '0.875rem 1rem',
           display: 'flex',
           alignItems: 'center',
           justifyContent: collapsed ? 'center' : 'space-between',
           flexShrink: 0,
-          background: isLight ? '#f8fafc' : 'var(--bg-card)'
+          background: isLight ? 'rgba(0, 0, 0, 0.15)' : 'var(--bg-card)'
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', minWidth: 0, position: 'relative' }}>
@@ -270,27 +272,29 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
           ) : (
             <div style={{
               width: 34, height: 34, borderRadius: '50%',
-              background: 'linear-gradient(135deg, #10b981, #047857)',
-              color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: isLight ? 'rgba(255, 179, 63, 0.25)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              color: isLight ? '#ffb33f' : 'white',
+              border: isLight ? '1px solid rgba(255, 179, 63, 0.4)' : 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: '0.75rem', fontWeight: 800, flexShrink: 0
             }}>
               {getInitials(profile.full_name)}
             </div>
           )}
 
-          {/* Active online status indicator */}
+          {/* Active status indicator green dot */}
           <div style={{
             position: 'absolute', bottom: '-1px', left: collapsed ? '22px' : '23px',
             width: '9px', height: '9px', borderRadius: '50%', background: '#10b981',
-            border: `2px solid ${isLight ? '#ffffff' : 'var(--bg-surface)'}`
+            border: `2px solid ${isLight ? '#0e3d35' : 'var(--bg-surface)'}`
           }} />
 
           {!collapsed && (
             <div style={{ minWidth: 0 }}>
-              <p style={{ margin: 0, fontSize: '0.8rem', fontWeight: 700, color: profileNameColor, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <p style={{ margin: 0, fontSize: '0.82rem', fontWeight: 700, color: profileNameColor, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {profile.full_name}
               </p>
-              <p style={{ margin: 0, fontSize: '0.68rem', color: profileRoleColor, textTransform: 'capitalize' }}>
+              <p style={{ margin: 0, fontSize: '0.7rem', color: profileRoleColor, textTransform: 'capitalize' }}>
                 {profile.role === 'admin' ? 'Administrator' : profile.designation || 'Staff Portal'}
               </p>
             </div>
