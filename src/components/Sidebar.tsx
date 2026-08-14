@@ -48,7 +48,7 @@ const adminNavItems = [
 
 const isSalesEmployee = (p: Profile) => p.department?.toLowerCase() === 'sales'
 
-export default function Sidebar({ profile, activeSection, onNavigate, isOpen, unreadCount }: SidebarProps) {
+export default function Sidebar({ profile, activeSection, onNavigate, isOpen, collapsed, unreadCount }: SidebarProps) {
   const router = useRouter()
   const { theme } = useTheme()
   const isLight = theme === 'light'
