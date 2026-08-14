@@ -852,22 +852,6 @@ export default function LeadsSection({ profile }: Props) {
     window.open(`https://api.whatsapp.com/send?phone=${encodeURIComponent(lead.phone)}&text=${encodeURIComponent(msg)}`, '_blank')
   }
 
-  const handleQuickStatusChange = async (id: string, newStatus: string) => {
-    // Optimistic local state update
-    setLeads(prev => prev.map(l => l.id === id ? { ...l, status: newStatus } : l))
-    const token = getToken()
-    try {
-      await fetch(`/api/leads/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status: newStatus })
-      })
-      fetchLeads()
-    } catch (e) {
-      console.error('Quick status update error:', e)
-    }
-  }
-
   // Filter leads with Date & Multi-attribute filtering
   const filtered = useMemo(() => {
     const now = new Date()
