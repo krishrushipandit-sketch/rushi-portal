@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
     )
 
     const deliverables = await query<any>(
-      'SELECT id, client_id, content_type, monthly_target FROM client_deliverables'
+      'SELECT DISTINCT ON (client_id, content_type) id, client_id, content_type, monthly_target FROM client_deliverables ORDER BY client_id, content_type, id ASC'
     )
 
     // Get all progress logs for this month — include id for deletion
