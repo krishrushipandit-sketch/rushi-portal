@@ -1,7 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Bell, Menu, Sun, Moon, LogOut, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import {
+  Bell, Sun, Moon, LogOut, Maximize2, Minimize2,
+  PanelLeft, Search, Plus, Sparkles
+} from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { getInitials } from '@/lib/utils'
@@ -26,6 +29,7 @@ export default function Topbar({
   const router = useRouter()
   const isLight = theme === 'light'
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [searchValue, setSearchValue] = useState('')
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -54,59 +58,125 @@ export default function Topbar({
   const greeting = greetingHour < 12 ? 'Good morning' : greetingHour < 17 ? 'Good afternoon' : 'Good evening'
 
   return (
-    <header className="topbar">
-      {/* Left side: Toggle Sidebar & Greeting */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+    <header
+      className="topbar"
+      style={{
+        height: '64px',
+        padding: '0 1.5rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        background: 'var(--bg-card)',
+        borderBottom: '1px solid var(--border-default)',
+        position: 'sticky',
+        top: 0,
+        zIndex: 40,
+        backdropFilter: 'blur(20px)'
+      }}
+    >
+      {/* Left: Sidebar Toggle + Global Search */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, maxWidth: '560px' }}>
+        {/* Toggle Sidebar Icon Button (Agnochat style) */}
         <button
           onClick={onToggleSidebar}
-          className="btn btn-ghost"
           style={{
-            padding: '0.4rem 0.6rem',
+            width: '38px',
+            height: '38px',
+            borderRadius: '10px',
+            border: '1px solid var(--border-default)',
+            background: 'var(--bg-surface)',
+            color: 'var(--text-secondary)',
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
-            borderRadius: '8px',
-            color: 'var(--text-secondary)'
+            justifyContent: 'center',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            flexShrink: 0
           }}
-          title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar to Full Width'}
+          title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse to Mini Rail'}
         >
-          {sidebarCollapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
-          <span className="hidden-mobile" style={{ fontSize: '0.75rem', fontWeight: 600 }}>
-            {sidebarCollapsed ? 'Expand' : 'Collapse'}
-          </span>
+          <PanelLeft size={18} />
         </button>
 
-        <div className="hidden-mobile" style={{ borderLeft: '1px solid var(--border-default)', paddingLeft: '0.875rem' }}>
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>{greeting},</p>
-          <h2 style={{ fontSize: '0.95rem', fontWeight: 800, lineHeight: 1.2, margin: 0, color: 'var(--text-primary)' }}>
-            {profile.full_name}
-          </h2>
+        {/* Global Search Bar with Ctrl+K badge */}
+        <div
+          style={{
+            flex: 1,
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-default)',
+            borderRadius: '10px',
+            padding: '0 0.75rem',
+            height: '38px'
+          }}
+        >
+          <Search size={15} style={{ color: 'var(--text-muted)', marginRight: '8px', flexShrink: 0 }} />
+          <input
+            type="text"
+            placeholder="Search leads, candidates, tasks, reports..."
+            value={searchValue}
+            onChange={e => setSearchValue(e.target.value)}
+            style={{
+              flex: 1,
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              fontSize: '0.82rem',
+              color: 'var(--text-primary)'
+            }}
+          />
+          <span
+            className="hidden-mobile"
+            style={{
+              fontSize: '0.68rem',
+              fontWeight: 700,
+              color: 'var(--text-muted)',
+              background: 'var(--bg-elevated)',
+              padding: '2px 6px',
+              borderRadius: '6px',
+              border: '1px solid var(--border-default)',
+              letterSpacing: '0.04em'
+            }}
+          >
+            ⌘K
+          </span>
         </div>
       </div>
 
-      {/* Right side: Actions, Theme, Fullscreen, Profile */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+      {/* Right Side: Quick Stats, Theme, Fullscreen, Profile */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
         {/* Role Badge */}
-        <span className="badge hidden-mobile" style={{
-          background: profile.role === 'admin' ? 'rgba(99, 102, 241, 0.12)' : 'rgba(16, 185, 129, 0.12)',
-          color: profile.role === 'admin' ? '#6366f1' : '#16a34a',
-          border: `1px solid ${profile.role === 'admin' ? 'rgba(99, 102, 241, 0.25)' : 'rgba(16, 185, 129, 0.25)'}`,
-          fontWeight: 700
-        }}>
-          {profile.role === 'admin' ? 'Administrator' : profile.designation || 'Employee'}
+        <span
+          className="badge hidden-mobile"
+          style={{
+            background: profile.role === 'admin' ? 'rgba(99, 102, 241, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+            color: profile.role === 'admin' ? '#6366f1' : '#16a34a',
+            border: `1px solid ${profile.role === 'admin' ? 'rgba(99, 102, 241, 0.25)' : 'rgba(16, 185, 129, 0.25)'}`,
+            fontWeight: 700,
+            fontSize: '0.75rem',
+            padding: '4px 10px'
+          }}
+        >
+          {profile.role === 'admin' ? 'Administrator' : profile.designation || 'Staff Portal'}
         </span>
 
         {/* Fullscreen Toggle */}
         <button
           onClick={toggleFullscreen}
-          className="btn btn-ghost"
-          style={{ padding: '0.5rem', color: 'var(--text-secondary)', borderRadius: '8px' }}
-          title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+          style={{
+            width: '36px', height: '36px', borderRadius: '8px',
+            border: '1px solid var(--border-default)', background: 'var(--bg-surface)',
+            color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer'
+          }}
+          title={isFullscreen ? 'Exit Fullscreen' : 'Immersive Fullscreen (F11)'}
         >
-          {isFullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+          {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
         </button>
 
-        {/* Theme Toggle */}
+        {/* Theme Switcher Toggle */}
         <button
           onClick={toggleTheme}
           aria-label={isLight ? 'Switch to dark mode' : 'Switch to light mode'}
@@ -118,8 +188,7 @@ export default function Topbar({
             background: 'none',
             border: 'none',
             cursor: 'pointer',
-            padding: '4px',
-            borderRadius: '99px',
+            padding: '2px',
           }}
         >
           <Moon
@@ -128,8 +197,8 @@ export default function Topbar({
           />
           <div
             style={{
-              width: '44px',
-              height: '24px',
+              width: '42px',
+              height: '22px',
               borderRadius: '99px',
               background: isLight ? '#0e3d35' : '#1f2937',
               border: isLight ? '1px solid #0e3d35' : '1px solid rgba(255,255,255,0.1)',
@@ -142,9 +211,9 @@ export default function Topbar({
               style={{
                 position: 'absolute',
                 top: '2px',
-                left: isLight ? 'calc(100% - 20px)' : '2px',
-                width: '18px',
-                height: '18px',
+                left: isLight ? 'calc(100% - 19px)' : '2px',
+                width: '16px',
+                height: '16px',
                 borderRadius: '50%',
                 background: 'white',
                 boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
@@ -155,8 +224,8 @@ export default function Topbar({
               }}
             >
               {isLight
-                ? <Sun size={10} style={{ color: '#d97706' }} />
-                : <Moon size={10} style={{ color: '#6366f1' }} />
+                ? <Sun size={9} style={{ color: '#d97706' }} />
+                : <Moon size={9} style={{ color: '#6366f1' }} />
               }
             </div>
           </div>
@@ -166,15 +235,18 @@ export default function Topbar({
           />
         </button>
 
-        {/* Notification Bell */}
+        {/* Notifications Bell */}
         <button
           onClick={onNotificationsClick}
-          className="btn btn-ghost"
-          style={{ padding: '0.5rem', position: 'relative', borderRadius: '8px', color: 'var(--text-secondary)' }}
-          aria-label="Notifications"
+          style={{
+            width: '36px', height: '36px', borderRadius: '8px',
+            border: '1px solid var(--border-default)', background: 'var(--bg-surface)',
+            color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', position: 'relative'
+          }}
           title="Notifications"
         >
-          <Bell size={18} />
+          <Bell size={16} />
           {unreadCount > 0 && (
             <span className="notification-badge">
               {unreadCount > 9 ? '9+' : unreadCount}
@@ -182,11 +254,16 @@ export default function Topbar({
           )}
         </button>
 
-        {/* Profile Avatar */}
+        {/* Avatar */}
         {profile.avatar_url ? (
-          <img src={profile.avatar_url} alt="Profile" className="avatar avatar-sm" style={{ objectFit: 'cover', cursor: 'default' }} />
+          <img src={profile.avatar_url} alt="Profile" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
         ) : (
-          <div className="avatar avatar-sm" style={{ cursor: 'default' }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: '50%',
+            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+            color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '0.78rem', fontWeight: 800
+          }}>
             {getInitials(profile.full_name)}
           </div>
         )}
@@ -194,11 +271,15 @@ export default function Topbar({
         {/* Logout */}
         <button
           onClick={handleLogout}
-          className="btn btn-ghost"
+          style={{
+            width: '36px', height: '36px', borderRadius: '8px',
+            border: '1px solid var(--border-default)', background: 'var(--bg-surface)',
+            color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer'
+          }}
           title="Sign Out"
-          style={{ padding: '0.5rem', color: 'var(--text-muted)', borderRadius: '8px' }}
         >
-          <LogOut size={18} />
+          <LogOut size={16} />
         </button>
       </div>
     </header>

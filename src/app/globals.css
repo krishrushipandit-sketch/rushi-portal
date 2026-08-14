@@ -620,32 +620,33 @@ h1, h2, h3, h4, h5, h6 {
   height: 100vh;
   position: fixed;
   top: 0; left: 0;
-  width: 260px;
+  width: 250px;
   display: flex;
   flex-direction: column;
   z-index: 50;
-  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.sidebar.collapsed {
-  transform: translateX(-100%);
+.sidebar.collapsed-rail {
+  width: 68px !important;
 }
 
 .main-content {
   flex: 1;
-  margin-left: 260px;
+  margin-left: 250px;
   min-height: 100vh;
   background: var(--bg-base);
-  transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: margin-left 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .main-content.expanded {
-  margin-left: 0 !important;
+  margin-left: 68px !important;
 }
 
 .page-container {
-  padding: 2rem;
-  max-width: 1400px;
+  padding: 1.5rem 2rem;
+  max-width: 1440px;
+  margin: 0 auto;
 }
 
 .page-header {
