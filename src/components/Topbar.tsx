@@ -75,7 +75,7 @@ export default function Topbar({
       }}
     >
       {/* Left: Sidebar Toggle + Global Search */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, maxWidth: '560px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, maxWidth: '560px' }}>
         {/* Toggle Sidebar Icon Button (Agnochat style) */}
         <button
           onClick={onToggleSidebar}
@@ -100,6 +100,7 @@ export default function Topbar({
 
         {/* Global Search Bar with Ctrl+K badge */}
         <div
+          className="hidden-mobile"
           style={{
             flex: 1,
             position: 'relative',
@@ -128,7 +129,6 @@ export default function Topbar({
             }}
           />
           <span
-            className="hidden-mobile"
             style={{
               fontSize: '0.68rem',
               fontWeight: 700,
@@ -146,7 +146,7 @@ export default function Topbar({
       </div>
 
       {/* Right Side: Quick Stats, Theme, Fullscreen, Profile */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {/* Role Badge */}
         <span
           className="badge hidden-mobile"
@@ -165,6 +165,7 @@ export default function Topbar({
         {/* Fullscreen Toggle */}
         <button
           onClick={toggleFullscreen}
+          className="hidden-mobile"
           style={{
             width: '36px', height: '36px', borderRadius: '8px',
             border: '1px solid var(--border-default)', background: 'var(--bg-surface)',

@@ -62,12 +62,16 @@ export default function DashboardPage() {
     } catch { /* silent */ }
   }, [])
 
-  const toggleSidebar = () => {
-    setSidebarCollapsed(prev => {
-      const next = !prev
-      try { localStorage.setItem('rp-sidebar-collapsed', String(next)) } catch { /* silent */ }
-      return next
-    })
+  const handleToggleSidebar = () => {
+    if (typeof window !== 'undefined' && window.innerWidth <= 1024) {
+      setSidebarOpen(prev => !prev)
+    } else {
+      setSidebarCollapsed(prev => {
+        const next = !prev
+        try { localStorage.setItem('rp-sidebar-collapsed', String(next)) } catch { /* silent */ }
+        return next
+      })
+    }
   }
 
   const fetchProfile = useCallback(async () => {
@@ -228,7 +232,7 @@ export default function DashboardPage() {
           profile={profile}
           unreadCount={unreadCount}
           sidebarCollapsed={sidebarCollapsed}
-          onToggleSidebar={toggleSidebar}
+          onToggleSidebar={handleToggleSidebar}
           onNotificationsClick={() => setActiveSection('notifications')}
         />
         <div className="page-container animate-fade-in">

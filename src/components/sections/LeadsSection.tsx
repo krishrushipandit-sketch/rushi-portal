@@ -502,7 +502,7 @@ function FollowupPanel({
     >
       <div
         style={{
-          width: '100%', maxWidth: '520px', height: '100%',
+          width: '100%', maxWidth: 'min(520px, 100vw)', height: '100%',
           background: 'var(--bg-elevated)', display: 'flex', flexDirection: 'column',
           boxShadow: '-20px 0 60px rgba(0,0,0,0.5)',
           borderLeft: '1px solid var(--border-default)'
