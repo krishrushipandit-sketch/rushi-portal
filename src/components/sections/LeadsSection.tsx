@@ -731,69 +731,6 @@ function FollowupPanel({
   )
 }
 
-          {/* Followup History Timeline */}
-          <section>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-              <Activity size={14} color="var(--text-muted)" />
-              <h4 style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
-                Followup History Timeline
-              </h4>
-              {history.length > 0 && (
-                <span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                  {history.length} call{history.length !== 1 ? 's' : ''} logged
-                </span>
-              )}
-            </div>
-
-            {loading ? (
-              <div style={{ height: '80px', borderRadius: '10px', background: 'var(--bg-surface)' }} />
-            ) : history.length === 0 ? (
-              <div style={{ padding: '1.5rem', textAlign: 'center', borderRadius: '10px', border: '1px dashed var(--border-default)', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                No followups recorded yet
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-                {history.map((item, idx) => {
-                  const s = statusMap[item.call_status] || { color: 'var(--text-primary)', bg: 'var(--bg-surface)', label: item.call_status, icon: <CircleDot size={12} /> }
-                  return (
-                    <div key={item.id} style={{ display: 'flex', gap: '0.75rem', position: 'relative' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '20px', flexShrink: 0 }}>
-                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color, marginTop: '14px', flexShrink: 0, boxShadow: `0 0 0 3px ${s.color}20` }} />
-                        {idx < history.length - 1 && (
-                          <div style={{ width: '1px', flex: 1, background: 'var(--border-default)', margin: '4px 0' }} />
-                        )}
-                      </div>
-                      <div style={{
-                        flex: 1, borderRadius: '10px', border: '1px solid var(--border-default)',
-                        padding: '0.625rem 0.875rem', marginBottom: '0.5rem', background: 'var(--bg-surface)'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '4px' }}>
-                          <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: '99px', background: s.bg, color: s.color, border: `1px solid ${s.color}35` }}>
-                            {s.label}
-                          </span>
-                          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-                            {formatDate(item.completed_at, 'dd MMM, hh:mm a')}
-                          </span>
-                        </div>
-                        {item.notes && (
-                          <p style={{ fontSize: '0.78rem', color: 'var(--text-primary)', margin: '4px 0 0', lineHeight: '1.5' }}>{item.notes}</p>
-                        )}
-                        <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                          <User size={9} /> {item.sales_rep?.full_name || 'Sales Rep'} &nbsp;·&nbsp; Followup #{item.followup_number}
-                        </p>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </section>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ─── Main LeadsSection Component ──────────────────────────────────────────
 export default function LeadsSection({ profile }: Props) {
   const router = useRouter()
