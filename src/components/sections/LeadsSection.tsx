@@ -3,15 +3,13 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
-import { formatDate, timeAgo } from '@/lib/utils'
+import { formatDate } from '@/lib/utils'
 import {
   Plus, Search, X, Loader2, Phone, Mail, Edit2, Trash2,
   MessageSquare, PhoneCall, Clock, ChevronDown, ChevronRight,
-  User, Building2, Layers, RadioTower, Calendar, FileText,
-  SlidersHorizontal, ArrowUpDown, CircleDot, TrendingUp,
-  CheckCircle, XCircle, PhoneOff, PhoneMissed, Voicemail,
-  AlertCircle, Zap, MapPin, Activity, BarChart2, Filter,
-  ClipboardList, Send, RefreshCw, Check, CalendarDays, ArrowDownUp
+  User, Layers, CircleDot, TrendingUp, CheckCircle, XCircle,
+  PhoneOff, PhoneMissed, Voicemail, Zap, Calendar, Activity,
+  BarChart2, Filter, ClipboardList, Send, RefreshCw, CalendarDays
 } from 'lucide-react'
 
 interface Props { profile: Profile }
@@ -55,21 +53,21 @@ const STATUS_CONFIG: {
   id: string; label: string; color: string; bg: string;
   icon: React.ReactNode; group: 'active' | 'hot' | 'closed'
 }[] = [
-  { id: 'new',             label: 'New Lead',          color: '#6366f1', bg: 'rgba(99,102,241,0.08)',  icon: <CircleDot size={12} />,   group: 'active' },
-  { id: 'ringing',         label: 'Ringing',           color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',  icon: <Phone size={12} />,       group: 'active' },
-  { id: 'not_connected',   label: 'Not Connected',     color: '#ef4444', bg: 'rgba(239,68,68,0.08)',   icon: <PhoneOff size={12} />,    group: 'active' },
-  { id: 'switched_off',    label: 'Switched Off',      color: '#6b7280', bg: 'rgba(107,114,128,0.08)', icon: <PhoneMissed size={12} />, group: 'active' },
-  { id: 'not_logical',     label: 'Not Logical',       color: '#9ca3af', bg: 'rgba(156,163,175,0.08)', icon: <XCircle size={12} />,     group: 'closed' },
-  { id: 'busy_callback',   label: 'Busy / Callback',   color: '#8b5cf6', bg: 'rgba(139,92,246,0.08)',  icon: <Voicemail size={12} />,   group: 'active' },
-  { id: 'interested',      label: 'Interested',        color: '#06b6d4', bg: 'rgba(6,182,212,0.08)',   icon: <Zap size={12} />,         group: 'hot'    },
-  { id: 'visit_scheduled', label: 'Visit Scheduled',   color: '#ec4899', bg: 'rgba(236,72,153,0.08)',  icon: <Calendar size={12} />,    group: 'hot'    },
-  { id: 'closed_won',      label: 'Enrolled',          color: '#10b981', bg: 'rgba(16,185,129,0.08)',  icon: <CheckCircle size={12} />, group: 'closed' },
-  { id: 'closed_lost',     label: 'Lost',              color: '#dc2626', bg: 'rgba(220,38,38,0.08)',   icon: <XCircle size={12} />,     group: 'closed' },
+  { id: 'new',             label: 'New Lead',          color: '#4f46e5', bg: 'rgba(79,70,229,0.1)',  icon: <CircleDot size={12} />,   group: 'active' },
+  { id: 'ringing',         label: 'Ringing',           color: '#d97706', bg: 'rgba(217,119,6,0.1)',  icon: <Phone size={12} />,       group: 'active' },
+  { id: 'not_connected',   label: 'Not Connected',     color: '#dc2626', bg: 'rgba(220,38,38,0.1)',  icon: <PhoneOff size={12} />,    group: 'active' },
+  { id: 'switched_off',    label: 'Switched Off',      color: '#475569', bg: 'rgba(71,85,105,0.1)', icon: <PhoneMissed size={12} />, group: 'active' },
+  { id: 'not_logical',     label: 'Not Logical',       color: '#64748b', bg: 'rgba(100,116,139,0.1)', icon: <XCircle size={12} />,     group: 'closed' },
+  { id: 'busy_callback',   label: 'Busy / Callback',   color: '#7c3aed', bg: 'rgba(124,58,237,0.1)',  icon: <Voicemail size={12} />,   group: 'active' },
+  { id: 'interested',      label: 'Interested',        color: '#0284c7', bg: 'rgba(2,132,199,0.1)',   icon: <Zap size={12} />,         group: 'hot'    },
+  { id: 'visit_scheduled', label: 'Visit Scheduled',   color: '#db2777', bg: 'rgba(219,39,119,0.1)',  icon: <Calendar size={12} />,    group: 'hot'    },
+  { id: 'closed_won',      label: 'Enrolled',          color: '#16a34a', bg: 'rgba(22,163,74,0.1)',  icon: <CheckCircle size={12} />, group: 'closed' },
+  { id: 'closed_lost',     label: 'Lost',              color: '#b91c1c', bg: 'rgba(185,28,28,0.1)',   icon: <XCircle size={12} />,     group: 'closed' },
 ]
 
 const statusMap = STATUS_CONFIG.reduce((a, s) => ({ ...a, [s.id]: s }), {} as Record<string, typeof STATUS_CONFIG[0]>)
 
-// ─── Platform Brand Badges (FB / IG / Web) ─────────────────────────────────
+// ─── Platform Brand Badges (FB / IG / WEB) ─────────────────────────────────
 function PlatformBadge({ platform }: { platform?: string | null }) {
   const p = (platform || 'Facebook').toLowerCase()
 
@@ -77,12 +75,12 @@ function PlatformBadge({ platform }: { platform?: string | null }) {
     return (
       <span style={{
         display: 'inline-flex', alignItems: 'center', gap: '4px',
-        padding: '2px 7px', borderRadius: '5px',
+        padding: '3px 8px', borderRadius: '6px',
         background: 'rgba(24, 119, 242, 0.12)', color: '#1877F2',
-        border: '1px solid rgba(24, 119, 242, 0.25)',
-        fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.04em'
+        border: '1px solid rgba(24, 119, 242, 0.35)',
+        fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.04em'
       }}>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
           <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
         </svg>
         FB
@@ -94,12 +92,12 @@ function PlatformBadge({ platform }: { platform?: string | null }) {
     return (
       <span style={{
         display: 'inline-flex', alignItems: 'center', gap: '4px',
-        padding: '2px 7px', borderRadius: '5px',
+        padding: '3px 8px', borderRadius: '6px',
         background: 'rgba(228, 64, 95, 0.12)', color: '#E4405F',
-        border: '1px solid rgba(228, 64, 95, 0.25)',
-        fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.04em'
+        border: '1px solid rgba(228, 64, 95, 0.35)',
+        fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.04em'
       }}>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
           <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
         </svg>
         IG
@@ -107,34 +105,20 @@ function PlatformBadge({ platform }: { platform?: string | null }) {
     )
   }
 
-  if (p.includes('web') || p.includes('site')) {
-    return (
-      <span style={{
-        display: 'inline-flex', alignItems: 'center', gap: '4px',
-        padding: '2px 7px', borderRadius: '5px',
-        background: 'rgba(6, 182, 212, 0.12)', color: '#06b6d4',
-        border: '1px solid rgba(6, 182, 212, 0.25)',
-        fontSize: '0.68rem', fontWeight: 800
-      }}>
-        WEB
-      </span>
-    )
-  }
-
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: '4px',
-      padding: '2px 7px', borderRadius: '5px',
-      background: 'rgba(99, 102, 241, 0.1)', color: '#818cf8',
-      border: '1px solid rgba(99, 102, 241, 0.2)',
-      fontSize: '0.68rem', fontWeight: 800
+      padding: '3px 8px', borderRadius: '6px',
+      background: 'var(--bg-surface)', color: 'var(--text-secondary)',
+      border: '1px solid var(--border-default)',
+      fontSize: '0.72rem', fontWeight: 800
     }}>
-      {platform?.toUpperCase() || 'FB'}
+      {platform?.toUpperCase() || 'WEB'}
     </span>
   )
 }
 
-// ─── Inline Quick Status Selector Dropdown ─────────────────────────────────
+// ─── Inline Quick Status Selector ──────────────────────────────────────────
 function InlineStatusSelector({
   currentStatus,
   onSelect
@@ -142,7 +126,7 @@ function InlineStatusSelector({
   currentStatus: string
   onSelect: (status: string) => void
 }) {
-  const cfg = statusMap[currentStatus] || { label: currentStatus, color: '#6366f1', bg: 'rgba(99,102,241,0.08)', icon: <CircleDot size={12} /> }
+  const cfg = statusMap[currentStatus] || { label: currentStatus, color: 'var(--text-primary)', bg: 'var(--bg-surface)', icon: <CircleDot size={12} /> }
 
   return (
     <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -154,11 +138,11 @@ function InlineStatusSelector({
           WebkitAppearance: 'none',
           padding: '4px 22px 4px 10px',
           borderRadius: '99px',
-          background: cfg.bg,
+          background: 'var(--bg-surface)',
           color: cfg.color,
-          fontSize: '0.72rem',
+          fontSize: '0.75rem',
           fontWeight: 700,
-          border: `1px solid ${cfg.color}35`,
+          border: '1px solid var(--border-default)',
           cursor: 'pointer',
           outline: 'none',
           textAlign: 'left'
@@ -172,8 +156,7 @@ function InlineStatusSelector({
       </select>
       <ChevronDown
         size={11}
-        color={cfg.color}
-        style={{ position: 'absolute', right: '7px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+        style={{ position: 'absolute', right: '7px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }}
       />
     </div>
   )
@@ -186,18 +169,18 @@ function QualificationPanel({ answers }: { answers: Record<string, any> }) {
   return (
     <div style={{
       borderRadius: '10px', border: '1px solid var(--border-default)',
-      background: 'var(--bg-surface)', overflow: 'hidden', marginTop: '4px'
+      background: 'var(--bg-surface)', overflow: 'hidden', marginTop: '6px'
     }}>
       <div style={{
-        padding: '0.5rem 0.875rem', background: 'rgba(99,102,241,0.05)',
+        padding: '0.625rem 0.875rem', background: 'var(--bg-elevated)',
         borderBottom: '1px solid var(--border-default)',
         display: 'flex', alignItems: 'center', gap: '0.5rem'
       }}>
-        <ClipboardList size={13} color="#6366f1" />
-        <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#6366f1', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        <ClipboardList size={13} style={{ color: 'var(--brand-primary)' }} />
+        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
           Form Responses & Qualification Answers
         </span>
-        <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+        <span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
           {entries.length} field{entries.length !== 1 ? 's' : ''} captured
         </span>
       </div>
@@ -206,12 +189,13 @@ function QualificationPanel({ answers }: { answers: Record<string, any> }) {
           <div key={key} style={{
             padding: '0.625rem 0.875rem',
             borderRight: '1px solid var(--border-default)',
-            borderBottom: '1px solid var(--border-default)'
+            borderBottom: '1px solid var(--border-default)',
+            background: 'var(--bg-card)'
           }}>
-            <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
+            <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
               {key}
             </p>
-            <p style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', margin: '3px 0 0', wordBreak: 'break-word' }}>
+            <p style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', margin: '3px 0 0', wordBreak: 'break-word' }}>
               {String(val) || '—'}
             </p>
           </div>
@@ -245,9 +229,9 @@ function LeadRow({
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
             <div style={{
               width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-              background: `${cfg.color}18`, color: cfg.color,
+              background: 'var(--bg-surface)', color: 'var(--text-primary)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.75rem', fontWeight: 800, border: `1px solid ${cfg.color}30`
+              fontSize: '0.75rem', fontWeight: 800, border: '1px solid var(--border-default)'
             }}>
               {(lead.client_name || lead.name || 'L').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
             </div>
@@ -257,8 +241,8 @@ function LeadRow({
               </p>
               <div style={{ display: 'flex', gap: '0.625rem', marginTop: '3px', flexWrap: 'wrap' }}>
                 <a href={`tel:${lead.phone}`} style={{
-                  fontSize: '0.78rem', color: '#6366f1', textDecoration: 'none',
-                  display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 600
+                  fontSize: '0.78rem', color: '#4f46e5', textDecoration: 'none',
+                  display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 700
                 }}>
                   <Phone size={11} /> {lead.phone}
                 </a>
@@ -272,7 +256,7 @@ function LeadRow({
           </div>
         </td>
 
-        {/* 2. Platform (FB / IG) */}
+        {/* 2. Platform (FB / IG / WEB) */}
         <td style={{ padding: '0.875rem 0.75rem' }}>
           <PlatformBadge platform={lead.platform || lead.source} />
         </td>
@@ -280,7 +264,7 @@ function LeadRow({
         {/* 3. Inbound Date & Time */}
         <td style={{ padding: '0.875rem 0.75rem', whiteSpace: 'nowrap' }}>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               {formatDate(lead.created_at, 'dd MMM yyyy')}
             </span>
             <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '3px', marginTop: '2px' }}>
@@ -293,9 +277,9 @@ function LeadRow({
         <td style={{ padding: '0.875rem 0.75rem' }}>
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: '4px',
-            fontSize: '0.75rem', fontWeight: 600, padding: '3px 9px',
-            borderRadius: '6px', background: 'rgba(99,102,241,0.08)', color: '#6366f1',
-            border: '1px solid rgba(99,102,241,0.15)', whiteSpace: 'nowrap'
+            fontSize: '0.75rem', fontWeight: 700, padding: '3px 9px',
+            borderRadius: '6px', background: 'var(--bg-surface)', color: 'var(--text-primary)',
+            border: '1px solid var(--border-default)', whiteSpace: 'nowrap'
           }}>
             <Layers size={11} /> {industry}
           </span>
@@ -310,9 +294,9 @@ function LeadRow({
               onClick={() => setExpanded(e => !e)}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: '5px',
-                fontSize: '0.72rem', fontWeight: 700, padding: '3px 9px',
-                borderRadius: '6px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4',
-                border: '1px solid rgba(6,182,212,0.25)', cursor: 'pointer'
+                fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px',
+                borderRadius: '6px', background: 'rgba(2, 132, 199, 0.12)', color: '#0284c7',
+                border: '1px solid rgba(2, 132, 199, 0.35)', cursor: 'pointer'
               }}
             >
               <ClipboardList size={11} />
@@ -322,7 +306,7 @@ function LeadRow({
           )}
         </td>
 
-        {/* 6. Call Status */}
+        {/* 6. Call Status Dropdown */}
         <td style={{ padding: '0.875rem 0.75rem' }}>
           <InlineStatusSelector
             currentStatus={lead.status}
@@ -332,12 +316,12 @@ function LeadRow({
 
         {/* 7. Followups */}
         <td style={{ padding: '0.875rem 0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.82rem', color: 'var(--text-primary)', fontWeight: 700 }}>
             <Activity size={12} color="var(--text-muted)" />
             {lead.followup_count || 0}
           </div>
           {lead.next_followup_at && (
-            <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px', marginTop: '3px' }}>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px', marginTop: '3px' }}>
               <Clock size={9} /> {formatDate(lead.next_followup_at, 'dd MMM, hh:mm a')}
             </div>
           )}
@@ -346,7 +330,7 @@ function LeadRow({
         {/* 8. Assigned To (Admin only) */}
         {isAdmin && (
           <td style={{ padding: '0.875rem 0.75rem' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               {lead.assigned_to_profile?.full_name || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Unassigned</span>}
             </span>
           </td>
@@ -358,12 +342,8 @@ function LeadRow({
             <button
               onClick={onFollowup}
               title="Log Followup"
-              style={{
-                padding: '5px 10px', borderRadius: '7px', border: 'none', cursor: 'pointer',
-                background: 'rgba(99,102,241,0.1)', color: '#6366f1', fontSize: '0.75rem',
-                fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px',
-                transition: 'background 0.15s'
-              }}
+              className="btn btn-secondary btn-sm"
+              style={{ padding: '4px 8px', fontSize: '0.75rem' }}
             >
               <PhoneCall size={12} /> Call
             </button>
@@ -371,9 +351,8 @@ function LeadRow({
               onClick={onWhatsapp}
               title="Send WhatsApp Message"
               style={{
-                padding: '5px 8px', borderRadius: '7px', border: 'none', cursor: 'pointer',
-                background: 'rgba(37,211,102,0.08)', color: '#25D366', display: 'flex', alignItems: 'center',
-                transition: 'background 0.15s'
+                padding: '5px 8px', borderRadius: '7px', border: '1px solid #16a34a', cursor: 'pointer',
+                background: 'rgba(22,163,74,0.1)', color: '#16a34a', display: 'flex', alignItems: 'center'
               }}
             >
               <MessageSquare size={13} />
@@ -381,11 +360,8 @@ function LeadRow({
             <button
               onClick={onEdit}
               title="Edit Lead"
-              style={{
-                padding: '5px 8px', borderRadius: '7px', border: 'none', cursor: 'pointer',
-                background: 'var(--bg-surface)', color: 'var(--text-muted)', display: 'flex', alignItems: 'center',
-                transition: 'background 0.15s'
-              }}
+              className="btn btn-ghost btn-sm"
+              style={{ padding: '5px 8px' }}
             >
               <Edit2 size={13} />
             </button>
@@ -393,11 +369,8 @@ function LeadRow({
               <button
                 onClick={onDelete}
                 title="Delete Lead"
-                style={{
-                  padding: '5px 8px', borderRadius: '7px', border: 'none', cursor: 'pointer',
-                  background: 'rgba(239,68,68,0.07)', color: '#ef4444', display: 'flex', alignItems: 'center',
-                  transition: 'background 0.15s'
-                }}
+                className="btn btn-danger btn-sm"
+                style={{ padding: '5px 8px' }}
               >
                 <Trash2 size={13} />
               </button>
@@ -503,9 +476,9 @@ function FollowupPanel({
         }}>
           <div style={{
             width: 40, height: 40, borderRadius: '10px', flexShrink: 0,
-            background: `${currentCfg.color}18`, color: currentCfg.color,
+            background: 'var(--bg-surface)', color: 'var(--text-primary)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '0.75rem', fontWeight: 800, border: `1px solid ${currentCfg.color}30`
+            fontSize: '0.75rem', fontWeight: 800, border: '1px solid var(--border-default)'
           }}>
             {(lead.client_name || lead.name || 'L').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
           </div>
@@ -530,7 +503,7 @@ function FollowupPanel({
                 padding: '3px 10px', borderRadius: '99px',
                 background: currentCfg.bg, color: currentCfg.color,
                 fontSize: '0.72rem', fontWeight: 700,
-                border: `1px solid ${currentCfg.color}25`
+                border: `1px solid ${currentCfg.color}35`
               }}>
                 {currentCfg.icon} {currentCfg.label}
               </span>
@@ -538,7 +511,8 @@ function FollowupPanel({
           </div>
           <button
             onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', borderRadius: '8px' }}
+            className="btn btn-ghost btn-sm"
+            style={{ padding: '4px' }}
           >
             <X size={18} />
           </button>
@@ -551,7 +525,7 @@ function FollowupPanel({
           {qualEntries.length > 0 && (
             <section>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.625rem' }}>
-                <ClipboardList size={14} color="#6366f1" />
+                <ClipboardList size={14} style={{ color: 'var(--brand-primary)' }} />
                 <h4 style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
                   Form Responses & Survey Data
                 </h4>
@@ -564,8 +538,8 @@ function FollowupPanel({
                     borderBottom: i < qualEntries.length - 1 ? '1px solid var(--border-default)' : 'none',
                     background: i % 2 === 0 ? 'var(--bg-surface)' : 'transparent'
                   }}>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>{key}</span>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: 600, textAlign: 'right' }}>{String(val) || '—'}</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{key}</span>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-primary)', fontWeight: 700, textAlign: 'right' }}>{String(val) || '—'}</span>
                   </div>
                 ))}
               </div>
@@ -578,14 +552,14 @@ function FollowupPanel({
               padding: '0.75rem 1rem', background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-default)',
               display: 'flex', alignItems: 'center', gap: '0.5rem'
             }}>
-              <PhoneCall size={14} color="#6366f1" />
-              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <PhoneCall size={14} style={{ color: 'var(--brand-primary)' }} />
+              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Update Call Status (Followup #{(lead.followup_count || 0) + 1})
               </span>
             </div>
             <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
               <div>
-                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '6px' }}>
+                <label className="form-label" style={{ display: 'block', marginBottom: '6px' }}>
                   Select Call Status
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
@@ -595,11 +569,11 @@ function FollowupPanel({
                       onClick={() => setCallStatus(s.id)}
                       style={{
                         padding: '7px 10px', borderRadius: '8px', cursor: 'pointer', textAlign: 'left',
-                        border: `1px solid ${callStatus === s.id ? s.color + '70' : 'var(--border-default)'}`,
+                        border: `1px solid ${callStatus === s.id ? s.color : 'var(--border-default)'}`,
                         background: callStatus === s.id ? s.bg : 'transparent',
                         display: 'flex', alignItems: 'center', gap: '6px',
-                        color: callStatus === s.id ? s.color : 'var(--text-muted)',
-                        fontSize: '0.75rem', fontWeight: callStatus === s.id ? 700 : 400,
+                        color: callStatus === s.id ? s.color : 'var(--text-secondary)',
+                        fontSize: '0.75rem', fontWeight: callStatus === s.id ? 700 : 500,
                         transition: 'all 0.15s'
                       }}
                     >
@@ -610,50 +584,35 @@ function FollowupPanel({
               </div>
 
               <div>
-                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '6px' }}>
+                <label className="form-label" style={{ display: 'block', marginBottom: '6px' }}>
                   Followup Notes / Remarks
                 </label>
                 <textarea
+                  className="form-textarea"
                   rows={3}
                   placeholder="Enter customer response, student needs, objections..."
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
-                  style={{
-                    width: '100%', padding: '0.625rem 0.75rem', borderRadius: '8px',
-                    border: '1px solid var(--border-default)', background: 'var(--bg-surface)',
-                    color: 'var(--text-primary)', fontSize: '0.82rem', resize: 'vertical',
-                    outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit'
-                  }}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '6px' }}>
+                <label className="form-label" style={{ display: 'block', marginBottom: '6px' }}>
                   Schedule Next Followup Date & Time
                 </label>
                 <input
                   type="datetime-local"
                   value={scheduledAt}
                   onChange={e => setScheduledAt(e.target.value)}
-                  style={{
-                    width: '100%', padding: '0.5rem 0.75rem', borderRadius: '8px',
-                    border: '1px solid var(--border-default)', background: 'var(--bg-surface)',
-                    color: 'var(--text-primary)', fontSize: '0.82rem',
-                    outline: 'none', boxSizing: 'border-box'
-                  }}
+                  className="form-input"
                 />
               </div>
 
               <button
                 onClick={handleSave}
                 disabled={saving}
-                style={{
-                  width: '100%', padding: '0.625rem', borderRadius: '8px',
-                  background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                  color: 'white', border: 'none', cursor: 'pointer', fontWeight: 600,
-                  fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                  opacity: saving ? 0.7 : 1
-                }}
+                className="btn btn-primary"
+                style={{ width: '100%', justifyContent: 'center' }}
               >
                 {saving ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />}
                 Save Outcome & Update Status
@@ -684,7 +643,7 @@ function FollowupPanel({
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
                 {history.map((item, idx) => {
-                  const s = statusMap[item.call_status] || { color: '#6366f1', bg: 'rgba(99,102,241,0.08)', label: item.call_status, icon: <CircleDot size={12} /> }
+                  const s = statusMap[item.call_status] || { color: 'var(--text-primary)', bg: 'var(--bg-surface)', label: item.call_status, icon: <CircleDot size={12} /> }
                   return (
                     <div key={item.id} style={{ display: 'flex', gap: '0.75rem', position: 'relative' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '20px', flexShrink: 0 }}>
@@ -698,7 +657,7 @@ function FollowupPanel({
                         padding: '0.625rem 0.875rem', marginBottom: '0.5rem', background: 'var(--bg-surface)'
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '4px' }}>
-                          <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: '99px', background: s.bg, color: s.color, border: `1px solid ${s.color}25` }}>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: '99px', background: s.bg, color: s.color, border: `1px solid ${s.color}35` }}>
                             {s.label}
                           </span>
                           <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
@@ -706,7 +665,7 @@ function FollowupPanel({
                           </span>
                         </div>
                         {item.notes && (
-                          <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '4px 0 0', lineHeight: '1.5' }}>{item.notes}</p>
+                          <p style={{ fontSize: '0.78rem', color: 'var(--text-primary)', margin: '4px 0 0', lineHeight: '1.5' }}>{item.notes}</p>
                         )}
                         <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: '3px' }}>
                           <User size={9} /> {item.sales_rep?.full_name || 'Sales Rep'} &nbsp;·&nbsp; Followup #{item.followup_number}
@@ -935,17 +894,17 @@ export default function LeadsSection({ profile }: Props) {
       {/* ── Metric Summary Bar ── */}
       <div className="grid-4" style={{ gap: '1rem' }}>
         {[
-          { label: 'Total Inbound Leads', value: total,    color: '#6366f1', icon: <BarChart2 size={16} /> },
-          { label: 'Active Pipeline',     value: pipeline, color: '#06b6d4', icon: <TrendingUp size={16} /> },
-          { label: 'Enrolled (Won)',      value: enrolled,  color: '#10b981', icon: <CheckCircle size={16} /> },
-          { label: 'Conversion Rate',     value: `${convRate}%`, color: '#f59e0b', icon: <Activity size={16} /> },
+          { label: 'Total Inbound Leads', value: total,    color: '#4f46e5', icon: <BarChart2 size={16} /> },
+          { label: 'Active Pipeline',     value: pipeline, color: '#0284c7', icon: <TrendingUp size={16} /> },
+          { label: 'Enrolled (Won)',      value: enrolled,  color: '#16a34a', icon: <CheckCircle size={16} /> },
+          { label: 'Conversion Rate',     value: `${convRate}%`, color: '#d97706', icon: <Activity size={16} /> },
         ].map(({ label, value, color, icon }) => (
           <div key={label} className="stat-card" style={{ padding: '1.25rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
               <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 {label}
               </span>
-              <div style={{ width: 28, height: 28, borderRadius: '8px', background: `${color}15`, color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: 28, height: 28, borderRadius: '8px', background: 'var(--bg-surface)', color, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-default)' }}>
                 {icon}
               </div>
             </div>
@@ -957,9 +916,9 @@ export default function LeadsSection({ profile }: Props) {
       </div>
 
       {/* ── Date Segregation & Quick Filter Pills ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', background: 'var(--bg-surface)', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid var(--border-default)' }}>
-        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '4px', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: '0.25rem' }}>
-          <CalendarDays size={13} color="#6366f1" /> Filter Date:
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', background: 'var(--bg-card)', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid var(--border-default)' }}>
+        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '4px', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: '0.25rem' }}>
+          <CalendarDays size={13} style={{ color: 'var(--brand-primary)' }} /> Filter Date:
         </span>
 
         {[
@@ -975,10 +934,10 @@ export default function LeadsSection({ profile }: Props) {
             onClick={() => setDateFilter(pill.id as any)}
             style={{
               padding: '4px 12px', borderRadius: '8px', cursor: 'pointer',
-              border: dateFilter === pill.id ? '1px solid #6366f1' : '1px solid var(--border-default)',
-              background: dateFilter === pill.id ? 'rgba(99,102,241,0.15)' : 'transparent',
-              color: dateFilter === pill.id ? '#6366f1' : 'var(--text-secondary)',
-              fontSize: '0.75rem', fontWeight: dateFilter === pill.id ? 700 : 500,
+              border: dateFilter === pill.id ? '1px solid var(--brand-primary)' : '1px solid var(--border-default)',
+              background: dateFilter === pill.id ? 'var(--bg-surface)' : 'transparent',
+              color: dateFilter === pill.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+              fontSize: '0.75rem', fontWeight: dateFilter === pill.id ? 800 : 500,
               transition: 'all 0.15s'
             }}
           >
@@ -994,7 +953,7 @@ export default function LeadsSection({ profile }: Props) {
               value={customStartDate}
               onChange={e => setCustomStartDate(e.target.value)}
               className="form-input"
-              style={{ height: '30px', fontSize: '0.75rem', padding: '2px 8px' }}
+              style={{ height: '30px', fontSize: '0.75rem', padding: '2px 8px', width: 'auto' }}
             />
             <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>to</span>
             <input
@@ -1002,7 +961,7 @@ export default function LeadsSection({ profile }: Props) {
               value={customEndDate}
               onChange={e => setCustomEndDate(e.target.value)}
               className="form-input"
-              style={{ height: '30px', fontSize: '0.75rem', padding: '2px 8px' }}
+              style={{ height: '30px', fontSize: '0.75rem', padding: '2px 8px', width: 'auto' }}
             />
           </div>
         )}
@@ -1117,7 +1076,7 @@ export default function LeadsSection({ profile }: Props) {
           )}
           {filtered.length > 0 && (
             <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid var(--border-default)', background: 'var(--bg-surface)' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
                 Showing {filtered.length} of {total} total leads ({dateFilter === 'all' ? 'All Dates' : dateFilter.toUpperCase()})
               </span>
             </div>
@@ -1142,7 +1101,7 @@ export default function LeadsSection({ profile }: Props) {
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
           <div className="modal-content" style={{ maxWidth: '580px' }}>
             <div className="modal-header">
-              <h3 style={{ fontWeight: 700, fontSize: '1.05rem', margin: 0 }}>
+              <h3 style={{ fontWeight: 700, fontSize: '1.05rem', margin: 0, color: 'var(--text-primary)' }}>
                 {editLead ? 'Edit Lead Details' : 'Add Inbound Lead'}
               </h3>
               <button onClick={() => setShowModal(false)} className="btn btn-ghost btn-sm">
