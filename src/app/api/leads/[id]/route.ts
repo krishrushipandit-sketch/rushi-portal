@@ -53,6 +53,24 @@ export async function PATCH(
           values.push(body[key])
           updates.push(`client_name = $${values.length}`)
         }
+
+        // Keep industry and category in sync
+        if (key === 'industry' && !body['category']) {
+          values.push(body[key])
+          updates.push(`category = $${values.length}`)
+        } else if (key === 'category' && !body['industry']) {
+          values.push(body[key])
+          updates.push(`industry = $${values.length}`)
+        }
+
+        // Keep platform and source in sync
+        if (key === 'platform' && !body['source']) {
+          values.push(body[key])
+          updates.push(`source = $${values.length}`)
+        } else if (key === 'source' && !body['platform']) {
+          values.push(body[key])
+          updates.push(`platform = $${values.length}`)
+        }
       }
     }
 

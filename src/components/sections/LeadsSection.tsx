@@ -774,6 +774,8 @@ export default function LeadsSection({ profile }: Props) {
     const token = getToken()
     try {
       if (editLead) {
+        // Optimistic UI update
+        setLeads(prev => prev.map(l => l.id === editLead.id ? { ...l, ...form, name: form.client_name } : l))
         await fetch(`/api/leads/${editLead.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

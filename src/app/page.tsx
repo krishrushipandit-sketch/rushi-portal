@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Eye, EyeOff, Lock, Mail, Loader2 } from 'lucide-react'
+import { Eye, EyeOff, Lock, Mail, Loader2, ArrowRight, ShieldCheck } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -31,7 +31,6 @@ export default function LoginPage() {
         return
       }
 
-      // Store token for API calls
       if (data.token) {
         localStorage.setItem('rushi_token', data.token)
         localStorage.setItem('rushi_user', JSON.stringify(data.user))
@@ -39,47 +38,101 @@ export default function LoginPage() {
 
       router.push('/dashboard')
     } catch {
-      setError('An error occurred. Please try again.')
+      setError('Connection error. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="login-bg">
-      <div className="login-card animate-slide-up">
-        {/* Brand Header */}
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '1.5rem',
+      background: 'var(--bg-base)',
+      position: 'relative',
+      overflow: 'hidden'
+    }}>
+      {/* Background ambient lighting */}
+      <div style={{
+        position: 'absolute',
+        top: '-150px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: '600px',
+        height: '600px',
+        borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(99, 102, 241, 0.18) 0%, rgba(99, 102, 241, 0) 70%)',
+        pointerEvents: 'none',
+        zIndex: 0
+      }} />
+
+      {/* Login Card */}
+      <div style={{
+        width: '100%',
+        maxWidth: '420px',
+        background: 'var(--bg-card)',
+        borderRadius: '20px',
+        border: '1px solid var(--border-default)',
+        boxShadow: '0 20px 60px rgba(0, 0, 0, 0.25)',
+        padding: '2.5rem 2rem',
+        position: 'relative',
+        zIndex: 1
+      }}>
+        {/* Brand Logo & Title */}
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <div style={{
             background: '#ffffff',
-            borderRadius: '16px',
-            padding: '1rem 1.5rem',
+            borderRadius: '14px',
+            padding: '0.875rem 1.5rem',
             display: 'inline-block',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
+            border: '1px solid #e2e8f0',
+            marginBottom: '1rem'
           }}>
             <img
               src="/logo.png"
               alt="RushiPandit Institute Logo"
               style={{
-                width: '220px',
+                width: '190px',
                 height: 'auto',
                 objectFit: 'contain',
-                display: 'block',
+                display: 'block'
               }}
             />
           </div>
+          <h2 style={{
+            fontSize: '1.25rem',
+            fontWeight: 800,
+            color: 'var(--text-primary)',
+            letterSpacing: '-0.02em',
+            margin: '0.5rem 0 0.25rem'
+          }}>
+            Staff &amp; Admin Portal
+          </h2>
+          <p style={{
+            fontSize: '0.8rem',
+            color: 'var(--text-secondary)',
+            margin: 0
+          }}>
+            Sign in to access your CRM, sales leads, and tasks
+          </p>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        {/* Login Form */}
+        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1.125rem' }}>
           <div className="form-group">
-            <label className="form-label">Email Address</label>
+            <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+              Email Address
+            </label>
             <div style={{ position: 'relative' }}>
               <Mail
                 size={16}
                 style={{
                   position: 'absolute',
-                  left: '0.875rem',
+                  left: '12px',
                   top: '50%',
                   transform: 'translateY(-50%)',
                   color: 'var(--text-muted)',
@@ -89,24 +142,32 @@ export default function LoginPage() {
               <input
                 type="email"
                 className="form-input"
-                placeholder="your@rushipandit.com"
+                placeholder="your.name@rushipandit.com"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                style={{ paddingLeft: '2.5rem' }}
+                style={{
+                  paddingLeft: '38px',
+                  height: '42px',
+                  fontSize: '0.875rem',
+                  borderRadius: '10px'
+                }}
                 required
                 autoComplete="email"
+                autoFocus
               />
             </div>
           </div>
 
           <div className="form-group">
-            <label className="form-label">Password</label>
+            <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+              Password
+            </label>
             <div style={{ position: 'relative' }}>
               <Lock
                 size={16}
                 style={{
                   position: 'absolute',
-                  left: '0.875rem',
+                  left: '12px',
                   top: '50%',
                   transform: 'translateY(-50%)',
                   color: 'var(--text-muted)',
@@ -116,10 +177,16 @@ export default function LoginPage() {
               <input
                 type={showPassword ? 'text' : 'password'}
                 className="form-input"
-                placeholder="Enter your password"
+                placeholder="••••••••••••"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                style={{ paddingLeft: '2.5rem', paddingRight: '2.75rem' }}
+                style={{
+                  paddingLeft: '38px',
+                  paddingRight: '40px',
+                  height: '42px',
+                  fontSize: '0.875rem',
+                  borderRadius: '10px'
+                }}
                 required
                 autoComplete="current-password"
               />
@@ -128,7 +195,7 @@ export default function LoginPage() {
                 onClick={() => setShowPassword(!showPassword)}
                 style={{
                   position: 'absolute',
-                  right: '0.875rem',
+                  right: '12px',
                   top: '50%',
                   transform: 'translateY(-50%)',
                   background: 'none',
@@ -146,12 +213,13 @@ export default function LoginPage() {
 
           {error && (
             <div style={{
-              background: 'rgba(239, 68, 68, 0.08)',
-              border: '1px solid rgba(239, 68, 68, 0.2)',
-              borderRadius: 'var(--radius-md)',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.25)',
+              borderRadius: '8px',
               padding: '0.75rem 1rem',
               fontSize: '0.8rem',
               color: '#ef4444',
+              fontWeight: 600
             }}>
               {error}
             </div>
@@ -161,7 +229,16 @@ export default function LoginPage() {
             type="submit"
             className="btn btn-primary"
             disabled={loading}
-            style={{ width: '100%', justifyContent: 'center', marginTop: '0.5rem', padding: '0.75rem' }}
+            style={{
+              width: '100%',
+              justifyContent: 'center',
+              height: '44px',
+              fontSize: '0.9rem',
+              fontWeight: 700,
+              borderRadius: '10px',
+              marginTop: '0.5rem',
+              boxShadow: '0 4px 16px rgba(99, 102, 241, 0.35)'
+            }}
           >
             {loading ? (
               <>
@@ -169,20 +246,28 @@ export default function LoginPage() {
                 Signing in...
               </>
             ) : (
-              'Sign In'
+              <>
+                Sign In <ArrowRight size={16} />
+              </>
             )}
           </button>
         </form>
 
-        {/* Footer */}
-        <p style={{
-          textAlign: 'center',
-          fontSize: '0.75rem',
+        {/* Security / Help Footer */}
+        <div style={{
+          marginTop: '1.75rem',
+          paddingTop: '1.25rem',
+          borderTop: '1px solid var(--border-default)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '6px',
           color: 'var(--text-muted)',
-          marginTop: '1.5rem',
+          fontSize: '0.75rem'
         }}>
-          For access issues, contact your system administrator.
-        </p>
+          <ShieldCheck size={14} color="#10b981" />
+          <span>Encrypted internal system access</span>
+        </div>
       </div>
 
       <style>{`

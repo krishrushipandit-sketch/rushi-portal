@@ -294,7 +294,7 @@ async function handleLeadWebhook(req: NextRequest) {
       )
     }
 
-    // 6. Insert Lead into Database
+    // 6. Insert Lead into Database (initial notes are blank)
     const newLead = await queryOne<{ id: string }>(
       `INSERT INTO leads (
         name,
@@ -321,7 +321,7 @@ async function handleLeadWebhook(req: NextRequest) {
         'new',
         assignedToId,
         JSON.stringify(qualificationAnswers),
-        `Inbound lead via Pabbly Connect (${platform}). Industry: ${industry}`,
+        null,
       ]
     )
 
