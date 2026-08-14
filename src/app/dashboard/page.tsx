@@ -17,6 +17,7 @@ import StrategySection from '@/components/sections/StrategySection'
 import SettingsSection from '@/components/sections/SettingsSection'
 import LeaderboardSection from '@/components/sections/LeaderboardSection'
 import AttendanceSection from '@/components/sections/AttendanceSection'
+import RealtimeLeadAlert from '@/components/RealtimeLeadAlert'
 
 export type ActiveSection =
   | 'overview'
@@ -234,6 +235,12 @@ export default function DashboardPage() {
           {renderSection()}
         </div>
       </div>
+
+      {/* Real-time Lead Audio Chime & Desktop Push Notification Listener */}
+      <RealtimeLeadAlert
+        onViewLead={() => setActiveSection('leads')}
+        userRole={profile.role}
+      />
     </div>
   )
 }
