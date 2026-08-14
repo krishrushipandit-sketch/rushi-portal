@@ -41,10 +41,12 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Get all active clients with their deliverables
-    let clients: any[] = []
-    clients = await query<any>(
-      "SELECT id, name, slug, color, logo_url FROM clients WHERE is_active = true OR status = 'active' ORDER BY name"
+    // Get all unique active clients with their deliverables
+    const clients = await query<any>(
+      `SELECT DISTINCT ON (LOWER(TRIM(name))) id, name, slug, color, logo_url 
+       FROM clients 
+       WHERE is_active = true OR status = 'active' 
+       ORDER BY LOWER(TRIM(name)), id ASC`
     )
 
     const deliverables = await query<any>(
