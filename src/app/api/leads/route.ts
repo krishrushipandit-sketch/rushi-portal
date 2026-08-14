@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
     let sql = `
       SELECT 
         l.*,
+        COALESCE(l.client_name, l.name, '') AS client_name,
         CASE WHEN p.id IS NOT NULL THEN json_build_object(
           'id', p.id,
           'full_name', p.full_name,
@@ -49,8 +50,8 @@ export async function POST(req: NextRequest) {
     const assignedToVal = user.role === 'admin' ? (assigned_to || user.userId) : user.userId
 
     const data = await queryOne(
-      `INSERT INTO leads (client_name, phone, email, category, status, source, notes, follow_up_date, assigned_to)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO leads (name, client_name, phone, email, category, status, source, notes, follow_up_date, assigned_to)
+       VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
       [
         client_name,

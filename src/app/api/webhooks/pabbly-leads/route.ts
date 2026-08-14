@@ -101,8 +101,8 @@ export async function POST(req: NextRequest) {
 
     // 5. Insert Lead into Database
     const newLead = await queryOne<{ id: string }>(
-      `INSERT INTO leads (client_name, phone, email, category, industry, platform, status, assigned_to, qualification_answers, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
+      `INSERT INTO leads (name, client_name, phone, email, category, industry, platform, status, assigned_to, qualification_answers, notes)
+       VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
        RETURNING id`,
       [
         rawName,

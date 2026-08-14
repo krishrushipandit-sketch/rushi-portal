@@ -240,6 +240,12 @@ ALTER TABLE leads ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'Digital Market
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'facebook_lead_ad';
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS follow_up_date TIMESTAMPTZ;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS qualification_answers JSONB DEFAULT '{}';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS client_name TEXT;
+-- Backfill client_name from name for existing rows
+UPDATE leads SET client_name = name WHERE client_name IS NULL AND name IS NOT NULL;
+-- Make client_name the primary name column going forward (keep name in sync via trigger or just use client_name)
+ALTER TABLE leads ALTER COLUMN client_name SET DEFAULT '';
+
 
 -- LEAD FOLLOW-UPS
 CREATE TABLE IF NOT EXISTS lead_followups (

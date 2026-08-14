@@ -32,6 +32,10 @@ export async function PATCH(
       if (allowedFields.includes(key)) {
         values.push(body[key])
         updates.push(`${key} = $${values.length}`)
+        // Keep name in sync with client_name
+        if (key === 'client_name') {
+          updates.push(`name = $${values.length}`)
+        }
       }
     }
 
