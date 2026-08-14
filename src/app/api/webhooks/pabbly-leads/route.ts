@@ -1,61 +1,105 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, queryOne, execute } from '@/lib/db'
 
-export async function POST(req: NextRequest) {
+// Helper to parse multipart boundary payload from raw text
+function parseMultipartText(text: string): Record<string, string> {
+  const result: Record<string, string> = {}
+  const parts = text.split(/--+[a-zA-Z0-9_-]+/)
+  for (const part of parts) {
+    const nameMatch = part.match(/name=["']?([^"';\r\n]+)["']?/)
+    if (nameMatch) {
+      const fieldName = nameMatch[1].trim()
+      // The value is everything after the double newline up to the end of the part
+      const bodyIndex = part.indexOf('\r\n\r\n') !== -1 
+        ? part.indexOf('\r\n\r\n') + 4 
+        : part.indexOf('\n\n') !== -1 
+          ? part.indexOf('\n\n') + 2 
+          : -1
+      
+      if (bodyIndex !== -1) {
+        const val = part.slice(bodyIndex).replace(/[\r\n]+$/, '').trim()
+        if (val) {
+          result[fieldName] = val
+        }
+      }
+    }
+  }
+  return result
+}
+
+// Universal parser for any webhook request
+async function parseIncomingRequest(req: NextRequest): Promise<Record<string, any>> {
+  const result: Record<string, any> = {}
+
+  // 1. Read URL query parameters first
+  for (const [key, value] of req.nextUrl.searchParams.entries()) {
+    if (key !== 'secret' && value) {
+      result[key] = value
+    }
+  }
+
+  // 2. Read raw body text once (never fails, never throws stream consumed)
+  let rawText = ''
   try {
-    let body: Record<string, any> = {}
+    rawText = await req.text()
+  } catch {
+    rawText = ''
+  }
 
-    const contentType = req.headers.get('content-type') || ''
+  if (rawText && rawText.trim()) {
+    const trimmed = rawText.trim()
 
-    // 1. Universal Body Parsing (supports Raw JSON, FormData, URL-Encoded, and URL Params)
-    if (contentType.includes('application/json')) {
+    // Try JSON parse
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
       try {
-        body = await req.json()
-      } catch {
-        body = {}
-      }
-    } else if (contentType.includes('multipart/form-data') || contentType.includes('application/x-www-form-urlencoded')) {
-      try {
-        const formData = await req.formData()
-        for (const [key, value] of formData.entries()) {
-          body[key] = typeof value === 'string' ? value : (value as File).name
+        const parsed = JSON.parse(trimmed)
+        if (typeof parsed === 'object' && parsed !== null) {
+          Object.assign(result, parsed)
+          return result
         }
-      } catch {
-        try {
-          const text = await req.text()
-          const params = new URLSearchParams(text)
-          for (const [key, value] of params.entries()) {
-            body[key] = value
-          }
-        } catch {
-          body = {}
-        }
-      }
-    } else {
-      // Fallback: Try JSON parse, then URL search params from raw text
-      try {
-        const text = await req.text()
-        if (text) {
-          try {
-            body = JSON.parse(text)
-          } catch {
-            const params = new URLSearchParams(text)
-            for (const [key, value] of params.entries()) {
-              body[key] = value
-            }
-          }
-        }
-      } catch {
-        body = {}
-      }
+      } catch { /* proceed to next format */ }
     }
 
-    // Also merge URL search parameters
-    for (const [key, value] of req.nextUrl.searchParams.entries()) {
-      if (key !== 'secret' && !body[key]) {
-        body[key] = value
-      }
+    // Try Multipart form-data text parse
+    if (trimmed.includes('Content-Disposition') || trimmed.includes('form-data')) {
+      try {
+        const multipartData = parseMultipartText(trimmed)
+        if (Object.keys(multipartData).length > 0) {
+          Object.assign(result, multipartData)
+          return result
+        }
+      } catch { /* proceed to next format */ }
     }
+
+    // Try URL-Encoded format (e.g. key1=val1&key2=val2)
+    try {
+      const params = new URLSearchParams(trimmed)
+      let count = 0
+      for (const [key, value] of params.entries()) {
+        if (key && value) {
+          result[key] = value
+          count++
+        }
+      }
+      if (count > 0) return result
+    } catch { /* proceed */ }
+  }
+
+  return result
+}
+
+export async function GET(req: NextRequest) {
+  return handleLeadWebhook(req)
+}
+
+export async function POST(req: NextRequest) {
+  return handleLeadWebhook(req)
+}
+
+async function handleLeadWebhook(req: NextRequest) {
+  try {
+    const body = await parseIncomingRequest(req)
+    console.log('[PABBLY WEBHOOK] Received payload keys:', Object.keys(body))
 
     // Security token check (optional secret token parameter)
     const secret = req.nextUrl.searchParams.get('secret') || req.headers.get('x-pabbly-secret') || body.secret
@@ -65,7 +109,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized webhook request' }, { status: 401 })
     }
 
-    // 2. Parse standard lead fields
+    // 1. Extract Lead Name with smart aliases
     const rawName =
       body.full_name ||
       body.name ||
@@ -74,9 +118,12 @@ export async function POST(req: NextRequest) {
       body.ClientName ||
       body.student_name ||
       body.StudentName ||
+      body.lead_name ||
+      body.LeadName ||
       `${body.first_name || body.FirstName || ''} ${body.last_name || body.LastName || ''}`.trim() ||
-      'Unknown Lead'
+      'New Lead'
 
+    // 2. Extract Phone Number
     const rawPhone =
       body.phone_number ||
       body.phone ||
@@ -86,6 +133,8 @@ export async function POST(req: NextRequest) {
       body.contact ||
       body.Contact ||
       body.contact_number ||
+      body.whatsapp ||
+      body.WhatsApp ||
       ''
 
     const rawEmail =
@@ -102,10 +151,9 @@ export async function POST(req: NextRequest) {
       body.Source ||
       'Facebook'
 
-    // Clean and normalize phone number
     const cleanPhone = String(rawPhone).replace(/[^\d+]/g, '') || 'Not provided'
 
-    // 3. Identify & Normalize Industry/Course
+    // 3. Extract & Normalize Industry / Program
     let rawIndustry = body.industry || body.Industry || body.course || body.Course || body.category || 'Digital Marketing'
     let industry = 'Digital Marketing'
     const lowerInd = String(rawIndustry).toLowerCase().trim()
@@ -121,14 +169,13 @@ export async function POST(req: NextRequest) {
     } else if (lowerInd.includes('bba') || lowerInd.includes('mba')) {
       industry = 'BBA/MBA'
     } else {
-      // Preserve custom industry entered by admin/user
       industry = rawIndustry.trim()
     }
 
-    // 4. Dynamic Parameter Extraction (Any new questions from Facebook form / Pabbly)
+    // 4. Extract Dynamic Qualification Answers (Dynamic Form Fields from Pabbly)
     const standardKeys = new Set([
-      'full_name', 'name', 'first_name', 'last_name', 'client_name', 'clientname', 'student_name', 'studentname',
-      'phone_number', 'phone', 'mobile', 'contact', 'contact_number',
+      'full_name', 'name', 'first_name', 'last_name', 'client_name', 'clientname', 'student_name', 'studentname', 'lead_name', 'leadname',
+      'phone_number', 'phone', 'mobile', 'contact', 'contact_number', 'whatsapp',
       'email', 'email_address', 'emailaddress',
       'platform', 'source',
       'industry', 'course', 'category',
@@ -142,7 +189,7 @@ export async function POST(req: NextRequest) {
       Object.assign(qualificationAnswers, body.qualification_answers)
     }
 
-    // Support custom_questions array format from Facebook Leads API
+    // Support custom_questions array from Facebook Leads
     if (Array.isArray(body.custom_questions)) {
       for (const q of body.custom_questions) {
         if (q && typeof q === 'object') {
@@ -153,7 +200,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Dynamically capture every single additional parameter sent in the request
+    // Dynamically collect every single other parameter passed in the body
     for (const [key, value] of Object.entries(body)) {
       const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '')
       if (
@@ -172,8 +219,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 5. Strict Industry-Based Round Robin Routing
-    // Find active sales employees strictly mapped to this specific industry
+    // 5. Strict Round-Robin Sales Representative Routing
+    // Find active sales reps assigned to this specific industry
     const industryReps = await query<{ employee_id: string; full_name: string }>(
       `SELECT DISTINCT s.employee_id, p.full_name
        FROM sales_industry_skills s
@@ -282,7 +329,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to insert lead' }, { status: 500 })
     }
 
-    // 7. Send In-App Notification to Assigned Sales Representative
+    // 7. Create in-app notification
     if (assignedToId) {
       try {
         await execute(
@@ -296,7 +343,7 @@ export async function POST(req: NextRequest) {
           ]
         )
       } catch (notifErr) {
-        console.error('Notification insert error:', notifErr)
+        console.error('Notification error:', notifErr)
       }
     }
 
@@ -309,6 +356,7 @@ export async function POST(req: NextRequest) {
       industry,
       qualification_count: Object.keys(qualificationAnswers).length,
       qualification_answers: qualificationAnswers,
+      received_fields: Object.keys(body),
     })
 
   } catch (err: any) {
