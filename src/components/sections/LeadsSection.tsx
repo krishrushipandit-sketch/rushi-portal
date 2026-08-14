@@ -399,13 +399,20 @@ function FollowupPanel({
 }: {
   lead: Lead
   onClose: () => void
-  onSaved: (newStatus: string) => void
+  onSaved: (updatedLead: any) => void
 }) {
   const [history, setHistory] = useState<FollowupRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [callStatus, setCallStatus] = useState(lead.status === 'new' ? 'ringing' : lead.status)
-  const [notes, setNotes] = useState('')
-  const [scheduledAt, setScheduledAt] = useState('')
+  const [notes, setNotes] = useState(lead.notes || '')
+  const [scheduledAt, setScheduledAt] = useState(
+    lead.next_followup_at
+      ? new Date(lead.next_followup_at).toISOString().slice(0, 16)
+      : lead.follow_up_date
+        ? new Date(lead.follow_up_date).toISOString().slice(0, 16)
+        : ''
+  )
+  const [showSurvey, setShowSurvey] = useState(true)
   const [saving, setSaving] = useState(false)
 
   const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
@@ -427,19 +434,35 @@ function FollowupPanel({
       const res = await fetch(`/api/leads/${lead.id}/followups`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ call_status: callStatus, notes, scheduled_at: scheduledAt || null })
+        body: JSON.stringify({
+          call_status: callStatus,
+          notes: notes.trim() || undefined,
+          scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null
+        })
       })
 
-      if (res.ok) {
+      const data = await res.json()
+
+      if (res.ok && data.success) {
         setNotes('')
-        setScheduledAt('')
         const updated = await fetch(`/api/leads/${lead.id}/followups`, { headers: { Authorization: `Bearer ${token}` } })
         const d = await updated.json()
         if (Array.isArray(d)) setHistory(d)
-        onSaved(callStatus)
+
+        // Instant optimistic reflection in parent leads table
+        if (data.lead) {
+          onSaved(data.lead)
+        } else {
+          onSaved({
+            ...lead,
+            status: callStatus,
+            followup_count: (lead.followup_count || 0) + 1,
+            notes: notes.trim() || lead.notes,
+            next_followup_at: scheduledAt ? new Date(scheduledAt).toISOString() : lead.next_followup_at
+          })
+        }
       } else {
-        const err = await res.json().catch(() => ({}))
-        alert('Error saving status: ' + (err.error || 'Server error'))
+        alert('Error saving status: ' + (data.error || 'Server error'))
       }
     } catch (err: any) {
       alert('Failed to connect: ' + err.message)
@@ -456,7 +479,7 @@ function FollowupPanel({
     <div
       style={{
         position: 'fixed', inset: 0, zIndex: 999,
-        background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+        background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
         display: 'flex', justifyContent: 'flex-end'
       }}
       onClick={e => e.target === e.currentTarget && onClose()}
@@ -475,24 +498,24 @@ function FollowupPanel({
           display: 'flex', alignItems: 'flex-start', gap: '0.75rem'
         }}>
           <div style={{
-            width: 40, height: 40, borderRadius: '10px', flexShrink: 0,
+            width: 42, height: 42, borderRadius: '12px', flexShrink: 0,
             background: 'var(--bg-surface)', color: 'var(--text-primary)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '0.75rem', fontWeight: 800, border: '1px solid var(--border-default)'
+            fontSize: '0.8rem', fontWeight: 800, border: '1px solid var(--border-default)'
           }}>
             {(lead.client_name || lead.name || 'L').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <h3 style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--text-primary)', margin: 0 }}>
+              <h3 style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-primary)', margin: 0 }}>
                 {lead.client_name || lead.name}
               </h3>
               <PlatformBadge platform={lead.platform || lead.source} />
             </div>
             <div style={{ display: 'flex', gap: '0.75rem', marginTop: '4px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px' }}>
+              <a href={`tel:${lead.phone}`} style={{ fontSize: '0.78rem', color: '#4f46e5', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 700 }}>
                 <Phone size={11} /> {lead.phone}
-              </span>
+              </a>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px' }}>
                 <Clock size={11} /> {formatDate(lead.created_at, 'dd MMM, hh:mm a')}
               </span>
@@ -505,7 +528,7 @@ function FollowupPanel({
                 fontSize: '0.72rem', fontWeight: 700,
                 border: `1px solid ${currentCfg.color}35`
               }}>
-                {currentCfg.icon} {currentCfg.label}
+                {currentCfg.icon} Current: {currentCfg.label}
               </span>
             </div>
           </div>
@@ -518,49 +541,69 @@ function FollowupPanel({
           </button>
         </div>
 
-        {/* Scrollable body */}
+        {/* Scrollable Content */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
-          {/* Dynamic Questionnaire Responses */}
+          {/* Form Responses (Collapsible for Clean UX) */}
           {qualEntries.length > 0 && (
-            <section>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.625rem' }}>
-                <ClipboardList size={14} style={{ color: 'var(--brand-primary)' }} />
-                <h4 style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
-                  Form Responses & Survey Data
-                </h4>
-              </div>
-              <div style={{ borderRadius: '10px', border: '1px solid var(--border-default)', overflow: 'hidden' }}>
-                {qualEntries.map(([key, val], i) => (
-                  <div key={key} style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-                    padding: '0.625rem 0.875rem', gap: '1rem',
-                    borderBottom: i < qualEntries.length - 1 ? '1px solid var(--border-default)' : 'none',
-                    background: i % 2 === 0 ? 'var(--bg-surface)' : 'transparent'
-                  }}>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{key}</span>
-                    <span style={{ fontSize: '0.82rem', color: 'var(--text-primary)', fontWeight: 700, textAlign: 'right' }}>{String(val) || '—'}</span>
-                  </div>
-                ))}
-              </div>
+            <section style={{ borderRadius: '12px', border: '1px solid var(--border-default)', background: 'var(--bg-surface)', overflow: 'hidden' }}>
+              <button
+                onClick={() => setShowSurvey(s => !s)}
+                style={{
+                  width: '100%', padding: '0.625rem 0.875rem', background: 'var(--bg-card)',
+                  border: 'none', borderBottom: showSurvey ? '1px solid var(--border-default)' : 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer',
+                  textAlign: 'left'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <ClipboardList size={14} style={{ color: 'var(--brand-primary)' }} />
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Form Responses ({qualEntries.length} fields)
+                  </span>
+                </div>
+                <ChevronDown size={14} style={{ transform: showSurvey ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', color: 'var(--text-muted)' }} />
+              </button>
+
+              {showSurvey && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
+                  {qualEntries.map(([key, val]) => (
+                    <div key={key} style={{
+                      padding: '0.625rem 0.875rem',
+                      borderRight: '1px solid var(--border-default)',
+                      borderBottom: '1px solid var(--border-default)',
+                      background: 'var(--bg-card)'
+                    }}>
+                      <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
+                        {key}
+                      </p>
+                      <p style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0 0', wordBreak: 'break-word' }}>
+                        {String(val) || '—'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
           )}
 
-          {/* Log New Followup Action */}
-          <section style={{ borderRadius: '12px', border: '1px solid var(--border-default)', overflow: 'hidden' }}>
+          {/* Update Call Status & Log Followup Box */}
+          <section style={{ borderRadius: '12px', border: '1px solid var(--border-default)', background: 'var(--bg-card)', overflow: 'hidden' }}>
             <div style={{
               padding: '0.75rem 1rem', background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-default)',
               display: 'flex', alignItems: 'center', gap: '0.5rem'
             }}>
               <PhoneCall size={14} style={{ color: 'var(--brand-primary)' }} />
-              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Update Call Status (Followup #{(lead.followup_count || 0) + 1})
+              <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Log Outcome (Followup #{(lead.followup_count || 0) + 1})
               </span>
             </div>
-            <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+
+            <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {/* Status Select Grid */}
               <div>
-                <label className="form-label" style={{ display: 'block', marginBottom: '6px' }}>
-                  Select Call Status
+                <label className="form-label" style={{ display: 'block', marginBottom: '6px', fontSize: '0.72rem' }}>
+                  Select Call Status *
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                   {STATUS_CONFIG.map(s => (
@@ -568,12 +611,12 @@ function FollowupPanel({
                       key={s.id}
                       onClick={() => setCallStatus(s.id)}
                       style={{
-                        padding: '7px 10px', borderRadius: '8px', cursor: 'pointer', textAlign: 'left',
+                        padding: '8px 10px', borderRadius: '8px', cursor: 'pointer', textAlign: 'left',
                         border: `1px solid ${callStatus === s.id ? s.color : 'var(--border-default)'}`,
                         background: callStatus === s.id ? s.bg : 'transparent',
                         display: 'flex', alignItems: 'center', gap: '6px',
                         color: callStatus === s.id ? s.color : 'var(--text-secondary)',
-                        fontSize: '0.75rem', fontWeight: callStatus === s.id ? 700 : 500,
+                        fontSize: '0.78rem', fontWeight: callStatus === s.id ? 800 : 500,
                         transition: 'all 0.15s'
                       }}
                     >
@@ -583,42 +626,110 @@ function FollowupPanel({
                 </div>
               </div>
 
+              {/* Followup Notes */}
               <div>
-                <label className="form-label" style={{ display: 'block', marginBottom: '6px' }}>
+                <label className="form-label" style={{ display: 'block', marginBottom: '6px', fontSize: '0.72rem' }}>
                   Followup Notes / Remarks
                 </label>
                 <textarea
                   className="form-textarea"
                   rows={3}
-                  placeholder="Enter customer response, student needs, objections..."
+                  placeholder="Enter remarks, customer response, career goal..."
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
+                  style={{ fontSize: '0.85rem' }}
                 />
               </div>
 
+              {/* Next Scheduled Followup Date */}
               <div>
-                <label className="form-label" style={{ display: 'block', marginBottom: '6px' }}>
-                  Schedule Next Followup Date & Time
+                <label className="form-label" style={{ display: 'block', marginBottom: '6px', fontSize: '0.72rem' }}>
+                  Schedule Next Followup Date &amp; Time
                 </label>
                 <input
                   type="datetime-local"
                   value={scheduledAt}
                   onChange={e => setScheduledAt(e.target.value)}
                   className="form-input"
+                  style={{ fontSize: '0.85rem' }}
                 />
               </div>
 
+              {/* Action Button */}
               <button
                 onClick={handleSave}
                 disabled={saving}
                 className="btn btn-primary"
-                style={{ width: '100%', justifyContent: 'center' }}
+                style={{ width: '100%', justifyContent: 'center', height: '42px', fontSize: '0.88rem', fontWeight: 700 }}
               >
-                {saving ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />}
-                Save Outcome & Update Status
+                {saving ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={16} />}
+                Save Outcome &amp; Update Status
               </button>
             </div>
           </section>
+
+          {/* Followup History Timeline */}
+          <section>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <Activity size={14} color="var(--text-muted)" />
+              <h4 style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+                Followup History Timeline
+              </h4>
+              {history.length > 0 && (
+                <span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  {history.length} call{history.length !== 1 ? 's' : ''} logged
+                </span>
+              )}
+            </div>
+
+            {loading ? (
+              <div style={{ height: '80px', borderRadius: '10px', background: 'var(--bg-surface)' }} />
+            ) : history.length === 0 ? (
+              <div style={{ padding: '1.5rem', textAlign: 'center', borderRadius: '10px', border: '1px dashed var(--border-default)', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                No followups recorded yet
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                {history.map((item, idx) => {
+                  const s = statusMap[item.call_status] || { color: 'var(--text-primary)', bg: 'var(--bg-surface)', label: item.call_status, icon: <CircleDot size={12} /> }
+                  return (
+                    <div key={item.id} style={{ display: 'flex', gap: '0.75rem', position: 'relative' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '20px', flexShrink: 0 }}>
+                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color, marginTop: '14px', flexShrink: 0, boxShadow: `0 0 0 3px ${s.color}20` }} />
+                        {idx < history.length - 1 && (
+                          <div style={{ width: '1px', flex: 1, background: 'var(--border-default)', margin: '4px 0' }} />
+                        )}
+                      </div>
+                      <div style={{
+                        flex: 1, borderRadius: '10px', border: '1px solid var(--border-default)',
+                        padding: '0.625rem 0.875rem', marginBottom: '0.5rem', background: 'var(--bg-card)'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '4px' }}>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: '99px', background: s.bg, color: s.color, border: `1px solid ${s.color}35` }}>
+                            {s.label}
+                          </span>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                            {formatDate(item.completed_at, 'dd MMM, hh:mm a')}
+                          </span>
+                        </div>
+                        {item.notes && (
+                          <p style={{ fontSize: '0.78rem', color: 'var(--text-primary)', margin: '4px 0 0', lineHeight: '1.5' }}>{item.notes}</p>
+                        )}
+                        <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                          <User size={9} /> {item.sales_rep?.full_name || 'Sales Rep'} &nbsp;·&nbsp; Followup #{item.followup_number}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
+    </div>
+  )
+}
 
           {/* Followup History Timeline */}
           <section>
@@ -1091,8 +1202,9 @@ export default function LeadsSection({ profile }: Props) {
         <FollowupPanel
           lead={followupLead}
           onClose={() => setFollowupLead(null)}
-          onSaved={(newStatus) => {
-            setFollowupLead(prev => prev ? { ...prev, status: newStatus } : null)
+          onSaved={(updatedLead) => {
+            setFollowupLead(prev => prev ? { ...prev, ...updatedLead } : null)
+            setLeads(prev => prev.map(l => l.id === (updatedLead.id || followupLead.id) ? { ...l, ...updatedLead } : l))
             fetchLeads()
           }}
         />
