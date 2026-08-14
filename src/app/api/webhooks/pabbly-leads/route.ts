@@ -3,24 +3,78 @@ import { query, queryOne, execute } from '@/lib/db'
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => null) || {}
+    let body: Record<string, any> = {}
+
+    const contentType = req.headers.get('content-type') || ''
+
+    // 1. Universal Body Parsing (supports Raw JSON, FormData, URL-Encoded, and URL Params)
+    if (contentType.includes('application/json')) {
+      try {
+        body = await req.json()
+      } catch {
+        body = {}
+      }
+    } else if (contentType.includes('multipart/form-data') || contentType.includes('application/x-www-form-urlencoded')) {
+      try {
+        const formData = await req.formData()
+        for (const [key, value] of formData.entries()) {
+          body[key] = typeof value === 'string' ? value : (value as File).name
+        }
+      } catch {
+        try {
+          const text = await req.text()
+          const params = new URLSearchParams(text)
+          for (const [key, value] of params.entries()) {
+            body[key] = value
+          }
+        } catch {
+          body = {}
+        }
+      }
+    } else {
+      // Fallback: Try JSON parse, then URL search params from raw text
+      try {
+        const text = await req.text()
+        if (text) {
+          try {
+            body = JSON.parse(text)
+          } catch {
+            const params = new URLSearchParams(text)
+            for (const [key, value] of params.entries()) {
+              body[key] = value
+            }
+          }
+        }
+      } catch {
+        body = {}
+      }
+    }
+
+    // Also merge URL search parameters
+    for (const [key, value] of req.nextUrl.searchParams.entries()) {
+      if (key !== 'secret' && !body[key]) {
+        body[key] = value
+      }
+    }
 
     // Security token check (optional secret token parameter)
-    const secret = req.nextUrl.searchParams.get('secret') || req.headers.get('x-pabbly-secret')
+    const secret = req.nextUrl.searchParams.get('secret') || req.headers.get('x-pabbly-secret') || body.secret
     const expectedSecret = process.env.PABBLY_WEBHOOK_SECRET || 'rushi_pabbly_secret_2026'
 
     if (secret && secret !== expectedSecret) {
       return NextResponse.json({ error: 'Unauthorized webhook request' }, { status: 401 })
     }
 
-    // 1. Parse standard lead fields from Pabbly / Facebook Lead Ads payload
+    // 2. Parse standard lead fields
     const rawName =
       body.full_name ||
       body.name ||
       body.Name ||
       body.client_name ||
       body.ClientName ||
-      `${body.first_name || ''} ${body.last_name || ''}`.trim() ||
+      body.student_name ||
+      body.StudentName ||
+      `${body.first_name || body.FirstName || ''} ${body.last_name || body.LastName || ''}`.trim() ||
       'Unknown Lead'
 
     const rawPhone =
@@ -31,17 +85,31 @@ export async function POST(req: NextRequest) {
       body.Mobile ||
       body.contact ||
       body.Contact ||
+      body.contact_number ||
       ''
 
-    const rawEmail = body.email || body.Email || body.email_address || body.EmailAddress || null
-    const platform = body.platform || body.Platform || body.source || 'Facebook'
+    const rawEmail =
+      body.email ||
+      body.Email ||
+      body.email_address ||
+      body.EmailAddress ||
+      null
 
-    // Normalize phone number
+    const platform =
+      body.platform ||
+      body.Platform ||
+      body.source ||
+      body.Source ||
+      'Facebook'
+
+    // Clean and normalize phone number
     const cleanPhone = String(rawPhone).replace(/[^\d+]/g, '') || 'Not provided'
 
-    // 2. Identify Industry/Course
-    let industry = body.industry || body.Industry || body.course || body.Course || body.category || 'Digital Marketing'
-    const lowerInd = String(industry).toLowerCase()
+    // 3. Identify & Normalize Industry/Course
+    let rawIndustry = body.industry || body.Industry || body.course || body.Course || body.category || 'Digital Marketing'
+    let industry = 'Digital Marketing'
+    const lowerInd = String(rawIndustry).toLowerCase().trim()
+
     if (lowerInd.includes('share') || lowerInd.includes('stock') || lowerInd.includes('trading')) {
       industry = 'Share Market'
     } else if (lowerInd.includes('digital') || lowerInd.includes('marketing')) {
@@ -52,12 +120,15 @@ export async function POST(req: NextRequest) {
       industry = 'Amazon'
     } else if (lowerInd.includes('bba') || lowerInd.includes('mba')) {
       industry = 'BBA/MBA'
+    } else {
+      // Preserve custom industry entered by admin/user
+      industry = rawIndustry.trim()
     }
 
-    // 3. Extract ALL Dynamic Qualification Questions / Custom Form Parameters
+    // 4. Dynamic Parameter Extraction (Any new questions from Facebook form / Pabbly)
     const standardKeys = new Set([
-      'full_name', 'name', 'first_name', 'last_name', 'client_name', 'clientname',
-      'phone_number', 'phone', 'mobile', 'contact',
+      'full_name', 'name', 'first_name', 'last_name', 'client_name', 'clientname', 'student_name', 'studentname',
+      'phone_number', 'phone', 'mobile', 'contact', 'contact_number',
       'email', 'email_address', 'emailaddress',
       'platform', 'source',
       'industry', 'course', 'category',
@@ -66,11 +137,12 @@ export async function POST(req: NextRequest) {
 
     const qualificationAnswers: Record<string, any> = {}
 
-    // Check if a pre-bundled qualification_answers or custom_questions object is passed
+    // Support pre-nested qualification_answers
     if (body.qualification_answers && typeof body.qualification_answers === 'object') {
       Object.assign(qualificationAnswers, body.qualification_answers)
     }
 
+    // Support custom_questions array format from Facebook Leads API
     if (Array.isArray(body.custom_questions)) {
       for (const q of body.custom_questions) {
         if (q && typeof q === 'object') {
@@ -81,24 +153,36 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Capture every other top-level key dynamically
+    // Dynamically capture every single additional parameter sent in the request
     for (const [key, value] of Object.entries(body)) {
-      const lowerKey = key.toLowerCase().replace(/[^a-z0-9]/g, '')
-      if (!standardKeys.has(lowerKey) && value !== null && value !== undefined && value !== '' && typeof value !== 'object') {
-        // Format key nicely (e.g. "where_do_you_live" -> "Where Do You Live")
+      const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '')
+      if (
+        !standardKeys.has(normalizedKey) &&
+        value !== null &&
+        value !== undefined &&
+        value !== '' &&
+        typeof value !== 'object'
+      ) {
         const formattedKey = key
           .replace(/_/g, ' ')
+          .replace(/-/g, ' ')
+          .trim()
           .replace(/\b\w/g, c => c.toUpperCase())
         qualificationAnswers[formattedKey] = value
       }
     }
 
-    // 4. Industry Round-Robin Sales Representative Assignment
+    // 5. Strict Industry-Based Round Robin Routing
+    // Find active sales employees strictly mapped to this specific industry
     const industryReps = await query<{ employee_id: string; full_name: string }>(
-      `SELECT s.employee_id, p.full_name
+      `SELECT DISTINCT s.employee_id, p.full_name
        FROM sales_industry_skills s
        INNER JOIN profiles p ON s.employee_id = p.id
-       WHERE s.industry = $1 AND p.is_active = true`,
+       WHERE LOWER(TRIM(s.industry)) = LOWER(TRIM($1))
+         AND p.is_active = true
+         AND p.role = 'employee'
+         AND LOWER(p.department) = 'sales'
+       ORDER BY p.full_name ASC`,
       [industry]
     )
 
@@ -107,23 +191,35 @@ export async function POST(req: NextRequest) {
       eligibleRepIds = industryReps.map(r => ({ id: r.employee_id, name: r.full_name || 'Sales Rep' }))
     }
 
-    // Fallback: If no rep mapped to this industry, round-robin among all active sales reps
+    // Fallback: If no rep has this specific industry, check for 'All' or 'General' skill
     if (eligibleRepIds.length === 0) {
-      const allEmps = await query<{ id: string; full_name: string }>(
-        `SELECT id, full_name FROM profiles WHERE role = 'employee' AND is_active = true AND LOWER(department) = 'sales'`
+      const generalReps = await query<{ employee_id: string; full_name: string }>(
+        `SELECT DISTINCT s.employee_id, p.full_name
+         FROM sales_industry_skills s
+         INNER JOIN profiles p ON s.employee_id = p.id
+         WHERE (LOWER(TRIM(s.industry)) = 'all' OR LOWER(TRIM(s.industry)) = 'general' OR LOWER(TRIM(s.industry)) = 'other')
+           AND p.is_active = true
+           AND p.role = 'employee'
+           AND LOWER(p.department) = 'sales'
+         ORDER BY p.full_name ASC`
       )
-      if (allEmps && allEmps.length > 0) {
-        eligibleRepIds = allEmps.map(e => ({ id: e.id, name: e.full_name }))
+      if (generalReps && generalReps.length > 0) {
+        eligibleRepIds = generalReps.map(r => ({ id: r.employee_id, name: r.full_name || 'Sales Rep' }))
       }
     }
 
-    // Final fallback: any active employee
+    // Fallback: If still no mapped reps, route among all active sales department employees
     if (eligibleRepIds.length === 0) {
-      const anyEmps = await query<{ id: string; full_name: string }>(
-        `SELECT id, full_name FROM profiles WHERE role = 'employee' AND is_active = true`
+      const allActiveSales = await query<{ id: string; full_name: string }>(
+        `SELECT id, full_name
+         FROM profiles
+         WHERE role = 'employee'
+           AND is_active = true
+           AND LOWER(department) = 'sales'
+         ORDER BY full_name ASC`
       )
-      if (anyEmps && anyEmps.length > 0) {
-        eligibleRepIds = anyEmps.map(e => ({ id: e.id, name: e.full_name }))
+      if (allActiveSales && allActiveSales.length > 0) {
+        eligibleRepIds = allActiveSales.map(e => ({ id: e.id, name: e.full_name }))
       }
     }
 
@@ -151,7 +247,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 5. Insert Lead into Database with full qualification answers
+    // 6. Insert Lead into Database
     const newLead = await queryOne<{ id: string }>(
       `INSERT INTO leads (
         name,
@@ -186,7 +282,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to insert lead' }, { status: 500 })
     }
 
-    // 6. Create Notification for Assigned Sales Rep
+    // 7. Send In-App Notification to Assigned Sales Representative
     if (assignedToId) {
       try {
         await execute(
@@ -209,6 +305,7 @@ export async function POST(req: NextRequest) {
       message: 'Lead created successfully',
       lead_id: newLead.id,
       assigned_to: assignedToName,
+      assigned_to_id: assignedToId,
       industry,
       qualification_count: Object.keys(qualificationAnswers).length,
       qualification_answers: qualificationAnswers,
