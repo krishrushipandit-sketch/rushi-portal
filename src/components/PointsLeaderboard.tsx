@@ -54,12 +54,12 @@ export default function PointsLeaderboard({ isLight }: Props) {
     fetchPoints()
   }, [router])
 
-  const textColor = isLight ? 'rgba(255,255,255,0.85)' : 'var(--text-primary)'
-  const mutedColor = isLight ? 'rgba(255,255,255,0.45)' : 'var(--text-muted)'
-  const borderColor = isLight ? 'rgba(255,255,255,0.1)' : 'var(--border-subtle)'
-  const cardBg = isLight ? 'rgba(255,255,255,0.07)' : 'var(--bg-elevated)'
+  const textColor = isLight ? '#0f172a' : 'var(--text-primary)'
+  const mutedColor = isLight ? '#64748b' : 'var(--text-muted)'
+  const borderColor = isLight ? '#e2e8f0' : 'var(--border-subtle)'
+  const cardBg = isLight ? '#f8fafc' : 'var(--bg-elevated)'
 
-  const rankColors = ['#f59e0b', '#94a3b8', '#cd7f32']
+  const rankColors = ['#d97706', '#64748b', '#b45309']
 
   if (loading) {
     return (
@@ -106,7 +106,7 @@ export default function PointsLeaderboard({ isLight }: Props) {
             Leaderboard
           </p>
         </div>
-        <p style={{ fontSize: '0.63rem', fontWeight: 700, letterSpacing: '0.07em', color: isLight ? 'rgba(255,255,255,0.7)' : 'var(--brand-primary)' }}>
+        <p style={{ fontSize: '0.63rem', fontWeight: 700, letterSpacing: '0.07em', color: isLight ? '#059669' : 'var(--brand-primary)' }}>
           {new Date().toLocaleDateString('en-US', { month: 'short', year: '2-digit' }).toUpperCase()}
         </p>
       </div>
