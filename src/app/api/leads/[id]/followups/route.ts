@@ -135,7 +135,7 @@ export async function POST(
 
     // 4. Trigger AiSensy ringing_sale template if status was updated
     if (call_status) {
-      handleLeadStatusChangeAiSensy(leadId, call_status).catch((e) => {
+      handleLeadStatusChangeAiSensy(leadId, call_status, user.userId).catch((e) => {
         console.error('AiSensy background trigger error:', e)
       })
     }

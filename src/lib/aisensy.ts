@@ -6,6 +6,7 @@ export interface LeadForAiSensy {
   client_name?: string | null
   phone: string
   status: string
+  assigned_to?: string | null
   whatsapp_ringing_sent?: boolean | null
 }
 
@@ -27,9 +28,7 @@ const DISALLOWED_STATUSES = new Set([
 
 /**
  * Format and normalize destination phone number for AiSensy / WhatsApp API.
- * E.g. "+91 98765 43210" -> "919876543210"
- * E.g. "9876543210" -> "919876543210"
- * E.g. "09876543210" -> "919876543210"
+ * Output: "919876543210"
  */
 export function normalizePhoneForWhatsApp(phone: string): string | null {
   if (!phone) return null
@@ -57,6 +56,37 @@ export function normalizePhoneForWhatsApp(phone: string): string | null {
 }
 
 /**
+ * Clean 10-digit sales rep phone number for insertion into template text
+ * (e.g. "📞 +91 9768726006")
+ */
+export function formatSalesRepPhone(phone?: string | null): string {
+  if (!phone) return '9768726006'
+  const cleaned = phone.replace(/\D/g, '')
+  if (cleaned.length === 12 && cleaned.startsWith('91')) {
+    return cleaned.slice(2)
+  }
+  if (cleaned.length === 11 && cleaned.startsWith('0')) {
+    return cleaned.slice(1)
+  }
+  if (cleaned.length === 10) {
+    return cleaned
+  }
+  return cleaned || '9768726006'
+}
+
+/**
+ * Clean human-readable status for template variable {{2}}
+ */
+export function formatStatusForTemplate(status: string): string {
+  const s = (status || '').toLowerCase().trim()
+  if (s === 'ringing') return 'Ringing'
+  if (s === 'busy_callback') return 'Busy / Call Back'
+  if (s === 'not_connected') return 'Not Reachable'
+  if (s === 'switched_off') return 'Switched Off'
+  return status.charAt(0).toUpperCase() + status.slice(1)
+}
+
+/**
  * Checks whether this status transition should trigger the 1-time ringing_sale AiSensy WhatsApp template.
  */
 export function shouldTriggerRingingSaleWhatsApp(
@@ -72,54 +102,79 @@ export function shouldTriggerRingingSaleWhatsApp(
   if (DISALLOWED_STATUSES.has(cleanNew)) return false
   if (!ELIGIBLE_RINGING_STATUSES.has(cleanNew)) return false
 
-  // Trigger only when moving from 'new' (or first time status change)
+  // Trigger when moving from 'new' (or initial transition)
   const isFromNew = cleanOld === 'new' || !cleanOld || cleanOld === cleanNew
   return isFromNew
 }
 
 /**
- * Sends the AiSensy 'ringing_sale' template to the lead if eligible and not already sent.
+ * Sends the AiSensy 'ringing_sale' template to the lead with 3 templateParams:
+ * 1. Lead Name (e.g. "Krish")
+ * 2. Status (e.g. "Ringing")
+ * 3. Salesperson Phone (e.g. "9768726006")
  */
 export async function sendAiSensyRingingSaleTemplate(
   lead: LeadForAiSensy,
-  templateName = 'ringing_sale'
+  options?: {
+    status?: string
+    salesRepPhone?: string
+    templateName?: string
+  }
 ): Promise<{ success: boolean; error?: string; data?: any }> {
   try {
     const apiKey = process.env.AISENSY_API_KEY
     if (!apiKey) {
-      console.warn('[AiSensy] AISENSY_API_KEY environment variable is not configured.')
-      return { success: false, error: 'AISENSY_API_KEY is not configured' }
+      const msg = 'AISENSY_API_KEY environment variable is not configured'
+      console.warn(`[AiSensy] ${msg}`)
+      await execute(
+        `UPDATE leads SET whatsapp_msg_status = $1 WHERE id = $2`,
+        [`config_error: ${msg}`, lead.id]
+      )
+      return { success: false, error: msg }
     }
 
     const destination = normalizePhoneForWhatsApp(lead.phone)
     if (!destination) {
-      console.warn(`[AiSensy] Invalid phone number for lead ID ${lead.id}: ${lead.phone}`)
-      return { success: false, error: 'Invalid phone number' }
+      const msg = `Invalid phone number: ${lead.phone}`
+      console.warn(`[AiSensy] ${msg}`)
+      await execute(
+        `UPDATE leads SET whatsapp_msg_status = $1 WHERE id = $2`,
+        [`invalid_phone: ${lead.phone}`, lead.id]
+      )
+      return { success: false, error: msg }
     }
 
-    const fullName = (lead.client_name || lead.name || 'Student').trim()
-    const firstName = fullName.split(' ')[0] || fullName
+    const fullName = (lead.client_name || lead.name || 'Friend').trim()
+    const templateName = options?.templateName || 'ringing_sale'
+    const statusText = formatStatusForTemplate(options?.status || lead.status || 'Ringing')
+    const salesPhone = formatSalesRepPhone(options?.salesRepPhone)
+
+    // 3 Exact Variables matching the template: [Lead Name, Status, Salesperson Phone]
+    const templateParams = [
+      fullName,
+      statusText,
+      salesPhone,
+    ]
 
     const payload = {
       apiKey,
       campaignName: templateName,
       destination,
       userName: fullName,
-      templateParams: [
-        firstName
-      ],
+      templateParams,
       source: 'rushi_portal',
       media: {},
       buttons: [],
       carouselCards: [],
       location: {},
       paramsFallbackValue: {
-        FirstName: firstName || 'Student',
-        Name: fullName || 'Student'
-      }
+        FirstName: fullName,
+        Status: statusText,
+        Phone: salesPhone,
+      },
     }
 
-    console.log(`[AiSensy] Sending '${templateName}' to ${destination} (${fullName})...`)
+    console.log(`[AiSensy] Sending '${templateName}' to ${destination}:`, JSON.stringify(templateParams))
 
     const res = await fetch('https://backend.aisensy.com/campaign/t1/api/v2', {
       method: 'POST',
@@ -144,7 +199,7 @@ export async function sendAiSensyRingingSaleTemplate(
       return { success: false, error: errMsg, data: resData }
     }
 
-    console.log(`[AiSensy] Successfully sent '${templateName}' to ${destination}`)
+    console.log(`[AiSensy] Successfully delivered '${templateName}' to ${destination}`)
 
     // Mark as sent in DB
     await execute(
@@ -169,11 +224,12 @@ export async function sendAiSensyRingingSaleTemplate(
  */
 export async function handleLeadStatusChangeAiSensy(
   leadId: string,
-  newStatus: string
+  newStatus: string,
+  updatedByUserId?: string
 ): Promise<void> {
   try {
     const lead = await queryOne<LeadForAiSensy>(
-      `SELECT id, name, client_name, phone, status, whatsapp_ringing_sent 
+      `SELECT id, name, client_name, phone, status, assigned_to, whatsapp_ringing_sent 
        FROM leads 
        WHERE id = $1`,
       [leadId]
@@ -187,9 +243,26 @@ export async function handleLeadStatusChangeAiSensy(
       lead.whatsapp_ringing_sent
     )
 
-    if (shouldSend) {
-      await sendAiSensyRingingSaleTemplate(lead, 'ringing_sale')
+    if (!shouldSend) return
+
+    // Find the salesperson's phone number who made the call / updated the status
+    let salesRepPhone = '9768726006'
+    const targetUserId = updatedByUserId || lead.assigned_to
+    if (targetUserId) {
+      const profile = await queryOne<{ phone: string | null; whatsapp_number: string | null }>(
+        `SELECT phone, whatsapp_number FROM profiles WHERE id = $1`,
+        [targetUserId]
+      )
+      if (profile?.phone || profile?.whatsapp_number) {
+        salesRepPhone = profile.phone || profile.whatsapp_number || '9768726006'
+      }
     }
+
+    await sendAiSensyRingingSaleTemplate(lead, {
+      status: newStatus,
+      salesRepPhone,
+      templateName: 'ringing_sale',
+    })
   } catch (err) {
     console.error('[AiSensy] Error in handleLeadStatusChangeAiSensy:', err)
   }

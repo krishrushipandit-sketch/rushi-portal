@@ -92,7 +92,7 @@ export async function PATCH(
 
     // Trigger AiSensy ringing_sale template if status was updated
     if (body.status) {
-      handleLeadStatusChangeAiSensy(id, body.status).catch((e) => {
+      handleLeadStatusChangeAiSensy(id, body.status, user.userId).catch((e) => {
         console.error('AiSensy background trigger error:', e)
       })
     }
