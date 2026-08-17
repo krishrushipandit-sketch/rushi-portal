@@ -4,8 +4,23 @@ import { getUserFromRequest } from '@/lib/auth'
 
 async function getAdminAuth(req: NextRequest) {
   const user = await getUserFromRequest(req)
-  if (!user || user.role !== 'admin') return null
-  return user
+  if (!user) return null
+  if (user.role === 'admin') return user
+
+  // Also allow Kedar (Co-Founder - OORRUU Media)
+  const profile = await queryOne<{ role: string; email: string; full_name: string }>(
+    'SELECT role, email, full_name FROM profiles WHERE id = $1',
+    [user.userId]
+  )
+  if (
+    profile?.role === 'admin' ||
+    profile?.email?.toLowerCase().includes('kedar') ||
+    profile?.full_name?.toLowerCase().includes('kedar')
+  ) {
+    return user
+  }
+
+  return null
 }
 
 // POST /api/clients — create a new client with deliverables
