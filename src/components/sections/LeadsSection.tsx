@@ -9,7 +9,8 @@ import {
   MessageSquare, PhoneCall, Clock, ChevronDown, ChevronRight,
   User, Layers, CircleDot, TrendingUp, CheckCircle, XCircle,
   PhoneOff, PhoneMissed, Voicemail, Zap, Calendar, Activity,
-  BarChart2, Filter, ClipboardList, Send, RefreshCw, CalendarDays, BellRing
+  BarChart2, Filter, ClipboardList, Send, RefreshCw, CalendarDays, BellRing,
+  CalendarClock, CalendarCheck
 } from 'lucide-react'
 
 interface Props { profile: Profile }
@@ -50,21 +51,22 @@ interface FollowupRecord {
 const INDUSTRIES = ['Digital Marketing', 'Share Market', 'AI Course', 'Amazon', 'BBA/MBA', 'Other']
 const SOURCES = ['facebook_lead_ad', 'instagram_lead_ad', 'walk_in', 'referral', 'social_media', 'website', 'cold_call', 'other']
 
-// ─── 10 Call Status Definitions ──────────────────────────────────────────
+// ─── 9 Call Status Definitions ──────────────────────────────────────────
 const STATUS_CONFIG: {
   id: string; label: string; color: string; bg: string;
   icon: React.ReactNode; group: 'active' | 'hot' | 'closed'
+  requiresDate?: boolean   // prompts for a follow-up / visit datetime
 }[] = [
-  { id: 'new',             label: 'New Lead',          color: '#4f46e5', bg: 'rgba(79,70,229,0.1)',  icon: <CircleDot size={12} />,   group: 'active' },
-  { id: 'ringing',         label: 'Ringing',           color: '#d97706', bg: 'rgba(217,119,6,0.1)',  icon: <Phone size={12} />,       group: 'active' },
-  { id: 'not_connected',   label: 'Not Connected',     color: '#dc2626', bg: 'rgba(220,38,38,0.1)',  icon: <PhoneOff size={12} />,    group: 'active' },
-  { id: 'switched_off',    label: 'Switched Off',      color: '#475569', bg: 'rgba(71,85,105,0.1)', icon: <PhoneMissed size={12} />, group: 'active' },
-  { id: 'not_logical',     label: 'Not Logical',       color: '#64748b', bg: 'rgba(100,116,139,0.1)', icon: <XCircle size={12} />,     group: 'closed' },
-  { id: 'busy_callback',   label: 'Busy / Callback',   color: '#7c3aed', bg: 'rgba(124,58,237,0.1)',  icon: <Voicemail size={12} />,   group: 'active' },
-  { id: 'interested',      label: 'Interested',        color: '#0284c7', bg: 'rgba(2,132,199,0.1)',   icon: <Zap size={12} />,         group: 'hot'    },
-  { id: 'visit_scheduled', label: 'Visit Scheduled',   color: '#db2777', bg: 'rgba(219,39,119,0.1)',  icon: <Calendar size={12} />,    group: 'hot'    },
-  { id: 'closed_won',      label: 'Enrolled',          color: '#16a34a', bg: 'rgba(22,163,74,0.1)',  icon: <CheckCircle size={12} />, group: 'closed' },
-  { id: 'closed_lost',     label: 'Lost',              color: '#b91c1c', bg: 'rgba(185,28,28,0.1)',   icon: <XCircle size={12} />,     group: 'closed' },
+  { id: 'new',            label: 'New Lead',       color: '#4f46e5', bg: 'rgba(79,70,229,0.1)',   icon: <CircleDot size={12} />,   group: 'active' },
+  { id: 'ringing',        label: 'Ringing',        color: '#d97706', bg: 'rgba(217,119,6,0.1)',   icon: <Phone size={12} />,       group: 'active' },
+  { id: 'connected',      label: 'Connected',      color: '#0891b2', bg: 'rgba(8,145,178,0.1)',   icon: <PhoneCall size={12} />,   group: 'active' },
+  { id: 'callback',       label: 'Call Back',      color: '#7c3aed', bg: 'rgba(124,58,237,0.1)',  icon: <Voicemail size={12} />,   group: 'active', requiresDate: true },
+  { id: 'follow_up',      label: 'Follow Up',      color: '#f59e0b', bg: 'rgba(245,158,11,0.1)',  icon: <CalendarClock size={12} />, group: 'active', requiresDate: true },
+  { id: 'interested',     label: 'Interested',     color: '#0284c7', bg: 'rgba(2,132,199,0.1)',   icon: <Zap size={12} />,         group: 'hot'    },
+  { id: 'switched_off',   label: 'Switch Off',     color: '#475569', bg: 'rgba(71,85,105,0.1)',   icon: <PhoneMissed size={12} />, group: 'active' },
+  { id: 'not_interested', label: 'Not Interested', color: '#b91c1c', bg: 'rgba(185,28,28,0.1)',   icon: <XCircle size={12} />,     group: 'closed' },
+  { id: 'visit_scheduled',label: 'Visit Schedule', color: '#db2777', bg: 'rgba(219,39,119,0.1)',  icon: <CalendarCheck size={12} />, group: 'hot', requiresDate: true },
+  { id: 'closed_won',     label: 'Enrolled',       color: '#16a34a', bg: 'rgba(22,163,74,0.1)',   icon: <CheckCircle size={12} />, group: 'closed' },
 ]
 
 const statusMap = STATUS_CONFIG.reduce((a, s) => ({ ...a, [s.id]: s }), {} as Record<string, typeof STATUS_CONFIG[0]>)
@@ -670,7 +672,7 @@ function FollowupPanel({
             </div>
           </div>
 
-          {/* Notes & Scheduled Follow-up Date Editor */}
+          {/* Notes and Date section */}
           <div style={{ borderRadius: '12px', border: '1px solid var(--border-default)', background: 'var(--bg-card)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
             <div>
               <label className="form-label" style={{ display: 'block', marginBottom: '4px' }}>
@@ -687,30 +689,61 @@ function FollowupPanel({
             </div>
 
             <div>
-              <label className="form-label" style={{ display: 'block', marginBottom: '4px' }}>
-                Next Followup Date &amp; Time
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                {callStatus === 'visit_scheduled'
+                  ? <><CalendarCheck size={14} color="#db2777" /> Visit Schedule Date &amp; Time <span style={{ color: '#db2777', fontWeight: 800 }}>*</span></>
+                  : callStatus === 'follow_up'
+                  ? <><CalendarClock size={14} color="#f59e0b" /> Follow Up Date &amp; Time</>
+                  : callStatus === 'callback'
+                  ? <><Voicemail size={14} color="#7c3aed" /> Callback Scheduled At</>
+                  : <><Calendar size={14} /> Next Followup Date &amp; Time</>
+                }
               </label>
               <input
                 type="datetime-local"
                 value={scheduledAt}
                 onChange={e => setScheduledAt(e.target.value)}
                 className="form-input"
-                style={{ fontSize: '0.82rem' }}
+                style={{
+                  fontSize: '0.82rem',
+                  colorScheme: 'dark',
+                  borderColor: callStatus === 'visit_scheduled' ? '#db2777'
+                    : callStatus === 'follow_up' ? '#f59e0b'
+                    : callStatus === 'callback' ? '#7c3aed'
+                    : undefined,
+                }}
               />
+
+              {callStatus === 'visit_scheduled' && scheduledAt && (
+                <div style={{ marginTop: '8px', padding: '8px 12px', borderRadius: '8px', background: 'rgba(219,39,119,0.08)', border: '1px solid rgba(219,39,119,0.3)', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                  <BellRing size={13} color="#db2777" style={{ marginTop: '1px', flexShrink: 0 }} />
+                  <div>
+                    <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#db2777', margin: 0 }}>Visit Reminder Set</p>
+                    <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: '2px 0 0' }}>
+                      Reminder on {new Date(scheduledAt).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })} at {new Date(scheduledAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {(callStatus === 'follow_up' || callStatus === 'callback') && scheduledAt && (
+                <div style={{ marginTop: '8px', padding: '8px 12px', borderRadius: '8px', background: callStatus === 'callback' ? 'rgba(124,58,237,0.08)' : 'rgba(245,158,11,0.08)', border: callStatus === 'callback' ? '1px solid rgba(124,58,237,0.3)' : '1px solid rgba(245,158,11,0.3)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <BellRing size={13} color={callStatus === 'callback' ? '#7c3aed' : '#f59e0b'} style={{ flexShrink: 0 }} />
+                  <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: 0 }}>
+                    Reminder: <strong style={{ color: 'var(--text-primary)' }}>{new Date(scheduledAt).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })} at {new Date(scheduledAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</strong>
+                  </p>
+                </div>
+              )}
             </div>
 
             <button
               onClick={() => executeSave(callStatus)}
               disabled={saving}
               className="btn btn-primary"
-              style={{
-                width: '100%', justifyContent: 'center', height: '42px', fontWeight: 800,
-                fontSize: '0.85rem', background: '#0e3d35', borderColor: '#0e3d35', color: '#ffffff',
-                boxShadow: '0 4px 14px rgba(14, 61, 53, 0.25)'
-              }}
+              style={{ width: '100%', justifyContent: 'center', height: '42px', fontWeight: 800, fontSize: '0.85rem', background: '#0e3d35', borderColor: '#0e3d35', color: '#ffffff', boxShadow: '0 4px 14px rgba(14, 61, 53, 0.25)' }}
             >
               {saving ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={16} />}
-              {saving ? 'Saving Follow-up...' : 'Save Follow-up & Update Lead'}
+              {saving ? 'Saving...' : 'Save & Update Lead'}
             </button>
           </div>
 

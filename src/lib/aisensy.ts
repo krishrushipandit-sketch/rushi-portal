@@ -12,18 +12,24 @@ export interface LeadForAiSensy {
 
 const ELIGIBLE_RINGING_STATUSES = new Set([
   'ringing',
+  'callback',       // Call Back
+  'switched_off',   // Switch Off
+  'busy',           // Busy
+  // Legacy aliases kept for backward compat
   'busy_callback',
   'not_connected',
-  'switched_off',
 ])
 
 const DISALLOWED_STATUSES = new Set([
+  'new',
+  'connected',
+  'follow_up',
   'interested',
   'visit_scheduled',
+  'not_interested',
   'closed_won',
   'closed_lost',
   'not_logical',
-  'new',
 ])
 
 /**
@@ -61,9 +67,16 @@ export function formatSalesRepPhone(phone?: string | null): string {
 export function formatStatusForTemplate(status: string): string {
   const s = (status || '').toLowerCase().trim()
   if (s === 'ringing') return 'Ringing'
-  if (s === 'busy_callback') return 'Busy / Call Back'
-  if (s === 'not_connected') return 'Not Reachable'
+  if (s === 'callback' || s === 'busy_callback') return 'Busy / Call Back'
   if (s === 'switched_off') return 'Switched Off'
+  if (s === 'busy') return 'Busy'
+  if (s === 'not_connected') return 'Not Reachable'
+  if (s === 'connected') return 'Connected'
+  if (s === 'follow_up') return 'Follow Up'
+  if (s === 'interested') return 'Interested'
+  if (s === 'not_interested') return 'Not Interested'
+  if (s === 'visit_scheduled') return 'Visit Scheduled'
+  if (s === 'closed_won') return 'Enrolled'
   return status.charAt(0).toUpperCase() + status.slice(1)
 }
 
