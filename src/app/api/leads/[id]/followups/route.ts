@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, queryOne } from '@/lib/db'
 import { getUserFromRequest } from '@/lib/auth'
+import { handleLeadStatusChangeAiSensy } from '@/lib/aisensy'
 
 export async function GET(
   req: NextRequest,
@@ -131,6 +132,13 @@ export async function POST(
         leadId
       ]
     )
+
+    // 4. Trigger AiSensy ringing_sale template if status was updated
+    if (call_status) {
+      handleLeadStatusChangeAiSensy(leadId, call_status).catch((e) => {
+        console.error('AiSensy background trigger error:', e)
+      })
+    }
 
     return NextResponse.json({
       success: true,

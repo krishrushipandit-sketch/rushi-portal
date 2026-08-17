@@ -250,6 +250,8 @@ ALTER TABLE leads ADD COLUMN IF NOT EXISTS followup_count INTEGER DEFAULT 0;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_followup_at TIMESTAMPTZ;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS next_followup_at TIMESTAMPTZ;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS whatsapp_visit_msg_sent BOOLEAN DEFAULT FALSE;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS whatsapp_ringing_sent BOOLEAN DEFAULT FALSE;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_whatsapp_sent_at TIMESTAMPTZ;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS whatsapp_msg_status TEXT;
 
 -- Drop old restrictive CHECK constraints on status so any status value is accepted

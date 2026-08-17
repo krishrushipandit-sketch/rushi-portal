@@ -33,6 +33,8 @@ interface Lead {
   next_followup_at?: string | null
   created_at: string
   assigned_to_profile?: { id: string; full_name: string; email?: string }
+  whatsapp_ringing_sent?: boolean | null
+  whatsapp_msg_status?: string | null
 }
 
 interface FollowupRecord {
@@ -322,6 +324,18 @@ function LeadRow({
             currentStatus={lead.status}
             onSelect={onStatusChange}
           />
+          {lead.whatsapp_ringing_sent && (
+            <div style={{ marginTop: '3px' }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: '3px',
+                fontSize: '0.65rem', fontWeight: 700,
+                color: '#16a34a', background: 'rgba(22,163,74,0.1)',
+                padding: '1px 6px', borderRadius: '4px', border: '1px solid rgba(22,163,74,0.25)'
+              }} title="AiSensy 'ringing_sale' WhatsApp template delivered">
+                ✓ WhatsApp Sent
+              </span>
+            </div>
+          )}
         </td>
 
         {/* 7. Followups & Scheduled Reminders */}

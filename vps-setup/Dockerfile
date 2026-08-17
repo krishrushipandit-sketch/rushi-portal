@@ -20,6 +20,7 @@ ARG NEXTAUTH_URL=http://72.61.228.175:3000
 ARG NEXT_PUBLIC_APP_URL=http://72.61.228.175:3000
 ARG GEMINI_API_KEY
 ARG PABBLY_WEBHOOK_SECRET=rushi_pabbly_secret_2026
+ARG AISENSY_API_KEY
 
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
@@ -31,7 +32,8 @@ RUN echo "NEXTAUTH_SECRET=${NEXTAUTH_SECRET}" > .env.local && \
     echo "DATABASE_URL=postgresql://rushi_admin:RushiPanditPass2026!@postgres:5432/rushi_portal" >> .env.local && \
     echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> .env.local && \
     echo "NEXT_PUBLIC_GEMINI_API_KEY=${GEMINI_API_KEY}" >> .env.local && \
-    echo "PABBLY_WEBHOOK_SECRET=${PABBLY_WEBHOOK_SECRET}" >> .env.local
+    echo "PABBLY_WEBHOOK_SECRET=${PABBLY_WEBHOOK_SECRET}" >> .env.local && \
+    echo "AISENSY_API_KEY=${AISENSY_API_KEY}" >> .env.local
 
 RUN npm run build
 

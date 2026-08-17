@@ -35,6 +35,7 @@ services:
       - PABBLY_WEBHOOK_SECRET=${PABBLY_WEBHOOK_SECRET:-rushi_pabbly_secret_2026}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - NEXT_PUBLIC_GEMINI_API_KEY=${GEMINI_API_KEY}
+      - AISENSY_API_KEY=${AISENSY_API_KEY}
     depends_on:
       postgres:
         condition: service_healthy

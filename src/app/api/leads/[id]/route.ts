@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { queryOne, execute } from '@/lib/db'
 import { getUserFromRequest } from '@/lib/auth'
+import { handleLeadStatusChangeAiSensy } from '@/lib/aisensy'
 
 export async function PATCH(
   req: NextRequest,
@@ -29,6 +30,9 @@ export async function PATCH(
       'followup_count',
       'last_followup_at',
       'next_followup_at',
+      'whatsapp_ringing_sent',
+      'whatsapp_msg_status',
+      'last_whatsapp_sent_at',
       'updated_at',
     ]
 
@@ -85,6 +89,13 @@ export async function PATCH(
     values.push(id)
     const sql = `UPDATE leads SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`
     const data = await queryOne(sql, values)
+
+    // Trigger AiSensy ringing_sale template if status was updated
+    if (body.status) {
+      handleLeadStatusChangeAiSensy(id, body.status).catch((e) => {
+        console.error('AiSensy background trigger error:', e)
+      })
+    }
 
     return NextResponse.json(data)
   } catch (err: unknown) {
