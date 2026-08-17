@@ -48,13 +48,11 @@ export default function ReportsSection({ profile }: { profile: Profile }) {
   const [editEmployeeId, setEditEmployeeId] = useState<string | undefined>()
   
   const isAdmin = profile.role === 'admin'
-  // Internal-only employees do NOT do client work — hide client tagging
-  // Checks: department='internal', designation contains 'internal', or is_client_worker=false
-  const isClientWorker = !(
-    profile.department === 'internal' ||
-    (profile.designation || '').toLowerCase().includes('internal') ||
-    (profile as any).is_client_worker === false
-  )
+  // Client tag dropdown is ONLY for client-management workers (Kedar)
+  // OFF by default for everyone unless explicitly set as client_management
+  const isClientWorker =
+    profile.department === 'client_management' ||
+    (profile as any).is_client_worker === true
 
   const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
 
