@@ -7,7 +7,6 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    if (user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
     const formData = await req.formData()
     const file = formData.get('file') as File | null
@@ -22,9 +21,8 @@ export async function POST(req: NextRequest) {
     await mkdir(uploadsDir, { recursive: true })
     await writeFile(path.join(uploadsDir, filename), buffer)
 
-    // Return public URL
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    const url = `${appUrl}/uploads/${filename}`
+    // Return public relative URL
+    const url = `/uploads/${filename}`
 
     return NextResponse.json({ url })
   } catch (err: unknown) {

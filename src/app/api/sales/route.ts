@@ -130,7 +130,7 @@ export async function GET(req: NextRequest) {
        FROM leads
        WHERE assigned_to = ANY($1::uuid[])
          AND status = 'closed_won'
-         AND created_at >= $2 AND created_at < $3
+         AND ((created_at >= $2 AND created_at < $3) OR (updated_at >= $2 AND updated_at < $3))
        ORDER BY created_at DESC`,
       [empIds, dateFrom, dateTo]
     )

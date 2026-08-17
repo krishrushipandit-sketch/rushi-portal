@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { getInitials } from '@/lib/utils'
-import { Lock, Eye, EyeOff, CheckCircle, AlertCircle, User, Phone, Mail } from 'lucide-react'
+import { Lock, Eye, EyeOff, CheckCircle, AlertCircle, User, Phone, Mail, Camera, Loader2 } from 'lucide-react'
 
 interface SettingsSectionProps {
   profile: Profile
@@ -25,9 +25,56 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
 
   // ── Profile update state ───────────────────────────────────────────────────
   const [phone, setPhone]               = useState(profile.phone || '')
+  const [avatarUrl, setAvatarUrl]       = useState(profile.avatar_url || '')
+  const [avatarLoading, setAvatarLoading] = useState(false)
   const [profileLoading, setProfileLoading] = useState(false)
   const [profileSuccess, setProfileSuccess] = useState(false)
   const [profileError, setProfileError] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setAvatarLoading(true)
+    setProfileError('')
+
+    const token = localStorage.getItem('rushi_token')
+    if (!token) { router.push('/'); return }
+
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const upRes = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd
+      })
+      const upData = await upRes.json()
+      if (!upRes.ok) throw new Error(upData.error || 'Photo upload failed')
+
+      const newAvatarUrl = upData.url
+      setAvatarUrl(newAvatarUrl)
+
+      // Save to employee profile
+      await fetch(`/api/employees/${profile.id}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ avatar_url: newAvatarUrl })
+      })
+
+      // Update user in localStorage
+      try {
+        const saved = JSON.parse(localStorage.getItem('rushi_user') || '{}')
+        localStorage.setItem('rushi_user', JSON.stringify({ ...saved, avatar_url: newAvatarUrl }))
+      } catch {}
+
+      setProfileSuccess(true)
+    } catch (err: any) {
+      setProfileError(err.message || 'Failed to update photo')
+    } finally {
+      setAvatarLoading(false)
+    }
+  }
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -138,14 +185,14 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
       {/* ── Profile info card ───────────────────────────────────────────────── */}
       <div className="card" style={{ marginBottom: '1.5rem', padding: '1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
-          {/* Profile photo or initials */}
+          {/* Profile photo or initials with Camera Upload Button */}
           <div style={{ position: 'relative', flexShrink: 0 }}>
-            {profile.avatar_url ? (
+            {avatarUrl ? (
               <img
-                src={profile.avatar_url}
+                src={avatarUrl}
                 alt={profile.full_name}
                 style={{
-                  width: '72px', height: '72px', borderRadius: '50%',
+                  width: '76px', height: '76px', borderRadius: '50%',
                   objectFit: 'cover',
                   border: '3px solid var(--border-default)',
                   boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
@@ -153,17 +200,45 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
               />
             ) : (
               <div style={{
-                width: '72px', height: '72px', borderRadius: '50%',
-                background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                width: '76px', height: '76px', borderRadius: '50%',
+                background: 'linear-gradient(135deg, #10b981, #047857)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '1.5rem', fontWeight: 700, color: 'white',
+                fontSize: '1.5rem', fontWeight: 800, color: 'white',
                 border: '3px solid var(--border-default)',
-                boxShadow: '0 4px 12px rgba(99,102,241,0.3)',
+                boxShadow: '0 4px 12px rgba(16,185,129,0.3)',
                 letterSpacing: '0.05em',
               }}>
                 {getInitials(profile.full_name)}
               </div>
             )}
+
+            {/* Hidden File Input */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleAvatarFile}
+              accept="image/*"
+              style={{ display: 'none' }}
+            />
+
+            {/* Camera Upload Trigger */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={avatarLoading}
+              title="Upload Profile Photo"
+              style={{
+                position: 'absolute', bottom: '-2px', right: '-2px',
+                width: '28px', height: '28px', borderRadius: '50%',
+                background: '#0e3d35', color: '#ffffff',
+                border: '2px solid var(--bg-surface)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+                transition: 'transform 0.15s'
+              }}
+            >
+              {avatarLoading ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Camera size={13} />}
+            </button>
           </div>
           <div>
             <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
