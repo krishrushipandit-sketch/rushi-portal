@@ -248,7 +248,7 @@ export async function POST(req: NextRequest) {
 function runClientSync(
   employee_id: string,
   report_date: string,
-  entries: { description: string; count: number; notes?: string }[]
+  entries: { description: string; count: number; notes?: string; clientId?: string; client_id?: string }[]
 ): void {
   if (!entries || entries.length === 0) return
 
