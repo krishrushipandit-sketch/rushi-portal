@@ -49,8 +49,12 @@ export default function ReportsSection({ profile }: { profile: Profile }) {
   
   const isAdmin = profile.role === 'admin'
   // Internal-only employees do NOT do client work — hide client tagging
-  // Determined by department field or specific designation
-  const isClientWorker = !(profile.department === 'internal' || (profile.designation || '').toLowerCase().includes('internal'))
+  // Checks: department='internal', designation contains 'internal', or is_client_worker=false
+  const isClientWorker = !(
+    profile.department === 'internal' ||
+    (profile.designation || '').toLowerCase().includes('internal') ||
+    (profile as any).is_client_worker === false
+  )
 
   const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
 
