@@ -135,35 +135,45 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
               width: 38,
               height: 38,
               borderRadius: '10px',
-              background: 'linear-gradient(135deg, #ffb33f, #d97706)',
+              background: 'linear-gradient(135deg, #10b981, #059669)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#0a1f1c',
+              color: '#ffffff',
               fontWeight: 900,
               fontSize: '0.88rem',
-              boxShadow: '0 2px 8px rgba(255, 179, 63, 0.3)',
+              boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
               cursor: 'pointer'
             }}
           >
             RP
           </div>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-            <div style={{
-              background: isLight ? 'rgba(255, 255, 255, 0.95)' : 'transparent',
-              padding: isLight ? '4px 10px' : '0',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              boxShadow: isLight ? '0 2px 8px rgba(0,0,0,0.12)' : 'none'
-            }}>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div
+              style={{
+                height: '38px',
+                padding: '4px 10px',
+                borderRadius: '8px',
+                background: '#ffffff',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: isLight
+                  ? '0 2px 8px rgba(0,0,0,0.12)'
+                  : '0 2px 10px rgba(0,0,0,0.25)',
+                border: isLight
+                  ? '1px solid rgba(0,0,0,0.06)'
+                  : '1px solid rgba(255,255,255,0.15)',
+              }}
+            >
               <img
                 src="/logo.png"
                 alt="RushiPandit Logo"
                 style={{
-                  height: '32px',
-                  maxWidth: '160px',
+                  height: '24px',
+                  width: 'auto',
+                  maxWidth: '140px',
                   objectFit: 'contain',
                   display: 'block'
                 }}
