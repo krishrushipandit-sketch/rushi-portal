@@ -59,6 +59,11 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
           setClientsList(cData.clients.map((c: any) => ({ id: c.id, name: c.name, color: c.color })))
         }
       } catch {}
+
+      // Fetch employee responsibilities
+      const empId = isAdmin && targetEmployeeId ? `?employee_id=${targetEmployeeId}` : ''
+      const res = await fetch(`/api/responsibilities${empId}`, { headers: { Authorization: `Bearer ${token}` } })
+      const resps = await res.json()
       
       // Clean responsibility titles (strip trailing 0 from old seeds)
       const respList: { title: string; daily_target: number | null }[] = Array.isArray(resps)

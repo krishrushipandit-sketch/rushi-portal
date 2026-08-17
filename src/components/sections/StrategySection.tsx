@@ -351,19 +351,27 @@ export default function StrategySection({ profile }: { profile: Profile }) {
                       <img
                         src={client.logo_url}
                         alt={client.name}
-                        style={{ width: '38px', height: '38px', borderRadius: '10px', objectFit: 'cover', border: '1px solid var(--border-default)' }}
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                          const fallback = (e.target as HTMLElement).parentElement?.querySelector('.logo-fallback');
+                          if (fallback) (fallback as HTMLElement).style.display = 'flex';
+                        }}
+                        style={{ width: '38px', height: '38px', borderRadius: '10px', objectFit: 'contain', background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
                       />
-                    ) : (
-                      <div style={{
+                    ) : null}
+                    <div
+                      className="logo-fallback"
+                      style={{
+                        display: client.logo_url ? 'none' : 'flex',
                         width: '38px', height: '38px', borderRadius: '10px',
                         background: `${client.color}15`, border: `1px solid ${client.color}35`,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center'
-                      }}>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: client.color }}>
-                          {client.name.slice(0, 2).toUpperCase()}
-                        </span>
-                      </div>
-                    )}
+                        alignItems: 'center', justifyContent: 'center'
+                      }}
+                    >
+                      <span style={{ fontSize: '0.8rem', fontWeight: 800, color: client.color }}>
+                        {client.name.slice(0, 2).toUpperCase()}
+                      </span>
+                    </div>
                     <div>
                       <h3 style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)', margin: 0 }}>
                         {client.name}
