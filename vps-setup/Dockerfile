@@ -16,8 +16,8 @@ COPY . .
 
 # Build args for env vars needed at build time
 ARG NEXTAUTH_SECRET=rushi_super_secret_jwt_2026
-ARG NEXTAUTH_URL=http://72.61.228.175:3000
-ARG NEXT_PUBLIC_APP_URL=http://72.61.228.175:3000
+ARG NEXTAUTH_URL=https://portal.rushipandit.com
+ARG NEXT_PUBLIC_APP_URL=https://portal.rushipandit.com
 ARG GEMINI_API_KEY
 ARG PABBLY_WEBHOOK_SECRET=rushi_pabbly_secret_2026
 ARG AISENSY_API_KEY

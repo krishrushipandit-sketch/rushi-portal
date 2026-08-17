@@ -30,8 +30,8 @@ services:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://rushi_admin:RushiPanditPass2026!@postgres:5432/rushi_portal
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-rushi_super_secret_jwt_2026}
-      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://72.61.228.175:3000}
-      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://72.61.228.175:3000}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-https://portal.rushipandit.com}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-https://portal.rushipandit.com}
       - PABBLY_WEBHOOK_SECRET=${PABBLY_WEBHOOK_SECRET:-rushi_pabbly_secret_2026}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - NEXT_PUBLIC_GEMINI_API_KEY=${GEMINI_API_KEY}
