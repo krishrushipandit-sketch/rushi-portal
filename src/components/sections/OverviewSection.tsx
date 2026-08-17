@@ -123,10 +123,54 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
       <div className="page-header">
         <div>
           <h1 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>
-            {profile.role === 'admin' ? 'Admin Dashboard' : 'My Dashboard'}
+            {profile.role === 'admin' ? 'Admin Dashboard' : `Welcome, ${profile.full_name.split(' ')[0]} 👋`}
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          </p>
+        </div>
+      </div>
+
+      {/* ── Organization Vision & Leadership Banner ── */}
+      <div style={{
+        background: 'linear-gradient(135deg, rgba(14, 61, 53, 0.25) 0%, rgba(99, 102, 241, 0.12) 100%)',
+        border: '1px solid rgba(16, 185, 129, 0.3)',
+        borderRadius: '14px',
+        padding: '1rem 1.25rem',
+        marginBottom: '1.75rem',
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: '0.875rem',
+        boxShadow: '0 4px 16px rgba(0, 0, 0, 0.1)'
+      }}>
+        <div style={{
+          width: '36px',
+          height: '36px',
+          borderRadius: '10px',
+          background: 'rgba(16, 185, 129, 0.15)',
+          color: '#10b981',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          border: '1px solid rgba(16, 185, 129, 0.3)'
+        }}>
+          ✨
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#10b981' }}>
+              Our Collective Vision &amp; Growth
+            </span>
+          </div>
+          <p style={{
+            fontSize: '0.86rem',
+            lineHeight: 1.55,
+            color: 'var(--text-primary)',
+            margin: 0,
+            fontWeight: 500
+          }}>
+            &ldquo;We&apos;re building an organization that can become one of India&apos;s leading AI, Business Transformation, and Digital Growth companies, including Stock Advisory. Every one of you has the opportunity to grow into a leader as we scale together.&rdquo;
           </p>
         </div>
       </div>
