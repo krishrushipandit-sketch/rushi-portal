@@ -48,6 +48,9 @@ export default function ReportsSection({ profile }: { profile: Profile }) {
   const [editEmployeeId, setEditEmployeeId] = useState<string | undefined>()
   
   const isAdmin = profile.role === 'admin'
+  // Internal-only employees do NOT do client work — hide client tagging
+  // Determined by department field or specific designation
+  const isClientWorker = !(profile.department === 'internal' || (profile.designation || '').toLowerCase().includes('internal'))
 
   const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
 
@@ -132,6 +135,7 @@ export default function ReportsSection({ profile }: { profile: Profile }) {
             existingReport={editReport}
             onClose={() => setShowForm(false)}
             onSaved={() => { setShowForm(false); load() }}
+            isClientWorker={isClientWorker}
           />
         )}
       </div>

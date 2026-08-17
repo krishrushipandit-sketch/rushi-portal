@@ -18,10 +18,11 @@ const fmtDay = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('en-I
 
 type MicState = 'idle' | 'recording' | 'processing'
 
-export default function DailyReportForm({ onClose, onSaved, existingReport, isAdmin, targetDate, targetEmployeeId }: {
+export default function DailyReportForm({ onClose, onSaved, existingReport, isAdmin, targetDate, targetEmployeeId, isClientWorker }: {
   onClose: () => void; onSaved: () => void
   existingReport?: any; isAdmin?: boolean
   targetDate?: string; targetEmployeeId?: string
+  isClientWorker?: boolean  // if false, hide client tag dropdowns
 }) {
   const router = useRouter()
   const reportDate = isAdmin && targetDate ? targetDate : todayDate()
@@ -430,8 +431,8 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
                         </span>
                       )}
 
-                      {/* Client Tag Dropdown & Add Client Row Button */}
-                      {clientsList.length > 0 && (
+                      {/* Client Tag Dropdown & Add Client Row Button — only for client workers */}
+                      {isClientWorker !== false && clientsList.length > 0 && (
                         <div style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                           <select
                             disabled={isLocked}
@@ -517,36 +518,42 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
           )}
 
           {/* ── Check-in / Check-out times ─────────────────────────────── */}
-          <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap', background: 'var(--bg-elevated)', borderRadius: '0 0 8px 8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>🕐 Check-In</span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#10b981', whiteSpace: 'nowrap' }}>🕐 Check-In</span>
               <input
                 type="time"
                 disabled={isLocked}
                 value={checkInTime}
                 onChange={e => setCheckInTime(e.target.value)}
                 style={{
-                  background: 'transparent', border: 'none',
-                  borderBottom: checkInTime ? '1.5px solid #10b981' : '1px dashed var(--border-subtle)',
-                  padding: '0.2rem 0.25rem', outline: 'none',
-                  fontSize: '0.85rem', color: checkInTime ? '#10b981' : 'var(--text-muted)',
-                  fontFamily: 'inherit', cursor: isLocked ? 'not-allowed' : 'text'
+                  background: checkInTime ? 'rgba(16,185,129,0.1)' : 'var(--bg-surface)',
+                  border: checkInTime ? '1.5px solid #10b981' : '1.5px solid var(--border-default)',
+                  borderRadius: '6px',
+                  padding: '0.3rem 0.5rem', outline: 'none',
+                  fontSize: '0.85rem', fontWeight: 600,
+                  color: checkInTime ? '#10b981' : 'var(--text-primary)',
+                  fontFamily: 'inherit', cursor: isLocked ? 'not-allowed' : 'pointer',
+                  colorScheme: 'dark',
                 }}
               />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>🕕 Check-Out</span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#ef4444', whiteSpace: 'nowrap' }}>🕕 Check-Out</span>
               <input
                 type="time"
                 disabled={isLocked}
                 value={checkOutTime}
                 onChange={e => setCheckOutTime(e.target.value)}
                 style={{
-                  background: 'transparent', border: 'none',
-                  borderBottom: checkOutTime ? '1.5px solid #ef4444' : '1px dashed var(--border-subtle)',
-                  padding: '0.2rem 0.25rem', outline: 'none',
-                  fontSize: '0.85rem', color: checkOutTime ? '#ef4444' : 'var(--text-muted)',
-                  fontFamily: 'inherit', cursor: isLocked ? 'not-allowed' : 'text'
+                  background: checkOutTime ? 'rgba(239,68,68,0.1)' : 'var(--bg-surface)',
+                  border: checkOutTime ? '1.5px solid #ef4444' : '1.5px solid var(--border-default)',
+                  borderRadius: '6px',
+                  padding: '0.3rem 0.5rem', outline: 'none',
+                  fontSize: '0.85rem', fontWeight: 600,
+                  color: checkOutTime ? '#ef4444' : 'var(--text-primary)',
+                  fontFamily: 'inherit', cursor: isLocked ? 'not-allowed' : 'pointer',
+                  colorScheme: 'dark',
                 }}
               />
             </div>
@@ -556,7 +563,7 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
               const mins = (oh * 60 + om) - (ih * 60 + im)
               if (mins > 0) {
                 const h = Math.floor(mins / 60), m = mins % 60
-                return <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>⏱ {h}h {m}m</span>
+                return <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', background: 'var(--bg-surface)', padding: '3px 8px', borderRadius: '6px', border: '1px solid var(--border-default)' }}>⏱ {h}h {m}m worked</span>
               }
               return null
             })()}
