@@ -295,6 +295,12 @@ function runClientSync(
 
     if (!clients || clients.length === 0) return
 
+    // Clear existing logs for this employee on this report date before inserting updated rows
+    await execute(
+      `DELETE FROM client_progress_log WHERE employee_id = $1 AND log_date = $2`,
+      [employee_id, report_date]
+    )
+
     for (const entry of entries) {
       const responsibilityTitle = (entry.description || '').toLowerCase()
       const notesText = (entry.notes || '').toLowerCase()
@@ -333,13 +339,6 @@ function runClientSync(
 
       const matchedDel = deliverables.find((d: any) => d.content_type.toLowerCase() === contentType.toLowerCase()) || deliverables[0]
       if (!matchedDel) continue
-
-      // Upsert: delete then insert for this employee+deliverable+date
-      await execute(
-        `DELETE FROM client_progress_log 
-         WHERE employee_id = $1 AND deliverable_id = $2 AND log_date = $3`,
-        [employee_id, matchedDel.id, report_date]
-      )
 
       await execute(
         `INSERT INTO client_progress_log (client_id, deliverable_id, employee_id, log_date, count, notes)

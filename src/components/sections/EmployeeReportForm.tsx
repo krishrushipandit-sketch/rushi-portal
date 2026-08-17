@@ -60,16 +60,17 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
         }
       } catch {}
       
-      const empId = isAdmin && targetEmployeeId ? `?employee_id=${targetEmployeeId}` : ''
-      const res = await fetch(`/api/responsibilities${empId}`, { headers: { Authorization: `Bearer ${token}` } })
-      const resps = await res.json()
+      // Clean responsibility titles (strip trailing 0 from old seeds)
       const respList: { title: string; daily_target: number | null }[] = Array.isArray(resps)
         ? resps
             .filter((r: any) => {
               const t = (r.title || '').toLowerCase()
               return !t.includes('enrollment') && !t.includes('admission')
             })
-            .map((r: any) => ({ title: r.title || '', daily_target: r.daily_target ?? null }))
+            .map((r: any) => {
+              const cleanTitle = (r.title || '').replace(/0+$/, '').trim()
+              return { title: cleanTitle || r.title, daily_target: r.daily_target ?? null }
+            })
         : []
 
       // Fetch pending regular responsibility tasks assigned to this employee
@@ -90,14 +91,15 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
       // Build rows: pre-fill from responsibilities, overlay existing entries
       if (existingReport?.entries?.length) {
         const mapped: Row[] = respList.map(r => {
-          const existing = existingReport.entries.find((e: any) => e.description === r.title)
+          const existing = existingReport.entries.find((e: any) => (e.description || '').replace(/0+$/, '').trim() === r.title)
           return { responsibility: r.title, daily_target: r.daily_target, description: existing?.notes || '', count: String(existing?.count ?? ''), isCustom: false, clientId: existing?.clientId }
         })
         // Add any custom rows from existing report
         existingReport.entries.forEach((e: any) => {
-          const isEnrollment = (e.description || '').toLowerCase().includes('enrollment')
-          if (!isEnrollment && !respList.find(r => r.title === e.description)) {
-            mapped.push({ responsibility: e.description, daily_target: null, description: e.notes || '', count: String(e.count ?? ''), isCustom: true, clientId: e.clientId })
+          const cleanDesc = (e.description || '').replace(/0+$/, '').trim()
+          const isEnrollment = cleanDesc.toLowerCase().includes('enrollment')
+          if (!isEnrollment && !respList.find(r => r.title === cleanDesc)) {
+            mapped.push({ responsibility: cleanDesc, daily_target: null, description: e.notes || '', count: String(e.count ?? ''), isCustom: true, clientId: e.clientId })
           }
         })
         setRows(mapped)
@@ -117,6 +119,23 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
 
   const update = (i: number, field: keyof Row, val: string) =>
     setRows(p => p.map((r, idx) => idx === i ? { ...r, [field]: val } : r))
+
+  const duplicateClientRow = (i: number) => {
+    const base = rows[i]
+    const newRow: Row = {
+      responsibility: base.responsibility,
+      daily_target: null,
+      description: '',
+      count: '1',
+      isCustom: true,
+      clientId: ''
+    }
+    setRows(p => {
+      const copy = [...p]
+      copy.splice(i + 1, 0, newRow)
+      return copy
+    })
+  }
 
   const addCustom = () => {
     const t = customTask.trim()
@@ -238,17 +257,47 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
       if (data.checkInTime) setCheckInTime(data.checkInTime)
       if (data.checkOutTime) setCheckOutTime(data.checkOutTime)
 
-      const parsed: { responsibility: string; description: string; count: number }[] = data.items || []
+      const parsed: { responsibility: string; description: string; count: number; client?: string }[] = data.items || []
       if (parsed.length > 0) {
         setRows(prev => {
           const updated = [...prev]
           parsed.forEach(p => {
-            // Find an empty row for this responsibility, or create a new one if already filled
-            const idx = updated.findIndex(r => r.responsibility.toLowerCase() === p.responsibility.toLowerCase() && !r.description)
+            let matchedCId = ''
+            if (p.client) {
+              const found = clientsList.find(c =>
+                c.name.toLowerCase().includes(p.client!.toLowerCase()) ||
+                p.client!.toLowerCase().includes(c.name.toLowerCase())
+              )
+              if (found) matchedCId = found.id
+            }
+            if (!matchedCId) {
+              const found = clientsList.find(c =>
+                (p.description || '').toLowerCase().includes(c.name.toLowerCase())
+              )
+              if (found) matchedCId = found.id
+            }
+
+            const cleanPResp = (p.responsibility || '').replace(/0+$/, '').trim()
+            // Check if we have an empty row for this responsibility without description
+            const idx = updated.findIndex(r =>
+              r.responsibility.toLowerCase() === cleanPResp.toLowerCase() && !r.description
+            )
             if (idx >= 0) {
-              updated[idx] = { ...updated[idx], description: p.description, count: String(p.count ?? '') }
+              updated[idx] = {
+                ...updated[idx],
+                description: p.description,
+                count: String(p.count ?? '1'),
+                clientId: matchedCId || updated[idx].clientId
+              }
             } else {
-              updated.push({ responsibility: p.responsibility, daily_target: null, description: p.description, count: String(p.count ?? ''), isCustom: true })
+              updated.push({
+                responsibility: cleanPResp,
+                daily_target: null,
+                description: p.description,
+                count: String(p.count ?? '1'),
+                isCustom: true,
+                clientId: matchedCId
+              })
             }
           })
           return updated
@@ -294,7 +343,7 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-content" style={{ maxWidth: '700px', maxHeight: '92vh', padding: 0, display: 'flex', flexDirection: 'column' }}>
+      <div className="modal-content" style={{ maxWidth: '720px', maxHeight: '92vh', padding: 0, display: 'flex', flexDirection: 'column' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-default)' }}>
@@ -331,9 +380,9 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
                   {micState === 'processing' && '⏳ AI is processing and filling your sheet...'}
                 </p>
                 <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  {micState === 'idle' && 'Say: "I edited 4 reels, did client reporting, made 15 calls"'}
-                  {micState === 'recording' && 'Mention numbers: "edited 4 reels, 15 calls, 5 follow-ups"'}
-                  {micState === 'processing' && 'Matching your words to your responsibilities...'}
+                  {micState === 'idle' && 'Say: "I edited 1 reel for CA, 1 reel for RushiPandit, and 1 YouTube video"'}
+                  {micState === 'recording' && 'Mention clients and counts: "1 reel for CA, 2 reels for Alpha"'}
+                  {micState === 'processing' && 'Matching your words to your responsibilities and clients...'}
                 </p>
               </div>
             </div>
@@ -353,7 +402,7 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
                 <tr style={{ background: 'var(--bg-elevated)', borderBottom: '2px solid var(--border-default)' }}>
-                  <th style={{ padding: '0.55rem 1rem', textAlign: 'left', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', width: '200px' }}>Responsibility</th>
+                  <th style={{ padding: '0.55rem 1rem', textAlign: 'left', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', width: '220px' }}>Responsibility / Client</th>
                   <th style={{ padding: '0.55rem 0.75rem', textAlign: 'left', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>What I did today</th>
                   <th style={{ padding: '0.55rem 0.75rem', textAlign: 'center', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', width: '80px' }}>Count</th>
                   {!isLocked && <th style={{ width: '36px' }} />}
@@ -363,19 +412,22 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
                 {rows.map((row, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)', background: i % 2 === 0 ? 'transparent' : 'rgba(14,61,53,0.015)' }}>
                     <td style={{ padding: '0.4rem 1rem', verticalAlign: 'middle' }}>
-                      <span style={{ fontSize: '0.83rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                        {row.responsibility || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>—</span>}
-                      </span>
-                      {row.daily_target && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
+                        <span style={{ fontSize: '0.83rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {row.responsibility || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>—</span>}
+                        </span>
+                        {row.isCustom && <span style={{ fontSize: '0.62rem', color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '1px 5px', borderRadius: '4px' }}>extra</span>}
+                      </div>
+
+                      {row.daily_target && row.daily_target > 0 && (
                         <span style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '1px' }}>
-                          Target: {row.daily_target}{(row.responsibility.toLowerCase().includes('enrollment') || row.responsibility.toLowerCase().includes('target')) ? '/month' : '/day'}
+                          Target: {row.daily_target}/day
                         </span>
                       )}
-                      {row.isCustom && <span style={{ marginLeft: '6px', fontSize: '0.62rem', color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '1px 5px', borderRadius: '4px' }}>extra</span>}
 
-                      {/* Client Tag Dropdown for Deliverables / Media */}
+                      {/* Client Tag Dropdown & Add Client Row Button */}
                       {clientsList.length > 0 && (
-                        <div style={{ marginTop: '4px' }}>
+                        <div style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                           <select
                             disabled={isLocked}
                             value={row.clientId || ''}
@@ -385,14 +437,29 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
                               background: row.clientId ? 'rgba(99,102,241,0.12)' : 'var(--bg-surface)',
                               color: row.clientId ? '#6366f1' : 'var(--text-muted)',
                               border: row.clientId ? '1px solid rgba(99,102,241,0.35)' : '1px solid var(--border-default)',
-                              outline: 'none', cursor: 'pointer', maxWidth: '160px'
+                              outline: 'none', cursor: 'pointer', maxWidth: '140px'
                             }}
                           >
-                            <option value="">🏢 Tag Client (optional)</option>
+                            <option value="">🏢 Tag Client</option>
                             {clientsList.map(c => (
                               <option key={c.id} value={c.id}>🏢 {c.name}</option>
                             ))}
                           </select>
+
+                          {!isLocked && (
+                            <button
+                              type="button"
+                              onClick={() => duplicateClientRow(i)}
+                              style={{
+                                fontSize: '0.65rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px',
+                                background: 'rgba(16,185,129,0.1)', color: '#047857', border: '1px solid rgba(16,185,129,0.25)',
+                                cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '2px'
+                              }}
+                              title="Add another row for another client"
+                            >
+                              <Plus size={10} /> Client
+                            </button>
+                          )}
                         </div>
                       )}
                     </td>

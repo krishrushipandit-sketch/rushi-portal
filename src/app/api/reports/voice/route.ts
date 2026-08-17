@@ -24,15 +24,15 @@ Their job responsibilities are: ${respList}
 
 The STT transcript (may contain Hindi/Hinglish/Marathi): "${transcript}"
 
-TASK: Extract every work item and return a JSON object.
+TASK: Extract every work item. If the user mentions work done for MULTIPLE DIFFERENT CLIENTS (e.g., "1 reel for CA and 1 reel for RushiPandit" or "edited 2 reels for alpha and 1 video for amicus"), create SEPARATE items for each client so they can be logged independently!
 
 CRITICAL RULES FOR "description" FIELD:
 - The description MUST be SHORT and CONCISE. Maximum 3 to 6 words.
 - ONLY include the core action and client name (if mentioned).
 - Translate EVERYTHING to clear professional English. NEVER output regional languages.
 - BAD example: "Edited 3 short-form reels for the CA Sir client, including intro cuts and background music sync" (too long)
-- GOOD example: "Edited reels for CA Sir"
-- GOOD example: "Made sales calls"
+- GOOD example: "Edited 1 reel for CA"
+- GOOD example: "Edited 1 reel for RushiPandit Institute"
 - GOOD example: "Created posts for Amazon"
 
 CRITICAL RULES FOR TIME EXTRACTION:
@@ -45,22 +45,22 @@ CRITICAL RULES FOR TIME EXTRACTION:
 CRITICAL FALLBACK RULE:
 - If the transcript is complete gibberish, unrelated to work, or you don't understand it, DO NOT RETURN AN EMPTY ARRAY for items.
 - Instead, return exactly what they said (translated to English) under the responsibility "Misc Task".
-- Example: "items": [{"responsibility": "Misc Task", "description": "Said: 'I want to be better'", "count": 1}]
 
 Return ONLY a JSON object, no other text:
 {
-  "checkInTime": "09:30", // optional, HH:MM format (24-hour) if they mention their check-in time, otherwise null
-  "checkOutTime": "18:45", // optional, HH:MM format (24-hour) if they mention their check-out time, otherwise null
+  "checkInTime": "09:30", // optional, HH:MM format (24-hour) if mentioned, otherwise null
+  "checkOutTime": "18:45", // optional, HH:MM format (24-hour) if mentioned, otherwise null
   "items": [
-    {"responsibility": "Client reel editing", "description": "Edited reels for CA Sir", "count": 3}
+    {"responsibility": "Client reel editing", "description": "Edited reel for CA", "count": 1, "client": "CA"},
+    {"responsibility": "Client reel editing", "description": "Edited reel for RushiPandit Institute", "count": 1, "client": "RushiPandit Institute"}
   ]
 }
 
 JSON field rules for items:
-- responsibility: match exactly to one from the list above. If nothing matches, use "Misc Task".
+- responsibility: match to one from the list above. If nothing matches, use "Misc Task".
 - description: SHORT English phrase (3-6 words), just the core action and client.
-- count: integer number they mentioned (e.g. "4 reels" -> 4), or 1 if not mentioned
-- NEVER return an empty items array [].
+- count: integer number they mentioned (e.g. "1 reel" -> 1), or 1 if not mentioned
+- client: client name if mentioned (e.g. "CA", "RushiPandit Institute", "Advisor Alpha"), otherwise null
 - Return ONLY valid JSON.`
 
     const genAI = new GoogleGenerativeAI(apiKey)
