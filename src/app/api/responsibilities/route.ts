@@ -18,6 +18,8 @@ export async function GET(req: NextRequest) {
       `SELECT id, title, daily_target, sort_order
        FROM employee_responsibilities
        WHERE employee_id = $1
+         AND title NOT ILIKE '%enrollment%'
+         AND title NOT ILIKE '%admission%'
        ORDER BY sort_order ASC`,
       [targetId]
     )

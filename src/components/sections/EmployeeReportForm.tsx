@@ -54,7 +54,12 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
       const res = await fetch(`/api/responsibilities${empId}`, { headers: { Authorization: `Bearer ${token}` } })
       const resps = await res.json()
       const respList: { title: string; daily_target: number | null }[] = Array.isArray(resps)
-        ? resps.map((r: any) => ({ title: r.title || '', daily_target: r.daily_target ?? null }))
+        ? resps
+            .filter((r: any) => {
+              const t = (r.title || '').toLowerCase()
+              return !t.includes('enrollment') && !t.includes('admission')
+            })
+            .map((r: any) => ({ title: r.title || '', daily_target: r.daily_target ?? null }))
         : []
 
       // Fetch pending regular responsibility tasks assigned to this employee
@@ -80,7 +85,8 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
         })
         // Add any custom rows from existing report
         existingReport.entries.forEach((e: any) => {
-          if (!respList.find(r => r.title === e.description)) {
+          const isEnrollment = (e.description || '').toLowerCase().includes('enrollment')
+          if (!isEnrollment && !respList.find(r => r.title === e.description)) {
             mapped.push({ responsibility: e.description, daily_target: null, description: e.notes || '', count: String(e.count ?? ''), isCustom: true })
           }
         })
