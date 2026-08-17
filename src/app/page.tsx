@@ -153,43 +153,41 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* The MP4 Video Player */}
-        <div style={{
-          width: '100%',
-          maxWidth: '920px',
-          maxHeight: '85vh',
-          aspectRatio: '16/9',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderRadius: '16px',
-          overflow: 'hidden',
-          boxShadow: '0 20px 60px rgba(0, 0, 0, 0.8)',
-          background: '#090d16'
-        }}>
-          <video
-            ref={videoRef}
-            src="/vision.mp4"
-            autoPlay
-            playsInline
-            controls
-            onEnded={proceedToDashboard}
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'contain',
-              display: 'block'
-            }}
-          />
-        </div>
+        {/* Fullscreen Edge-to-Edge MP4 Video Player */}
+        <video
+          ref={videoRef}
+          src="/vision.mp4"
+          autoPlay
+          playsInline
+          controls={false}
+          onEnded={proceedToDashboard}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100vw',
+            height: '100vh',
+            objectFit: 'cover',
+            display: 'block',
+            zIndex: 1
+          }}
+        />
 
         {/* Bottom Hint */}
         <div style={{
           position: 'absolute',
-          bottom: '1.25rem',
+          bottom: '1.5rem',
+          left: '50%',
+          transform: 'translateX(-50%)',
           textAlign: 'center',
-          color: 'rgba(255,255,255,0.6)',
-          fontSize: '0.78rem'
+          color: 'rgba(255,255,255,0.75)',
+          fontSize: '0.8rem',
+          fontWeight: 600,
+          background: 'rgba(0, 0, 0, 0.4)',
+          padding: '6px 16px',
+          borderRadius: '99px',
+          backdropFilter: 'blur(8px)',
+          zIndex: 10,
+          letterSpacing: '0.02em'
         }}>
           Redirecting to dashboard automatically after video...
         </div>
