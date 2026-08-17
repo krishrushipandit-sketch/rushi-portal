@@ -9,7 +9,7 @@ import {
   MessageSquare, PhoneCall, Clock, ChevronDown, ChevronRight,
   User, Layers, CircleDot, TrendingUp, CheckCircle, XCircle,
   PhoneOff, PhoneMissed, Voicemail, Zap, Calendar, Activity,
-  BarChart2, Filter, ClipboardList, Send, RefreshCw, CalendarDays
+  BarChart2, Filter, ClipboardList, Send, RefreshCw, CalendarDays, BellRing
 } from 'lucide-react'
 
 interface Props { profile: Profile }
