@@ -252,6 +252,16 @@ function LeadRow({
                   </span>
                 )}
               </div>
+              {lead.notes && (
+                <div style={{
+                  fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '4px',
+                  background: 'var(--bg-surface)', padding: '2px 6px', borderRadius: '4px',
+                  border: '1px solid var(--border-default)', maxWidth: '280px',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                }} title={lead.notes}>
+                  💬 {lead.notes}
+                </div>
+              )}
             </div>
           </div>
         </td>
@@ -314,17 +324,35 @@ function LeadRow({
           />
         </td>
 
-        {/* 7. Followups */}
+        {/* 7. Followups & Scheduled Reminders */}
         <td style={{ padding: '0.875rem 0.75rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.82rem', color: 'var(--text-primary)', fontWeight: 700 }}>
             <Activity size={12} color="var(--text-muted)" />
-            {lead.followup_count || 0}
+            {lead.followup_count || 0} calls
           </div>
-          {lead.next_followup_at && (
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px', marginTop: '3px' }}>
-              <Clock size={9} /> {formatDate(lead.next_followup_at, 'dd MMM, hh:mm a')}
-            </div>
-          )}
+          {(lead.next_followup_at || lead.follow_up_date) && (() => {
+            const fDate = lead.next_followup_at || lead.follow_up_date
+            const fTime = new Date(fDate!).getTime()
+            const now = new Date()
+            const tStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+            const tEnd = tStart + 86400000
+            const isOverdue = fTime < tStart && !['closed_won', 'closed_lost'].includes(lead.status)
+            const isToday = fTime >= tStart && fTime < tEnd
+
+            return (
+              <div style={{
+                fontSize: '0.68rem', fontWeight: 800, marginTop: '4px', display: 'inline-flex', alignItems: 'center', gap: '3px',
+                padding: '2px 6px', borderRadius: '5px',
+                background: isOverdue ? 'rgba(239, 68, 68, 0.12)' : isToday ? 'rgba(245, 158, 11, 0.15)' : 'rgba(99, 102, 241, 0.1)',
+                color: isOverdue ? '#ef4444' : isToday ? '#d97706' : '#6366f1',
+                border: `1px solid ${isOverdue ? '#ef444435' : isToday ? '#d9770635' : '#6366f125'}`
+              }}>
+                <Calendar size={10} />
+                {isOverdue ? 'Overdue: ' : isToday ? 'Due Today: ' : ''}
+                {formatDate(fDate!, isToday ? 'hh:mm a' : 'dd MMM, hh:mm a')}
+              </div>
+            )
+          })()}
         </td>
 
         {/* 8. Assigned To (Admin only) */}
@@ -484,7 +512,6 @@ function FollowupPanel({
 
   const handleStatusClick = (statusId: string) => {
     setCallStatus(statusId)
-    executeSave(statusId)
   }
 
   const qual = lead.qualification_answers || {}
@@ -550,7 +577,7 @@ function FollowupPanel({
 
           {/* Current Status Pill */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.875rem', borderRadius: '10px', background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Active Status:</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Selected Status:</span>
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: '5px',
               padding: '3px 10px', borderRadius: '99px',
@@ -595,11 +622,11 @@ function FollowupPanel({
             </div>
           )}
 
-          {/* 1-Click Call Status Selector Grid */}
+          {/* Call Status Selector Grid (Click to Select) */}
           <div style={{ borderRadius: '12px', border: '1px solid var(--border-default)', background: 'var(--bg-card)', padding: '1rem' }}>
             <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span>Click to Update Call Status (1-Click Save)</span>
-              {saving && <span style={{ color: '#6366f1', fontSize: '0.7rem' }}>Saving...</span>}
+              <span>Select Call Status</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Click to select, then save below</span>
             </label>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
@@ -608,19 +635,21 @@ function FollowupPanel({
                 return (
                   <button
                     key={s.id}
+                    type="button"
                     onClick={() => handleStatusClick(s.id)}
-                    disabled={saving}
                     style={{
-                      padding: '8px 10px', borderRadius: '8px', cursor: 'pointer', textAlign: 'left',
-                      border: `1px solid ${isSelected ? s.color : 'var(--border-default)'}`,
+                      padding: '9px 10px', borderRadius: '8px', cursor: 'pointer', textAlign: 'left',
+                      border: `1.5px solid ${isSelected ? s.color : 'var(--border-default)'}`,
                       background: isSelected ? s.bg : 'var(--bg-surface)',
                       display: 'flex', alignItems: 'center', gap: '6px',
                       color: isSelected ? s.color : 'var(--text-primary)',
                       fontSize: '0.78rem', fontWeight: isSelected ? 800 : 600,
+                      boxShadow: isSelected ? `0 0 0 2px ${s.color}25` : 'none',
                       transition: 'all 0.15s'
                     }}
                   >
                     {s.icon} {s.label}
+                    {isSelected && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: s.color }}>✓</span>}
                   </button>
                 )
               })}
@@ -660,10 +689,14 @@ function FollowupPanel({
               onClick={() => executeSave(callStatus)}
               disabled={saving}
               className="btn btn-primary"
-              style={{ width: '100%', justifyContent: 'center', height: '40px', fontWeight: 700 }}
+              style={{
+                width: '100%', justifyContent: 'center', height: '42px', fontWeight: 800,
+                fontSize: '0.85rem', background: '#0e3d35', borderColor: '#0e3d35', color: '#ffffff',
+                boxShadow: '0 4px 14px rgba(14, 61, 53, 0.25)'
+              }}
             >
-              {saving ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={15} />}
-              Save Notes &amp; Follow-up Date
+              {saving ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={16} />}
+              {saving ? 'Saving Follow-up...' : 'Save Follow-up & Update Lead'}
             </button>
           </div>
 
@@ -735,6 +768,7 @@ export default function LeadsSection({ profile }: Props) {
   const [filterIndustry, setFilterIndustry] = useState('all')
   const [filterPlatform, setFilterPlatform] = useState('all')
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'>('all')
+  const [followupTab, setFollowupTab] = useState<'all' | 'due_today' | 'overdue' | 'upcoming'>('all')
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
 
@@ -756,7 +790,13 @@ export default function LeadsSection({ profile }: Props) {
     const token = getToken()
     if (!token) { router.push('/'); return }
     try {
-      const res = await fetch('/api/leads', { headers: { Authorization: `Bearer ${token}` } })
+      const res = await fetch('/api/leads', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (!res.ok) {
+        if (res.status === 401) router.push('/')
+        return
+      }
       const data = await res.json()
       if (Array.isArray(data)) setLeads(data)
     } catch (err) {
@@ -852,10 +892,43 @@ export default function LeadsSection({ profile }: Props) {
     window.open(`https://api.whatsapp.com/send?phone=${encodeURIComponent(lead.phone)}&text=${encodeURIComponent(msg)}`, '_blank')
   }
 
+  // Followup counts computation
+  const now = new Date()
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const todayEnd = todayStart + 86400000
+
+  const overdueCount = useMemo(() => {
+    return leads.filter(l => {
+      const d = l.next_followup_at || l.follow_up_date
+      if (!d) return false
+      const time = new Date(d).getTime()
+      return time < todayStart && !['closed_won', 'closed_lost'].includes(l.status)
+    }).length
+  }, [leads, todayStart])
+
+  const dueTodayCount = useMemo(() => {
+    return leads.filter(l => {
+      const d = l.next_followup_at || l.follow_up_date
+      let isDue = l.status === 'busy_callback'
+      if (d) {
+        const time = new Date(d).getTime()
+        if (time >= todayStart && time < todayEnd && !['closed_won', 'closed_lost'].includes(l.status)) isDue = true
+      }
+      return isDue
+    }).length
+  }, [leads, todayStart, todayEnd])
+
+  const upcomingCount = useMemo(() => {
+    return leads.filter(l => {
+      const d = l.next_followup_at || l.follow_up_date
+      if (!d) return false
+      const time = new Date(d).getTime()
+      return time >= todayEnd && !['closed_won', 'closed_lost'].includes(l.status)
+    }).length
+  }, [leads, todayEnd])
+
   // Filter leads with Date & Multi-attribute filtering
   const filtered = useMemo(() => {
-    const now = new Date()
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
     const yesterdayStart = todayStart - 86400000
     const weekStart = todayStart - 7 * 86400000
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
@@ -894,9 +967,31 @@ export default function LeadsSection({ profile }: Props) {
         }
       }
 
-      return matchSearch && matchStatus && matchIndustry && matchPlatform && matchDate
+      // Followup Tab filtering
+      let matchFollowupTab = true
+      if (followupTab === 'due_today') {
+        const d = l.next_followup_at || l.follow_up_date
+        let isDue = l.status === 'busy_callback'
+        if (d) {
+          const time = new Date(d).getTime()
+          if (time >= todayStart && time < todayEnd && !['closed_won', 'closed_lost'].includes(l.status)) isDue = true
+        }
+        matchFollowupTab = isDue
+      } else if (followupTab === 'overdue') {
+        const d = l.next_followup_at || l.follow_up_date
+        if (!d) return false
+        const time = new Date(d).getTime()
+        matchFollowupTab = time < todayStart && !['closed_won', 'closed_lost'].includes(l.status)
+      } else if (followupTab === 'upcoming') {
+        const d = l.next_followup_at || l.follow_up_date
+        if (!d) return false
+        const time = new Date(d).getTime()
+        matchFollowupTab = time >= todayEnd && !['closed_won', 'closed_lost'].includes(l.status)
+      }
+
+      return matchSearch && matchStatus && matchIndustry && matchPlatform && matchDate && matchFollowupTab
     })
-  }, [leads, search, filterStatus, filterIndustry, filterPlatform, dateFilter, customStartDate, customEndDate])
+  }, [leads, search, filterStatus, filterIndustry, filterPlatform, dateFilter, customStartDate, customEndDate, followupTab, todayStart, todayEnd])
 
   // Computed metrics
   const total = leads.length
@@ -916,7 +1011,7 @@ export default function LeadsSection({ profile }: Props) {
             {isAdmin ? 'Inbound Leads & Pipeline' : 'My Assigned Leads'}
           </h1>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Real-time lead capture, dynamic questionnaire answers, and segregated date follow-up tracking
+            Real-time lead capture, dynamic questionnaire answers, and scheduled follow-up tracking
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.625rem' }}>
@@ -959,10 +1054,91 @@ export default function LeadsSection({ profile }: Props) {
         ))}
       </div>
 
+      {/* ── Urgent Follow-ups Callback Banner ── */}
+      {(dueTodayCount > 0 || overdueCount > 0) && (
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(239, 68, 68, 0.08))',
+          border: '1.5px solid rgba(245, 158, 11, 0.35)',
+          borderRadius: '12px',
+          padding: '0.875rem 1.25rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '0.75rem'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: '10px',
+              background: '#d97706', color: 'white',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>
+              <BellRing size={18} />
+            </div>
+            <div>
+              <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                ⚡ Scheduled Follow-ups Alert: {dueTodayCount} Due Today {overdueCount > 0 ? `(${overdueCount} Overdue)` : ''}
+              </h4>
+              <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                Candidates are waiting for your callback today. Don&apos;t let warm leads turn cold!
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setFollowupTab('due_today')}
+            style={{
+              padding: '6px 14px', borderRadius: '8px', border: 'none',
+              background: '#d97706', color: 'white', fontWeight: 800, fontSize: '0.78rem',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px'
+            }}
+          >
+            <PhoneCall size={13} /> Focus on Due Follow-ups ({dueTodayCount})
+          </button>
+        </div>
+      )}
+
+      {/* ── Followup View Tabs (All / Due Today / Overdue / Upcoming) ── */}
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        {[
+          { id: 'all', label: '📋 All Leads', count: total, color: 'var(--text-primary)', bg: 'var(--bg-surface)' },
+          { id: 'due_today', label: '⏰ Due Today / Callbacks', count: dueTodayCount, color: '#d97706', bg: 'rgba(245, 158, 11, 0.15)' },
+          { id: 'overdue', label: '🚨 Overdue Follow-ups', count: overdueCount, color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' },
+          { id: 'upcoming', label: '📅 Upcoming Scheduled', count: upcomingCount, color: '#4f46e5', bg: 'rgba(79, 70, 229, 0.15)' },
+        ].map(tab => {
+          const isActive = followupTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setFollowupTab(tab.id as any)}
+              style={{
+                padding: '6px 14px', borderRadius: '10px', cursor: 'pointer',
+                border: `1.5px solid ${isActive ? (tab.color === 'var(--text-primary)' ? 'var(--brand-primary)' : tab.color) : 'var(--border-default)'}`,
+                background: isActive ? (tab.bg) : 'var(--bg-card)',
+                color: isActive ? (tab.color) : 'var(--text-secondary)',
+                fontWeight: isActive ? 800 : 600,
+                fontSize: '0.8rem',
+                display: 'flex', alignItems: 'center', gap: '6px',
+                transition: 'all 0.15s'
+              }}
+            >
+              <span>{tab.label}</span>
+              <span style={{
+                fontSize: '0.68rem', fontWeight: 800, padding: '1px 6px',
+                borderRadius: '99px', background: isActive ? 'rgba(0,0,0,0.15)' : 'var(--bg-surface)',
+                color: tab.color
+              }}>
+                {tab.count}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
       {/* ── Date Segregation & Quick Filter Pills ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', background: 'var(--bg-card)', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid var(--border-default)' }}>
         <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '4px', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: '0.25rem' }}>
-          <CalendarDays size={13} style={{ color: 'var(--brand-primary)' }} /> Filter Date:
+          <CalendarDays size={13} style={{ color: 'var(--brand-primary)' }} /> Inbound Date:
         </span>
 
         {[
