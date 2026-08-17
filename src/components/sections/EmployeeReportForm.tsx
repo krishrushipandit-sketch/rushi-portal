@@ -425,7 +425,7 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
                         {row.isCustom && <span style={{ fontSize: '0.62rem', color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '1px 5px', borderRadius: '4px' }}>extra</span>}
                       </div>
 
-                      {row.daily_target && row.daily_target > 0 && (
+                      {(row.daily_target ?? 0) > 0 && (
                         <span style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '1px' }}>
                           Target: {row.daily_target}/day
                         </span>
