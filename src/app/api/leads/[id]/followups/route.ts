@@ -133,9 +133,10 @@ export async function POST(
       ]
     )
 
-    // 4. Trigger AiSensy ringing_sale template if status was updated
+    // 4. Trigger AiSensy ringing_sale template
+    // lead.status was captured BEFORE the DB update above, so it's the correct old status
     if (call_status) {
-      handleLeadStatusChangeAiSensy(leadId, call_status, user.userId).catch((e) => {
+      handleLeadStatusChangeAiSensy(leadId, call_status, user.userId, lead.status).catch((e) => {
         console.error('AiSensy background trigger error:', e)
       })
     }

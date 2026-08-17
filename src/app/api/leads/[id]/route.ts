@@ -36,6 +36,16 @@ export async function PATCH(
       'updated_at',
     ]
 
+    // ===== CRITICAL: Capture old status BEFORE updating =====
+    let oldStatus = 'new'
+    if (body.status) {
+      const currentLead = await queryOne<{ status: string }>(
+        'SELECT status FROM leads WHERE id = $1',
+        [id]
+      )
+      oldStatus = currentLead?.status || 'new'
+    }
+
     const updates: string[] = []
     const values: unknown[] = []
 
@@ -90,9 +100,9 @@ export async function PATCH(
     const sql = `UPDATE leads SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`
     const data = await queryOne(sql, values)
 
-    // Trigger AiSensy ringing_sale template if status was updated
+    // Trigger AiSensy ringing_sale template — pass oldStatus captured before update
     if (body.status) {
-      handleLeadStatusChangeAiSensy(id, body.status, user.userId).catch((e) => {
+      handleLeadStatusChangeAiSensy(id, body.status, user.userId, oldStatus).catch((e) => {
         console.error('AiSensy background trigger error:', e)
       })
     }
