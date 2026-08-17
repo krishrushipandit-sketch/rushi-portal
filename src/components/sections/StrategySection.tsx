@@ -84,13 +84,22 @@ export default function StrategySection({ profile }: { profile: Profile }) {
   const [submitting, setSubmitting] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
+  const [expandedClientIds, setExpandedClientIds] = useState<string[]>([])
 
   const isAdmin = profile.role === 'admin'
-  const canManageClients = isAdmin || profile.full_name?.toLowerCase().includes('kedar')
+  const canManageClients = isAdmin || profile.full_name?.toLowerCase().includes('kedar') || profile.email?.toLowerCase().includes('kedar')
   const isMediaEmployee = profile.role === 'employee' &&
     (profile.department?.toLowerCase() === 'media' ||
      profile.designation?.toLowerCase().includes('video') ||
-     profile.designation?.toLowerCase().includes('editor'))
+     profile.designation?.toLowerCase().includes('editor') ||
+     profile.full_name?.toLowerCase().includes('kedar') ||
+     profile.email?.toLowerCase().includes('kedar'))
+
+  const toggleExpandClient = (clientId: string) => {
+    setExpandedClientIds(prev =>
+      prev.includes(clientId) ? prev.filter(id => id !== clientId) : [...prev, clientId]
+    )
+  }
 
   const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
 
@@ -463,6 +472,83 @@ export default function StrategySection({ profile }: { profile: Profile }) {
                     )
                   })}
                 </div>
+
+                {/* ── Expandable Client Production & History Log Accordion ── */}
+                {(() => {
+                  const allClientLogs = client.deliverables.flatMap(d =>
+                    (d.logs || []).map(l => ({ ...l, content_type: d.content_type }))
+                  )
+                  allClientLogs.sort((a, b) => new Date(b.log_date).getTime() - new Date(a.log_date).getTime())
+                  const isExpanded = expandedClientIds.includes(client.id)
+
+                  return (
+                    <div style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-surface)' }}>
+                      <button
+                        type="button"
+                        onClick={() => toggleExpandClient(client.id)}
+                        style={{
+                          width: '100%', background: 'transparent', border: 'none', cursor: 'pointer',
+                          padding: '0.625rem 1.25rem',
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)'
+                        }}
+                      >
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Layers size={13} style={{ color: client.color }} />
+                          Work & Deliverables History ({allClientLogs.length})
+                        </span>
+                        <span style={{ color: 'var(--brand-primary)', fontSize: '0.72rem' }}>
+                          {isExpanded ? '▲ Hide Details' : '▼ Expand History'}
+                        </span>
+                      </button>
+
+                      {isExpanded && (
+                        <div style={{ padding: '0.5rem 1.25rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {allClientLogs.length === 0 ? (
+                            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', padding: '0.5rem 0' }}>
+                              No deliverables logged yet this month. Click &apos;+&apos; above or submit your Daily Report to sync!
+                            </p>
+                          ) : (
+                            allClientLogs.map(log => (
+                              <div key={log.id} style={{
+                                background: 'var(--bg-card)', padding: '0.5rem 0.75rem', borderRadius: '8px',
+                                border: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem'
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                                  <span style={{
+                                    fontSize: '0.7rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px',
+                                    background: `${contentTypeColor(log.content_type)}20`, color: contentTypeColor(log.content_type)
+                                  }}>
+                                    {log.content_type} (+{log.count})
+                                  </span>
+                                  <div>
+                                    <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                      {log.notes || 'Deliverable logged'}
+                                    </p>
+                                    <p style={{ margin: 0, fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                                      📅 {log.log_date} • 👤 {log.employee?.full_name || 'Kedar Lokhande'}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {canManageClients && (
+                                  <button
+                                    onClick={() => handleDelete(log.id)}
+                                    disabled={deleting === log.id}
+                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
+                                    title="Delete log entry"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
             )
           })}
@@ -491,7 +577,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">Notes / Links (Optional)</label>
+                <label className="form-label">Notes / Video Topics / Links</label>
                 <textarea
                   rows={2}
                   className="form-textarea"
@@ -521,7 +607,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
             </div>
             <div className="modal-body">
               <div className="form-group">
-                <label className="form-label">Client Name *</label>
+                <label className="form-label">Client / Company Name *</label>
                 <input
                   type="text"
                   className="form-input"
@@ -530,6 +616,44 @@ export default function StrategySection({ profile }: { profile: Profile }) {
                   onChange={e => setNewClientName(e.target.value)}
                 />
               </div>
+
+              {/* Company Logo Upload */}
+              <div className="form-group">
+                <label className="form-label">Company Logo</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  {newClientLogo ? (
+                    <img src={newClientLogo} alt="Logo" style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'contain', background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }} />
+                  ) : (
+                    <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'var(--bg-surface)', border: '1px dashed var(--border-default)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                      <Upload size={16} />
+                    </div>
+                  )}
+                  <input
+                    type="file"
+                    ref={logoInputRef}
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={async e => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      try {
+                        const url = await uploadLogo(file)
+                        setNewClientLogo(url)
+                      } catch (err: any) {
+                        alert(err.message)
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    <Upload size={13} /> {newClientLogo ? 'Change Logo' : 'Upload Logo'}
+                  </button>
+                </div>
+              </div>
+
               <div className="form-group">
                 <label className="form-label">Monthly Target Deliverables</label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.625rem' }}>
@@ -581,6 +705,44 @@ export default function StrategySection({ profile }: { profile: Profile }) {
                   onChange={e => setEditClientName(e.target.value)}
                 />
               </div>
+
+              {/* Edit Company Logo */}
+              <div className="form-group">
+                <label className="form-label">Company Logo</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  {editClientLogo ? (
+                    <img src={editClientLogo} alt="Logo" style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'contain', background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }} />
+                  ) : (
+                    <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'var(--bg-surface)', border: '1px dashed var(--border-default)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                      <Upload size={16} />
+                    </div>
+                  )}
+                  <input
+                    type="file"
+                    ref={editLogoInputRef}
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={async e => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      try {
+                        const url = await uploadLogo(file)
+                        setEditClientLogo(url)
+                      } catch (err: any) {
+                        alert(err.message)
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => editLogoInputRef.current?.click()}
+                    className="btn btn-secondary btn-sm"
+                  >
+                    <Upload size={13} /> {editClientLogo ? 'Change Logo' : 'Upload Logo'}
+                  </button>
+                </div>
+              </div>
+
               <div className="form-group">
                 <label className="form-label">Monthly Target Deliverables</label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.625rem' }}>
@@ -603,7 +765,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
               </div>
             </div>
             <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
-              {isAdmin && (
+              {canManageClients && (
                 <button
                   onClick={() => handleDeleteClient(editClientModal.id)}
                   className="btn btn-danger btn-sm"

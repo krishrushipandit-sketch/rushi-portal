@@ -296,58 +296,56 @@ function runClientSync(
     if (!clients || clients.length === 0) return
 
     for (const entry of entries) {
-      // entry.description = responsibility title = client name
-      // entry.notes = what Kedar typed ("4 reels 2 youtube 3 static posts")
       const responsibilityTitle = (entry.description || '').toLowerCase()
-      const descriptionText = `${entry.notes || ''} ${entry.description || ''}`
+      const notesText = (entry.notes || '').toLowerCase()
+      const combinedText = `${responsibilityTitle} ${notesText}`
+      const entryCount = Number(entry.count) || 1
 
-      // Match client by fuzzy name matching against responsibility title
-      const matchedClient = (clients as any[]).find((c: any) => {
-        const clientName = c.name.toLowerCase()
-        const slug = (c.slug || '').toLowerCase()
+      // 1. Check if entry explicitly provided clientId
+      let matchedClient: any = null
+      if (entry.clientId) {
+        matchedClient = (clients as any[]).find((c: any) => c.id === entry.clientId)
+      }
 
-        // 1. Exact match or contains full client name
-        if (responsibilityTitle.includes(clientName)) return true
-
-        // 2. Word boundary match for slug (e.g. "CA" shouldn't match "Calls")
-        if (slug && slug.length >= 2) {
-          const slugRegex = new RegExp(`\\b${slug}\\b`, 'i')
-          if (slugRegex.test(responsibilityTitle)) return true
-        }
-
-        return false
-      })
-
-      // Skip if it's a generic internal responsibility even if matched (double safety)
-      const genericKeywords = ['daily calls', 'follow-up', 'enrollment', 'attendance', 'break']
-      if (genericKeywords.some(kw => responsibilityTitle.includes(kw))) continue
+      // 2. Otherwise match client by name/slug in notes or description
+      if (!matchedClient) {
+        matchedClient = (clients as any[]).find((c: any) => {
+          const clientName = c.name.toLowerCase()
+          const slug = (c.slug || '').toLowerCase()
+          return combinedText.includes(clientName) || (slug.length >= 2 && combinedText.includes(slug))
+        })
+      }
 
       if (!matchedClient) continue
 
       const deliverables = matchedClient.deliverables || []
       if (deliverables.length === 0) continue
 
-      // Parse content type + count from description text
-      const contentCounts = parseContentCounts(descriptionText, entry.count)
-
-      for (const { type, count } of contentCounts) {
-        if (count <= 0) continue
-        const matchedDel = deliverables.find((d: any) => d.content_type === type)
-        if (!matchedDel) continue
-
-        // Upsert: delete then insert for this employee+deliverable+date
-        await execute(
-          `DELETE FROM client_progress_log 
-           WHERE employee_id = $1 AND deliverable_id = $2 AND log_date = $3`,
-          [employee_id, matchedDel.id, report_date]
-        )
-
-        await execute(
-          `INSERT INTO client_progress_log (client_id, deliverable_id, employee_id, log_date, count, notes)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [matchedClient.id, matchedDel.id, employee_id, report_date, count, entry.notes || null]
-        )
+      // Determine content type (Reel, YouTube, Static Post)
+      let contentType = 'Reel'
+      if (combinedText.includes('youtube') || combinedText.includes('yt ')) {
+        contentType = 'YouTube'
+      } else if (combinedText.includes('post') || combinedText.includes('static') || combinedText.includes('banner')) {
+        contentType = 'Static Post'
+      } else if (combinedText.includes('reel') || combinedText.includes('short') || combinedText.includes('video')) {
+        contentType = 'Reel'
       }
+
+      const matchedDel = deliverables.find((d: any) => d.content_type.toLowerCase() === contentType.toLowerCase()) || deliverables[0]
+      if (!matchedDel) continue
+
+      // Upsert: delete then insert for this employee+deliverable+date
+      await execute(
+        `DELETE FROM client_progress_log 
+         WHERE employee_id = $1 AND deliverable_id = $2 AND log_date = $3`,
+        [employee_id, matchedDel.id, report_date]
+      )
+
+      await execute(
+        `INSERT INTO client_progress_log (client_id, deliverable_id, employee_id, log_date, count, notes)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [matchedClient.id, matchedDel.id, employee_id, report_date, entryCount, entry.notes || entry.description || null]
+      )
     }
   }
 

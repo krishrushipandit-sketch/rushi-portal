@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Mic, MicOff, Loader2, Plus, Trash2, X, SendHorizonal } from 'lucide-react'
 
-interface Row { responsibility: string; daily_target: number | null; description: string; count: string; isCustom?: boolean }
+interface Row { responsibility: string; daily_target: number | null; description: string; count: string; isCustom?: boolean; clientId?: string }
 
 const todayDate = () => {
   const d = new Date()
@@ -28,6 +28,7 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
   const isLocked = !isAdmin && reportDate !== todayDate()
 
   const [rows, setRows] = useState<Row[]>([])
+  const [clientsList, setClientsList] = useState<{ id: string; name: string; color: string }[]>([])
   const [note, setNote] = useState(existingReport?.note || '')
   const [checkInTime, setCheckInTime] = useState<string>(existingReport?.check_in_time?.slice(0,5) || '')
   const [checkOutTime, setCheckOutTime] = useState<string>(existingReport?.check_out_time?.slice(0,5) || '')
@@ -44,11 +45,20 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
 
   const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
 
-  // Load responsibilities + today's assigned tasks
+  // Load responsibilities + clients + today's assigned tasks
   useEffect(() => {
     (async () => {
       const token = getToken()
       if (!token) return
+
+      // Fetch active clients for tagging
+      try {
+        const cRes = await fetch('/api/client-progress', { headers: { Authorization: `Bearer ${token}` } })
+        const cData = await cRes.json()
+        if (Array.isArray(cData.clients)) {
+          setClientsList(cData.clients.map((c: any) => ({ id: c.id, name: c.name, color: c.color })))
+        }
+      } catch {}
       
       const empId = isAdmin && targetEmployeeId ? `?employee_id=${targetEmployeeId}` : ''
       const res = await fetch(`/api/responsibilities${empId}`, { headers: { Authorization: `Bearer ${token}` } })
@@ -81,13 +91,13 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
       if (existingReport?.entries?.length) {
         const mapped: Row[] = respList.map(r => {
           const existing = existingReport.entries.find((e: any) => e.description === r.title)
-          return { responsibility: r.title, daily_target: r.daily_target, description: existing?.notes || '', count: String(existing?.count ?? ''), isCustom: false }
+          return { responsibility: r.title, daily_target: r.daily_target, description: existing?.notes || '', count: String(existing?.count ?? ''), isCustom: false, clientId: existing?.clientId }
         })
         // Add any custom rows from existing report
         existingReport.entries.forEach((e: any) => {
           const isEnrollment = (e.description || '').toLowerCase().includes('enrollment')
           if (!isEnrollment && !respList.find(r => r.title === e.description)) {
-            mapped.push({ responsibility: e.description, daily_target: null, description: e.notes || '', count: String(e.count ?? ''), isCustom: true })
+            mapped.push({ responsibility: e.description, daily_target: null, description: e.notes || '', count: String(e.count ?? ''), isCustom: true, clientId: e.clientId })
           }
         })
         setRows(mapped)
@@ -264,6 +274,7 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
       description: r.responsibility.trim(),
       notes: r.description.trim(),
       count: r.count.trim() ? Number(r.count) : 1,
+      clientId: r.clientId || undefined,
     }))
     await fetch('/api/reports', {
       method: 'POST',
@@ -361,6 +372,29 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
                         </span>
                       )}
                       {row.isCustom && <span style={{ marginLeft: '6px', fontSize: '0.62rem', color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '1px 5px', borderRadius: '4px' }}>extra</span>}
+
+                      {/* Client Tag Dropdown for Deliverables / Media */}
+                      {clientsList.length > 0 && (
+                        <div style={{ marginTop: '4px' }}>
+                          <select
+                            disabled={isLocked}
+                            value={row.clientId || ''}
+                            onChange={e => update(i, 'clientId', e.target.value)}
+                            style={{
+                              fontSize: '0.68rem', padding: '2px 6px', borderRadius: '5px',
+                              background: row.clientId ? 'rgba(99,102,241,0.12)' : 'var(--bg-surface)',
+                              color: row.clientId ? '#6366f1' : 'var(--text-muted)',
+                              border: row.clientId ? '1px solid rgba(99,102,241,0.35)' : '1px solid var(--border-default)',
+                              outline: 'none', cursor: 'pointer', maxWidth: '160px'
+                            }}
+                          >
+                            <option value="">🏢 Tag Client (optional)</option>
+                            {clientsList.map(c => (
+                              <option key={c.id} value={c.id}>🏢 {c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: '0.25rem 0.5rem', verticalAlign: 'middle' }}>
                       <input disabled={isLocked}
