@@ -13,12 +13,31 @@ export interface JWTPayload {
   name: string
 }
 
-/** Sign a JWT token */
+/** Calculate seconds until next 12:00 AM IST (Midnight) */
+export function getSecondsUntilMidnightIST(): number {
+  const now = new Date()
+  const istOffsetMs = 5.5 * 60 * 60 * 1000
+  const istTime = new Date(now.getTime() + istOffsetMs)
+  
+  // Next 12:00 AM midnight in IST (00:00:00 of next day)
+  const nextMidnightIST = new Date(Date.UTC(
+    istTime.getUTCFullYear(),
+    istTime.getUTCMonth(),
+    istTime.getUTCDate() + 1,
+    0, 0, 0, 0
+  ))
+  
+  const diffMs = (nextMidnightIST.getTime() - istOffsetMs) - now.getTime()
+  return Math.max(Math.floor(diffMs / 1000), 60)
+}
+
+/** Sign a JWT token that strictly expires at 12:00 AM Midnight IST */
 export async function signToken(payload: JWTPayload): Promise<string> {
+  const secondsUntilMidnight = getSecondsUntilMidnightIST()
   return await new SignJWT({ ...payload })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('7d')
+    .setExpirationTime(`${secondsUntilMidnight}s`)
     .sign(SECRET)
 }
 
@@ -59,3 +78,4 @@ export async function getUserFromRequest(req: NextRequest): Promise<JWTPayload |
 
   return null
 }
+

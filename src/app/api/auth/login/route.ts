@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { queryOne } from '@/lib/db'
-import { signToken } from '@/lib/auth'
+import { signToken, getSecondsUntilMidnightIST } from '@/lib/auth'
 import bcrypt from 'bcryptjs'
 
 export async function POST(req: NextRequest) {
@@ -40,18 +40,21 @@ export async function POST(req: NextRequest) {
       name: user.full_name,
     })
 
+    const secondsUntilMidnight = getSecondsUntilMidnightIST()
+
     const response = NextResponse.json({
       success: true,
       user: { id: user.id, email: user.email, name: user.full_name, role: user.role },
       token,
+      expiresIn: secondsUntilMidnight,
     })
 
-    // Set HTTP-only session cookie (7 days)
+    // Set HTTP-only session cookie expiring at 12:00 AM midnight IST
     response.cookies.set('rushi_session', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60,
+      maxAge: secondsUntilMidnight,
       path: '/',
     })
 
@@ -61,3 +64,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'An error occurred. Please try again.' }, { status: 500 })
   }
 }
+

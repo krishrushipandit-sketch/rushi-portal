@@ -62,6 +62,62 @@ export default function DashboardPage() {
     } catch { /* silent */ }
   }, [])
 
+  // ── Auto Logout at 12:00 AM Midnight IST ──
+  useEffect(() => {
+    const handleMidnightExpiry = () => {
+      localStorage.removeItem('rushi_token')
+      localStorage.removeItem('rushi_user')
+      localStorage.removeItem('rushi_login_date')
+      if (typeof document !== 'undefined') {
+        document.cookie = 'rushi_session=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;'
+      }
+      router.push('/?session=expired')
+    }
+
+    const checkMidnightLogout = () => {
+      const now = new Date()
+      // IST time: UTC + 5:30 (19800000 ms)
+      const istOffsetMs = 5.5 * 60 * 60 * 1000
+      const istTime = new Date(now.getTime() + istOffsetMs)
+      
+      const storedLoginDate = localStorage.getItem('rushi_login_date')
+      const currentIstDateStr = istTime.toISOString().split('T')[0]
+      
+      if (!storedLoginDate) {
+        localStorage.setItem('rushi_login_date', currentIstDateStr)
+      } else if (storedLoginDate !== currentIstDateStr) {
+        // Date has crossed midnight! Trigger logout
+        handleMidnightExpiry()
+        return 0
+      }
+
+      // Next midnight in IST (00:00:00 of next day)
+      const nextMidnightIST = new Date(Date.UTC(
+        istTime.getUTCFullYear(),
+        istTime.getUTCMonth(),
+        istTime.getUTCDate() + 1,
+        0, 0, 0, 0
+      ))
+      return (nextMidnightIST.getTime() - istOffsetMs) - now.getTime()
+    }
+
+    const msUntilMidnight = checkMidnightLogout()
+
+    // 1. Precise timer to fire exactly at 12:00 AM midnight
+    let timer: NodeJS.Timeout | null = null
+    if (msUntilMidnight > 0 && msUntilMidnight < 2147483647) {
+      timer = setTimeout(handleMidnightExpiry, msUntilMidnight)
+    }
+
+    // 2. Continuous interval (every 15s) in case device was sleeping / tab was paused
+    const interval = setInterval(checkMidnightLogout, 15000)
+
+    return () => {
+      if (timer) clearTimeout(timer)
+      clearInterval(interval)
+    }
+  }, [router])
+
   const handleToggleSidebar = () => {
     if (typeof window !== 'undefined' && window.innerWidth <= 1024) {
       setSidebarOpen(prev => !prev)

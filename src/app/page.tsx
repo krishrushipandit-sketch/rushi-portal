@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Eye, EyeOff, Lock, Mail, Loader2, ArrowRight, ShieldCheck, Play, FastForward, Volume2, VolumeX } from 'lucide-react'
+import { Eye, EyeOff, Lock, Mail, Loader2, ArrowRight, ShieldCheck, Play, FastForward, Volume2, VolumeX, Clock } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -11,11 +11,21 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [sessionExpiredNotice, setSessionExpiredNotice] = useState(false)
 
   // Video Payload State
   const [showVideoPayload, setShowVideoPayload] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
   const videoRef = useRef<HTMLVideoElement | null>(null)
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('session') === 'expired') {
+        setSessionExpiredNotice(true)
+      }
+    }
+  }, [])
 
   const proceedToDashboard = () => {
     router.push('/dashboard')
@@ -24,6 +34,7 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setSessionExpiredNotice(false)
     setLoading(true)
 
     try {
@@ -44,6 +55,8 @@ export default function LoginPage() {
       if (data.token) {
         localStorage.setItem('rushi_token', data.token)
         localStorage.setItem('rushi_user', JSON.stringify(data.user))
+        const istDateStr = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0]
+        localStorage.setItem('rushi_login_date', istDateStr)
       }
 
       // Trigger post-login video payload
@@ -274,6 +287,25 @@ export default function LoginPage() {
             Sign in to access your CRM, sales leads &amp; reports
           </p>
         </div>
+
+        {sessionExpiredNotice && (
+          <div style={{
+            background: 'rgba(245, 158, 11, 0.12)',
+            border: '1px solid rgba(245, 158, 11, 0.35)',
+            borderRadius: '10px',
+            padding: '0.75rem 1rem',
+            marginBottom: '1.25rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            color: '#fbbf24',
+            fontSize: '0.8rem',
+            fontWeight: 600
+          }}>
+            <Clock size={16} style={{ flexShrink: 0 }} />
+            <span>Daily session ended at 12:00 AM. Please sign in with your password to start today&apos;s workspace.</span>
+          </div>
+        )}
 
         {/* Login Form */}
         <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1.125rem' }}>
