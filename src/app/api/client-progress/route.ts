@@ -77,17 +77,30 @@ export async function GET(req: NextRequest) {
       const allClientDeliverables = (deliverables || []).filter((d: any) => d.client_id === client.id)
       const clientLogs = (logs || []).filter((l: any) => l.client_id === client.id)
 
-      // 1. Pick month-specific deliverables if available; otherwise use baseline/latest deliverables
+      // 1. Pick month-specific deliverables if available; otherwise only inherit for current/future months
       const monthSpecific = allClientDeliverables.filter((d: any) => d.target_month === monthStr)
-      let activeDeliverables = monthSpecific.length > 0
-        ? monthSpecific
-        : allClientDeliverables.filter((d: any) => d.target_month === null || d.target_month === undefined)
+      let activeDeliverables: any[] = []
 
-      // If still empty, use the most recent configured deliverables prior to or equal to this month
-      if (activeDeliverables.length === 0 && allClientDeliverables.length > 0) {
-        const sorted = [...allClientDeliverables].sort((a, b) => (b.target_month || '').localeCompare(a.target_month || ''))
-        const latestMonth = sorted[0]?.target_month
-        activeDeliverables = sorted.filter(d => d.target_month === latestMonth)
+      if (monthSpecific.length > 0) {
+        // Explicit targets set specifically for this month
+        activeDeliverables = monthSpecific
+      } else {
+        const istCurrentMonth = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 7)
+        // If it's the current or future month, inherit the latest active plan so user has a starting template
+        if (monthStr >= istCurrentMonth) {
+          const baseline = allClientDeliverables.filter((d: any) => d.target_month === null || d.target_month === undefined)
+          if (baseline.length > 0) {
+            activeDeliverables = baseline
+          } else {
+            const sorted = [...allClientDeliverables].sort((a, b) => (b.target_month || '').localeCompare(a.target_month || ''))
+            const latestMonth = sorted[0]?.target_month
+            activeDeliverables = sorted.filter(d => d.target_month === latestMonth)
+          }
+        } else {
+          // For a PAST month (e.g. July):
+          // Do NOT inject August's targets into July! Past months only show deliverables that were explicitly set or actually had logs in that month.
+          activeDeliverables = []
+        }
       }
 
       // Deduplicate by content_type
@@ -170,8 +183,13 @@ export async function POST(req: NextRequest) {
   try {
     const { client_id, deliverable_id, count, notes, log_date } = await req.json()
 
-    if (!client_id || !deliverable_id || !count) {
-      return NextResponse.json({ error: 'client_id, deliverable_id and count are required' }, { status: 400 })
+    let actualDeliverableId = deliverable_id
+    if (String(deliverable_id).startsWith('hist-')) {
+      const existingDeliv = await queryOne<any>(
+        'SELECT id FROM client_deliverables WHERE client_id = $1 LIMIT 1',
+        [client_id]
+      )
+      if (existingDeliv) actualDeliverableId = existingDeliv.id
     }
 
     const data = await queryOne<any>(
@@ -180,7 +198,7 @@ export async function POST(req: NextRequest) {
        RETURNING *`,
       [
         client_id,
-        deliverable_id,
+        actualDeliverableId,
         user.id,
         log_date || new Date().toISOString().slice(0, 10),
         Number(count),
