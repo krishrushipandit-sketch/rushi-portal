@@ -13,6 +13,7 @@ interface Row {
   isCustom?: boolean
   clientId?: string
   clientName?: string
+  clientType?: string
   taskPhase?: string
   itemTitle?: string
   liveUrl?: string
@@ -636,7 +637,7 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-content" style={{ maxWidth: '720px', maxHeight: '92vh', padding: 0, display: 'flex', flexDirection: 'column' }}>
+      <div className="modal-content" style={{ maxWidth: '820px', maxHeight: '92vh', padding: 0, display: 'flex', flexDirection: 'column' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-default)' }}>
@@ -702,91 +703,197 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
         )}
 
 
-        {/* Sheet */}
-        <div style={{ flex: 1, overflowY: 'auto' }}>
-          {loading ? <div className="skeleton" style={{ height: '200px', borderRadius: 0 }} /> : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-                <tr style={{ background: 'var(--bg-elevated)', borderBottom: '2px solid var(--border-default)' }}>
-                  <th style={{ padding: '0.55rem 1rem', textAlign: 'left', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', width: '220px' }}>Responsibility / Client</th>
-                  <th style={{ padding: '0.55rem 0.75rem', textAlign: 'left', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>What I did today</th>
-                  <th style={{ padding: '0.55rem 0.75rem', textAlign: 'center', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', width: '80px' }}>Count</th>
-                  {!isLocked && <th style={{ width: '36px' }} />}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)', background: i % 2 === 0 ? 'transparent' : 'rgba(14,61,53,0.015)' }}>
-                    <td style={{ padding: '0.4rem 1rem', verticalAlign: 'middle' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
-                        <span style={{ fontSize: '0.83rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                          {row.responsibility || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>—</span>}
-                        </span>
-                        {row.isCustom && <span style={{ fontSize: '0.62rem', color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '1px 5px', borderRadius: '4px' }}>extra</span>}
-                      </div>
+        {/* Sheet: Modern Task-Based Daily Worklogger */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+          {loading ? (
+            <div className="skeleton" style={{ height: '220px', borderRadius: '8px' }} />
+          ) : (
+            rows.map((row, i) => {
+              const matchedClient = clientsList.find(c => c.id === row.clientId)
+              const isInt = matchedClient?.client_type === 'internal'
 
+              return (
+                <div
+                  key={i}
+                  style={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: '10px',
+                    padding: '0.875rem 1rem',
+                    transition: 'border-color 0.15s',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+                  }}
+                >
+                  {/* Task Header Row */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.625rem', flexWrap: 'wrap', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                        {row.responsibility || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>General Task</span>}
+                      </span>
+                      {row.isCustom && (
+                        <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#6366f1', background: 'rgba(99,102,241,0.12)', padding: '2px 6px', borderRadius: '4px' }}>
+                          Custom
+                        </span>
+                      )}
                       {(row.daily_target ?? 0) > 0 && (
-                        <span style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '1px' }}>
-                          Target: {row.daily_target}/day
+                        <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#10b981', background: 'rgba(16,185,129,0.12)', padding: '2px 7px', borderRadius: '99px' }}>
+                          🎯 Target: {row.daily_target}/day
                         </span>
                       )}
+                    </div>
 
-                      {/* Client Tag Dropdown & Add Client Row Button — only for client workers */}
-                      {isClientWorker !== false && clientsList.length > 0 && (
-                        <div style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-                          <SearchableClientDropdown
-                            clients={clientsList}
-                            selectedId={row.clientId || ''}
-                            disabled={isLocked}
-                            onSelect={id => update(i, 'clientId', id)}
-                          />
-
-                          {!isLocked && (
-                            <button
-                              type="button"
-                              onClick={() => duplicateClientRow(i)}
-                              style={{
-                                fontSize: '0.65rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px',
-                                background: 'rgba(16,185,129,0.1)', color: '#047857', border: '1px solid rgba(16,185,129,0.25)',
-                                cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '2px'
-                              }}
-                              title="Add another row for another client"
-                            >
-                              <Plus size={10} /> Client
-                            </button>
-                          )}
-                        </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {!isLocked && (
+                        <button
+                          type="button"
+                          onClick={() => duplicateClientRow(i)}
+                          style={{
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            padding: '3px 8px',
+                            borderRadius: '5px',
+                            background: 'rgba(16,185,129,0.12)',
+                            color: '#059669',
+                            border: '1px solid rgba(16,185,129,0.25)',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px'
+                          }}
+                          title="Log another entry for a different Brand or Client"
+                        >
+                          <Plus size={12} /> Add Property Row
+                        </button>
                       )}
-                    </td>
-                    <td style={{ padding: '0.25rem 0.5rem', verticalAlign: 'middle' }}>
-                      <input disabled={isLocked}
-                        style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: row.description.trim() ? '1.5px solid var(--brand-primary)' : '1px solid var(--border-subtle)', padding: '0.35rem 0.25rem', outline: 'none', fontSize: '0.83rem', color: 'var(--text-primary)', fontFamily: 'inherit' }}
-                        placeholder={isLocked ? '—' : 'Describe what you did...'}
-                        value={row.description}
-                        onChange={e => update(i, 'description', e.target.value)}
+
+                      {!isLocked && row.isCustom && (
+                        <button
+                          onClick={() => removeRow(i)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '3px' }}
+                          title="Remove item"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Property / Brand Picker & Deliverable Phase Chips */}
+                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{ minWidth: '180px' }}>
+                      <SearchableClientDropdown
+                        clients={clientsList}
+                        selectedId={row.clientId || ''}
+                        disabled={isLocked}
+                        onSelect={id => {
+                          update(i, 'clientId', id)
+                          const cl = clientsList.find(c => c.id === id)
+                          if (cl) update(i, 'clientType', cl.client_type || 'external')
+                        }}
                       />
-                    </td>
-                    <td style={{ padding: '0.25rem 0.5rem', verticalAlign: 'middle' }}>
-                      <input disabled={isLocked} type="number" min="0"
-                        style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: row.count ? '1.5px solid var(--brand-primary)' : '1px solid var(--border-subtle)', padding: '0.35rem 0.5rem', outline: 'none', fontSize: '0.83rem', color: 'var(--text-primary)', fontFamily: 'inherit', textAlign: 'center' }}
-                        placeholder="0"
+                    </div>
+
+                    {/* Phase Selector Chips */}
+                    {!isLocked && (
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                        {[
+                          { id: 'shooting', label: '🎬 Shoot' },
+                          { id: 'editing', label: '✂️ Edit' },
+                          { id: 'post_creation', label: '🎨 Post / Graphic' },
+                          { id: 'posting', label: '🚀 Posting' },
+                          { id: 'comments', label: '💬 Comments / DMs' },
+                          { id: 'lns', label: '📋 LNS / Ops' },
+                          { id: 'calling', label: '📞 Calls' },
+                        ].map(ph => (
+                          <button
+                            key={ph.id}
+                            type="button"
+                            onClick={() => update(i, 'taskPhase', row.taskPhase === ph.id ? '' : ph.id)}
+                            style={{
+                              fontSize: '0.64rem',
+                              fontWeight: 700,
+                              padding: '2px 7px',
+                              borderRadius: '4px',
+                              border: row.taskPhase === ph.id ? '1px solid var(--brand-primary)' : '1px solid var(--border-default)',
+                              background: row.taskPhase === ph.id ? 'rgba(16,185,129,0.15)' : 'var(--bg-elevated)',
+                              color: row.taskPhase === ph.id ? '#10b981' : 'var(--text-secondary)',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {ph.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Task Topic / Description & Count Inputs */}
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input
+                      disabled={isLocked}
+                      style={{
+                        flex: 1,
+                        minWidth: '220px',
+                        background: 'var(--bg-elevated)',
+                        border: '1px solid var(--border-default)',
+                        borderRadius: '6px',
+                        padding: '0.4rem 0.6rem',
+                        outline: 'none',
+                        fontSize: '0.8rem',
+                        color: 'var(--text-primary)',
+                        fontFamily: 'inherit'
+                      }}
+                      placeholder={isLocked ? '—' : 'Topic / Post Title / What you worked on...'}
+                      value={row.description}
+                      onChange={e => update(i, 'description', e.target.value)}
+                    />
+
+                    <input
+                      disabled={isLocked}
+                      style={{
+                        width: '180px',
+                        background: 'var(--bg-elevated)',
+                        border: '1px solid var(--border-default)',
+                        borderRadius: '6px',
+                        padding: '0.4rem 0.6rem',
+                        outline: 'none',
+                        fontSize: '0.78rem',
+                        color: 'var(--text-primary)',
+                        fontFamily: 'inherit'
+                      }}
+                      placeholder="Live Link (optional)"
+                      value={row.liveUrl || ''}
+                      onChange={e => update(i, 'liveUrl', e.target.value)}
+                    />
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>Qty:</span>
+                      <input
+                        disabled={isLocked}
+                        type="number"
+                        min="0"
+                        style={{
+                          width: '60px',
+                          background: 'var(--bg-elevated)',
+                          border: '1px solid var(--border-default)',
+                          borderRadius: '6px',
+                          padding: '0.4rem 0.4rem',
+                          outline: 'none',
+                          fontSize: '0.82rem',
+                          fontWeight: 800,
+                          color: '#10b981',
+                          fontFamily: 'inherit',
+                          textAlign: 'center'
+                        }}
+                        placeholder="1"
                         value={row.count}
                         onChange={e => update(i, 'count', e.target.value)}
                       />
-                    </td>
-                    {!isLocked && (
-                      <td style={{ padding: '0.35rem 0.5rem', textAlign: 'center', verticalAlign: 'middle' }}>
-                        {row.isCustom && (
-                          <button onClick={() => removeRow(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}>
-                            <Trash2 size={12} />
-                          </button>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                  </div>
+                </div>
+              )
+            })
           )}
 
           {/* Add extra row */}

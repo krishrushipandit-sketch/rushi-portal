@@ -54,11 +54,8 @@ export default function ReportsSection({ profile }: { profile: Profile }) {
   const [editEmployeeId, setEditEmployeeId] = useState<string | undefined>()
   
   const isAdmin = profile.role === 'admin'
-  // Client tag dropdown is ONLY for client-management workers (Kedar)
-  // OFF by default for everyone unless explicitly set as client_management
-  const isClientWorker =
-    profile.department === 'client_management' ||
-    (profile as any).is_client_worker === true
+  // Brand & Client tagging is enabled for all team members (Internal Brands + External Clients)
+  const isClientWorker = true
 
   const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
 
