@@ -156,31 +156,28 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
             RP
           </div>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
             <div
               style={{
-                height: '38px',
-                padding: '4px 10px',
-                borderRadius: '8px',
+                width: '100%',
+                height: '44px',
+                padding: '6px 14px',
+                borderRadius: '10px',
                 background: '#ffffff',
-                display: 'inline-flex',
+                display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: isLight
-                  ? '0 2px 8px rgba(0,0,0,0.12)'
-                  : '0 2px 10px rgba(0,0,0,0.25)',
-                border: isLight
-                  ? '1px solid rgba(0,0,0,0.06)'
-                  : '1px solid rgba(255,255,255,0.15)',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.15)',
+                border: '1px solid rgba(255,255,255,0.2)',
               }}
             >
               <img
                 src="/logo.png"
                 alt="RushiPandit Logo"
                 style={{
-                  height: '24px',
+                  height: '30px',
                   width: 'auto',
-                  maxWidth: '140px',
+                  maxWidth: '180px',
                   objectFit: 'contain',
                   display: 'block'
                 }}
