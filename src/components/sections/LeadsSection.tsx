@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { formatDate } from '@/lib/utils'
+import { useTheme } from '@/lib/ThemeContext'
 import {
   Plus, Search, X, Loader2, Phone, Mail, Edit2, Trash2,
   MessageSquare, PhoneCall, Clock, ChevronDown, ChevronRight,
@@ -445,9 +446,11 @@ function FollowupPanel({
   onClose: () => void
   onSaved: (updatedLead: any) => void
 }) {
+  const { theme } = useTheme()
+  const isLight = theme === 'light'
   const [history, setHistory] = useState<FollowupRecord[]>([])
   const [loading, setLoading] = useState(true)
-  const [callStatus, setCallStatus] = useState(lead.status === 'new' ? 'ringing' : lead.status)
+  const [callStatus, setCallStatus] = useState(lead.status || 'new')
   const [notes, setNotes] = useState(lead.notes || '')
   const [scheduledAt, setScheduledAt] = useState(
     lead.next_followup_at
@@ -460,6 +463,18 @@ function FollowupPanel({
   const [saving, setSaving] = useState(false)
 
   const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
+
+  useEffect(() => {
+    setCallStatus(lead.status || 'new')
+    setNotes(lead.notes || '')
+    setScheduledAt(
+      lead.next_followup_at
+        ? new Date(lead.next_followup_at).toISOString().slice(0, 16)
+        : lead.follow_up_date
+          ? new Date(lead.follow_up_date).toISOString().slice(0, 16)
+          : ''
+    )
+  }, [lead.id, lead.status, lead.notes, lead.next_followup_at, lead.follow_up_date])
 
   useEffect(() => {
     const token = getToken()
@@ -706,11 +721,13 @@ function FollowupPanel({
                 className="form-input"
                 style={{
                   fontSize: '0.82rem',
-                  colorScheme: 'dark',
+                  colorScheme: isLight ? 'light' : 'dark',
+                  background: isLight ? '#ffffff' : 'var(--bg-surface)',
+                  color: isLight ? '#0f172a' : 'var(--text-primary)',
                   borderColor: callStatus === 'visit_scheduled' ? '#db2777'
                     : callStatus === 'follow_up' ? '#f59e0b'
                     : callStatus === 'callback' ? '#7c3aed'
-                    : undefined,
+                    : isLight ? '#cbd5e1' : undefined,
                 }}
               />
 

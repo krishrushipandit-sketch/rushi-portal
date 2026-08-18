@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { useTheme } from '@/lib/ThemeContext'
 import { Mic, MicOff, Loader2, Plus, Trash2, X, SendHorizonal, Search, Building2, ChevronDown } from 'lucide-react'
 
 interface Row { responsibility: string; daily_target: number | null; description: string; count: string; isCustom?: boolean; clientId?: string }
@@ -214,6 +215,8 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
   isClientWorker?: boolean  // if false, hide client tag dropdowns
 }) {
   const router = useRouter()
+  const { theme } = useTheme()
+  const isLight = theme === 'light'
   const reportDate = isAdmin && targetDate ? targetDate : todayDate()
   const isLocked = !isAdmin && reportDate !== todayDate()
 
@@ -712,7 +715,7 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
                   fontSize: '0.85rem', fontWeight: 600,
                   color: checkInTime ? '#10b981' : 'var(--text-primary)',
                   fontFamily: 'inherit', cursor: isLocked ? 'not-allowed' : 'pointer',
-                  colorScheme: 'dark',
+                  colorScheme: isLight ? 'light' : 'dark',
                 }}
               />
             </div>
@@ -731,7 +734,7 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
                   fontSize: '0.85rem', fontWeight: 600,
                   color: checkOutTime ? '#ef4444' : 'var(--text-primary)',
                   fontFamily: 'inherit', cursor: isLocked ? 'not-allowed' : 'pointer',
-                  colorScheme: 'dark',
+                  colorScheme: isLight ? 'light' : 'dark',
                 }}
               />
             </div>
