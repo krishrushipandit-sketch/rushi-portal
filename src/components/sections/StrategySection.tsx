@@ -34,18 +34,24 @@ interface Client {
   slug: string
   color: string
   logo_url?: string | null
+  client_type?: 'internal' | 'external'
   deliverables: Deliverable[]
+  totalVolume?: number
+  totalLogs?: number
+  allLogs?: any[]
 }
 
 const contentTypeIcon = (type: string) => {
   if (type === 'YouTube') return <PlayCircle size={14} />
-  if (type === 'Static Post') return <Grid3x3 size={14} />
+  if (type === 'Static Post' || type === 'Carousel') return <Grid3x3 size={14} />
   return <Video size={14} />
 }
 
 const contentTypeColor = (type: string) => {
   if (type === 'YouTube') return '#ef4444'
   if (type === 'Static Post') return '#8b5cf6'
+  if (type === 'Carousel') return '#ec4899'
+  if (type === 'Shooting') return '#f59e0b'
   return '#3b82f6'
 }
 
@@ -53,6 +59,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
   const router = useRouter()
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'internal' | 'external'>('all')
   const [logModal, setLogModal] = useState<{ client: Client; deliverable: Deliverable } | null>(null)
   const [editModal, setEditModal] = useState<{ client: Client; deliverable: Deliverable } | null>(null)
   
@@ -64,6 +71,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
   const [newClientName, setNewClientName] = useState('')
   const [newClientColor, setNewClientColor] = useState('#6366f1')
   const [newClientLogo, setNewClientLogo] = useState('')
+  const [newClientType, setNewClientType] = useState<'internal' | 'external'>('external')
   const [newCustomFormat, setNewCustomFormat] = useState('')
   const [newDeliverables, setNewDeliverables] = useState([
     { content_type: 'Reel', monthly_target: '15' },
@@ -76,6 +84,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
   const [editClientName, setEditClientName] = useState('')
   const [editClientColor, setEditClientColor] = useState('#6366f1')
   const [editClientLogo, setEditClientLogo] = useState('')
+  const [editClientType, setEditClientType] = useState<'internal' | 'external'>('external')
   const [editCustomFormat, setEditCustomFormat] = useState('')
   const [editDeliverables, setEditDeliverables] = useState<{ content_type: string; monthly_target: string }[]>([
     { content_type: 'Reel', monthly_target: '' },
@@ -87,6 +96,10 @@ export default function StrategySection({ profile }: { profile: Profile }) {
   const editLogoInputRef = useRef<HTMLInputElement>(null)
   const [logCount, setLogCount] = useState('1')
   const [logNote, setLogNote] = useState('')
+  const [logPhase, setLogPhase] = useState<string>('production')
+  const [logTitle, setLogTitle] = useState<string>('')
+  const [logPlatform, setLogPlatform] = useState<string>('Instagram')
+  const [logLiveUrl, setLogLiveUrl] = useState<string>('')
   const [submitting, setSubmitting] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
@@ -138,12 +151,14 @@ export default function StrategySection({ profile }: { profile: Profile }) {
       setClients(cleaned)
     }
     setLoading(false)
-  }, [month, router])
+  }, [month])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+  }, [load])
 
-  const handleLogWork = async () => {
-    if (!logModal || !logCount) return
+  const handleLogProgress = async () => {
+    if (!logModal) return
     const token = getToken()
     if (!token) return
     setSubmitting(true)
@@ -155,10 +170,19 @@ export default function StrategySection({ profile }: { profile: Profile }) {
         client_id: logModal.client.id,
         deliverable_id: logModal.deliverable.id,
         count: Number(logCount),
-        notes: logNote || undefined
+        notes: logNote || undefined,
+        task_phase: logPhase,
+        title: logTitle || undefined,
+        platform: logPlatform,
+        live_url: logLiveUrl || undefined,
+        status: 'published'
       })
     })
-    setLogModal(null); setLogCount('1'); setLogNote('')
+    setLogModal(null)
+    setLogCount('1')
+    setLogNote('')
+    setLogTitle('')
+    setLogLiveUrl('')
     setSubmitting(false)
     load()
   }
@@ -184,19 +208,27 @@ export default function StrategySection({ profile }: { profile: Profile }) {
     if (!token) return
     setSubmitting(true)
     const deliverables = newDeliverables
-      .filter(d => Number(d.monthly_target) > 0)
-      .map(d => ({ content_type: d.content_type, monthly_target: Number(d.monthly_target) }))
+      .filter(d => newClientType === 'internal' || Number(d.monthly_target) > 0)
+      .map(d => ({ content_type: d.content_type, monthly_target: Number(d.monthly_target) || 0 }))
 
     await fetch('/api/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: newClientName.trim(), color: newClientColor, logo_url: newClientLogo || null, deliverables, month })
+      body: JSON.stringify({
+        name: newClientName.trim(),
+        color: newClientColor,
+        logo_url: newClientLogo || null,
+        client_type: newClientType,
+        deliverables,
+        month
+      })
     })
 
     setAddClientModal(false)
     setNewClientName('')
     setNewClientColor('#6366f1')
     setNewClientLogo('')
+    setNewClientType('external')
     setNewDeliverables([
       { content_type: 'Reel', monthly_target: '15' },
       { content_type: 'YouTube', monthly_target: '8' },
@@ -211,6 +243,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
     setEditClientName(client.name)
     setEditClientColor(client.color)
     setEditClientLogo(client.logo_url || '')
+    setEditClientType(client.client_type || 'external')
     setEditCustomFormat('')
     
     // Include all existing deliverables
@@ -220,7 +253,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
     }))
     
     // Add standard types if not present
-    const defaultTypes = ['Reel', 'YouTube', 'Static Post']
+    const defaultTypes = ['Reel', 'YouTube', 'Static Post', 'Carousel', 'Shooting']
     for (const t of defaultTypes) {
       if (!existing.some(d => d.content_type.toLowerCase() === t.toLowerCase())) {
         existing.push({ content_type: t, monthly_target: '' })
@@ -262,13 +295,20 @@ export default function StrategySection({ profile }: { profile: Profile }) {
     if (!token) return
     setSubmitting(true)
     const deliverables = editDeliverables
-      .filter(d => Number(d.monthly_target) > 0)
-      .map(d => ({ content_type: d.content_type, monthly_target: Number(d.monthly_target) }))
+      .filter(d => editClientType === 'internal' || Number(d.monthly_target) > 0)
+      .map(d => ({ content_type: d.content_type, monthly_target: Number(d.monthly_target) || 0 }))
 
     const res = await fetch(`/api/clients?id=${editClientModal.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: editClientName.trim(), color: editClientColor, logo_url: editClientLogo || null, deliverables, month })
+      body: JSON.stringify({
+        name: editClientName.trim(),
+        color: editClientColor,
+        logo_url: editClientLogo || null,
+        client_type: editClientType,
+        deliverables,
+        month
+      })
     })
 
     if (!res.ok) {
@@ -329,10 +369,10 @@ export default function StrategySection({ profile }: { profile: Profile }) {
       <div className="page-header" style={{ marginBottom: 0 }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em', margin: 0 }}>
-            {isAdmin ? 'Strategy & Production Panel' : 'My Client Deliverables'}
+            {isAdmin ? 'Media Strategy & Production Hub' : 'My Deliverables & Content Calendar'}
           </h1>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            {isAdmin ? 'Track monthly social media video, reel, and graphic production targets per client' : 'Log your completed content and editing deliverables'}
+            {isAdmin ? 'Manage internal brand channels (7 properties) & external client monthly targets' : 'Log completed shoots, video edits, posts, carousels, and publishing deliverables'}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.625rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -341,7 +381,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
               className="btn btn-primary btn-sm"
               onClick={() => setAddClientModal(true)}
             >
-              <UserPlus size={15} /> Add Client
+              <UserPlus size={15} /> Add Brand / Client
             </button>
           )}
           <input
@@ -355,12 +395,37 @@ export default function StrategySection({ profile }: { profile: Profile }) {
         </div>
       </div>
 
+      {/* ── Category Segmented Filter Switcher ── */}
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        {[
+          { id: 'all', label: `🌟 All Channels (${clients.length})` },
+          { id: 'internal', label: `🏢 Internal Brands (${clients.filter(c => c.client_type === 'internal').length})` },
+          { id: 'external', label: `🤝 External Clients (${clients.filter(c => c.client_type !== 'internal').length})` },
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setCategoryFilter(tab.id as any)}
+            style={{
+              padding: '7px 16px', borderRadius: '99px', border: 'none', cursor: 'pointer',
+              fontSize: '0.78rem', fontWeight: 700, transition: 'all 0.15s',
+              background: categoryFilter === tab.id
+                ? (tab.id === 'internal' ? '#10b981' : tab.id === 'external' ? '#6366f1' : 'var(--brand-primary)')
+                : 'var(--bg-elevated)',
+              color: categoryFilter === tab.id ? 'white' : 'var(--text-secondary)',
+              boxShadow: categoryFilter === tab.id ? '0 2px 8px rgba(0,0,0,0.15)' : 'none'
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       {/* ── Month Pace Banner ── */}
       <div className="glass-card" style={{ padding: '1rem 1.25rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.625rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Calendar size={15} style={{ color: 'var(--brand-primary)' }} />
-            <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-primary)' }}>{monthLabel} Pace</span>
+            <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-primary)' }}>{monthLabel} Production Schedule</span>
           </div>
           <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>
             Day {todayDay} of {totalDays} &nbsp;·&nbsp; <strong style={{ color: 'var(--text-primary)' }}>{monthProgress}%</strong> of month elapsed
@@ -378,273 +443,288 @@ export default function StrategySection({ profile }: { profile: Profile }) {
             <div key={i} className="glass-card" style={{ height: '260px', opacity: 0.5 }} />
           ))}
         </div>
-      ) : clients.length === 0 ? (
-        <div className="glass-card empty-state">
-          <div className="empty-state-icon">
-            <Layers size={24} />
-          </div>
-          <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-            No clients found. Click &quot;Add Client&quot; to set monthly targets.
-          </p>
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '1.25rem' }}>
-          {clients.map(client => {
-            const totalTarget = client.deliverables.reduce((s, d) => s + d.monthly_target, 0)
-            const totalDone = client.deliverables.reduce((s, d) => s + d.completed, 0)
-            const pct = totalTarget > 0 ? Math.round((totalDone / totalTarget) * 100) : 0
-            const paceColor = pct >= 100 ? '#16a34a' : pct >= monthProgress ? '#4f46e5' : '#d97706'
+      ) : (() => {
+        const displayedClients = clients.filter(c => {
+          if (categoryFilter === 'internal') return c.client_type === 'internal'
+          if (categoryFilter === 'external') return c.client_type !== 'internal'
+          return true
+        })
 
-            return (
-              <div
-                key={client.id}
-                className="glass-card"
-                style={{
-                  display: 'flex', flexDirection: 'column', overflow: 'hidden',
-                  borderTop: `4px solid ${client.color || 'var(--brand-primary)'}`
-                }}
-              >
-                {/* Header */}
-                <div style={{
-                  padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-default)',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    {client.logo_url ? (
-                      <img
-                        src={client.logo_url}
-                        alt={client.name}
-                        onError={(e) => {
-                          (e.target as HTMLElement).style.display = 'none';
-                          const fallback = (e.target as HTMLElement).parentElement?.querySelector('.logo-fallback');
-                          if (fallback) (fallback as HTMLElement).style.display = 'flex';
-                        }}
-                        style={{ width: '38px', height: '38px', borderRadius: '10px', objectFit: 'contain', background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
-                      />
-                    ) : null}
-                    <div
-                      className="logo-fallback"
-                      style={{
-                        display: client.logo_url ? 'none' : 'flex',
-                        width: '38px', height: '38px', borderRadius: '10px',
-                        background: `${client.color}15`, border: `1px solid ${client.color}35`,
-                        alignItems: 'center', justifyContent: 'center'
-                      }}
-                    >
-                      <span style={{ fontSize: '0.8rem', fontWeight: 800, color: client.color }}>
-                        {client.name.slice(0, 2).toUpperCase()}
-                      </span>
-                    </div>
-                    <div>
-                      <h3 style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)', margin: 0 }}>
-                        {client.name}
-                      </h3>
-                      <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '2px 0 0', fontWeight: 600 }}>
-                        {totalDone} / {totalTarget} deliverables finished
-                      </p>
-                    </div>
-                  </div>
+        if (displayedClients.length === 0) {
+          return (
+            <div className="glass-card empty-state">
+              <div className="empty-state-icon">
+                <Layers size={24} />
+              </div>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                No {categoryFilter === 'internal' ? 'internal brands' : categoryFilter === 'external' ? 'clients' : 'channels'} found.
+              </p>
+            </div>
+          )
+        }
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                    {canManageClients && (
-                      <button
-                        onClick={() => openEditClient(client)}
-                        className="btn btn-ghost btn-sm"
-                        style={{ width: '30px', height: '30px', padding: 0, justifyContent: 'center' }}
-                        title="Edit client targets"
-                      >
-                        <Edit2 size={13} />
-                      </button>
-                    )}
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '1.4rem', fontWeight: 800, color: paceColor, lineHeight: 1 }}>
-                        {pct}%
-                      </div>
-                      <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-                        complete
-                      </div>
-                    </div>
-                  </div>
-                </div>
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '1.25rem' }}>
+            {displayedClients.map(client => {
+              const isInternal = client.client_type === 'internal'
+              const totalTarget = client.deliverables.reduce((s, d) => s + d.monthly_target, 0)
+              const totalDone = client.deliverables.reduce((s, d) => s + d.completed, 0)
+              const pct = totalTarget > 0 ? Math.round((totalDone / totalTarget) * 100) : 0
+              const paceColor = isInternal ? '#10b981' : (pct >= 100 ? '#16a34a' : pct >= monthProgress ? '#4f46e5' : '#d97706')
 
-                {/* Deliverables rows */}
-                <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1 }}>
-                  {client.deliverables.map(deliv => {
-                    const color = contentTypeColor(deliv.content_type)
-                    const isComplete = deliv.completed >= deliv.monthly_target
-                    const isBehind = deliv.percent < monthProgress && !isComplete
-                    const hasLogs = deliv.logs && deliv.logs.length > 0
-
-                    return (
-                      <div key={deliv.id} style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color }}>
-                            {contentTypeIcon(deliv.content_type)}
-                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                              {deliv.content_type}
-                            </span>
-                            {isComplete && <CheckCircle2 size={13} style={{ color: '#16a34a' }} />}
-                            {isBehind && <AlertCircle size={13} style={{ color: '#d97706' }} />}
-                          </div>
-
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: isComplete ? '#16a34a' : 'var(--text-primary)' }}>
-                              {deliv.completed} / {deliv.monthly_target}
-                            </span>
-
-                            {/* Quick Edit Target for Admins & Kedar */}
-                            {canManageClients && (
-                              <button
-                                onClick={() => {
-                                  setQuickTargetValue(String(deliv.monthly_target))
-                                  setQuickTargetModal({ client, deliverable: deliv })
-                                }}
-                                className="btn btn-ghost btn-sm"
-                                style={{ height: '22px', padding: '0 6px', fontSize: '0.68rem', gap: '3px', color: 'var(--text-muted)' }}
-                                title="Adjust this month's content calendar target"
-                              >
-                                <SlidersHorizontal size={10} /> Target
-                              </button>
-                            )}
-
-                            {/* View / Edit Log History */}
-                            {hasLogs && (
-                              <button
-                                onClick={() => setEditModal({ client, deliverable: deliv })}
-                                className="btn btn-ghost btn-sm"
-                                style={{ width: '24px', height: '24px', padding: 0, justifyContent: 'center', borderRadius: '6px' }}
-                                title="View log history"
-                              >
-                                <Pencil size={11} />
-                              </button>
-                            )}
-
-                            {/* Log Work Button */}
-                            {!isAdmin && (
-                              <button
-                                onClick={() => setLogModal({ client, deliverable: deliv })}
-                                style={{
-                                  width: '24px', height: '24px', borderRadius: '6px',
-                                  background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)',
-                                  color: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  cursor: 'pointer'
-                                }}
-                                title="Log completed work"
-                              >
-                                <Plus size={13} />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Progress Bar */}
-                        <div style={{ height: '7px', borderRadius: '99px', background: 'var(--bg-surface)', overflow: 'hidden', border: '1px solid var(--border-default)' }}>
-                          <div style={{
-                            height: '100%', borderRadius: '99px', width: `${deliv.percent}%`,
-                            background: isComplete ? '#16a34a' : isBehind ? '#d97706' : color,
-                            transition: 'width 0.4s ease'
-                          }} />
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                            {deliv.percent}% finished
-                          </span>
-                          <span style={{ fontSize: '0.68rem', color: isBehind ? '#d97706' : 'var(--text-muted)', fontWeight: 600 }}>
-                            {deliv.remaining} remaining{isBehind && ' (Behind Pace)'}
-                          </span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-
-                {/* ── Expandable Client Production & History Log Accordion ── */}
-                {(() => {
-                  const allClientLogs = client.deliverables.flatMap(d =>
-                    (d.logs || []).map(l => ({ ...l, content_type: d.content_type }))
-                  )
-                  allClientLogs.sort((a, b) => new Date(b.log_date).getTime() - new Date(a.log_date).getTime())
-                  const isExpanded = expandedClientIds.includes(client.id)
-
-                  return (
-                    <div style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-surface)' }}>
-                      <button
-                        type="button"
-                        onClick={() => toggleExpandClient(client.id)}
+              return (
+                <div
+                  key={client.id}
+                  className="glass-card"
+                  style={{
+                    display: 'flex', flexDirection: 'column', overflow: 'hidden',
+                    borderTop: `4px solid ${client.color || (isInternal ? '#10b981' : 'var(--brand-primary)')}`
+                  }}
+                >
+                  {/* Header */}
+                  <div style={{
+                    padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-default)',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      {client.logo_url ? (
+                        <img
+                          src={client.logo_url}
+                          alt={client.name}
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none';
+                            const fallback = (e.target as HTMLElement).parentElement?.querySelector('.logo-fallback');
+                            if (fallback) (fallback as HTMLElement).style.display = 'flex';
+                          }}
+                          style={{ width: '38px', height: '38px', borderRadius: '10px', objectFit: 'contain', background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
+                        />
+                      ) : null}
+                      <div
+                        className="logo-fallback"
                         style={{
-                          width: '100%', background: 'transparent', border: 'none', cursor: 'pointer',
-                          padding: '0.625rem 1.25rem',
-                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)'
+                          display: client.logo_url ? 'none' : 'flex',
+                          width: '38px', height: '38px', borderRadius: '10px',
+                          background: `${client.color || (isInternal ? '#10b981' : '#6366f1')}15`,
+                          border: `1px solid ${client.color || (isInternal ? '#10b981' : '#6366f1')}35`,
+                          alignItems: 'center', justifyContent: 'center'
                         }}
                       >
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Layers size={13} style={{ color: client.color }} />
-                          Work & Deliverables History ({allClientLogs.length})
+                        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: client.color || (isInternal ? '#10b981' : '#6366f1') }}>
+                          {client.name.slice(0, 2).toUpperCase()}
                         </span>
-                        <span style={{ color: 'var(--brand-primary)', fontSize: '0.72rem' }}>
-                          {isExpanded ? '▲ Hide Details' : '▼ Expand History'}
-                        </span>
-                      </button>
-
-                      {isExpanded && (
-                        <div style={{ padding: '0.5rem 1.25rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                          {allClientLogs.length === 0 ? (
-                            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', padding: '0.5rem 0' }}>
-                              No deliverables logged yet this month. Click &apos;+&apos; above or submit your Daily Report to sync!
-                            </p>
-                          ) : (
-                            allClientLogs.map(log => (
-                              <div key={log.id} style={{
-                                background: 'var(--bg-card)', padding: '0.5rem 0.75rem', borderRadius: '8px',
-                                border: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem'
-                              }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                                  <span style={{
-                                    fontSize: '0.7rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px',
-                                    background: `${contentTypeColor(log.content_type)}20`, color: contentTypeColor(log.content_type)
-                                  }}>
-                                    {log.content_type} (+{log.count})
-                                  </span>
-                                  <div>
-                                    <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                                      {log.notes || 'Deliverable logged'}
-                                    </p>
-                                    <p style={{ margin: 0, fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                                      📅 {log.log_date} • 👤 {log.employee?.full_name || 'Kedar Lokhande'}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                {canManageClients && (
-                                  <button
-                                    onClick={() => handleDelete(log.id)}
-                                    disabled={deleting === log.id}
-                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
-                                    title="Delete log entry"
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
-                                )}
-                              </div>
-                            ))
-                          )}
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <h3 style={{ fontWeight: 800, fontSize: '0.98rem', color: 'var(--text-primary)', margin: 0 }}>
+                            {client.name}
+                          </h3>
+                          <span style={{
+                            fontSize: '0.58rem', fontWeight: 700, padding: '1px 5px', borderRadius: '4px',
+                            background: isInternal ? 'rgba(16,185,129,0.12)' : 'rgba(99,102,241,0.12)',
+                            color: isInternal ? '#10b981' : '#818cf8', flexShrink: 0
+                          }}>
+                            {isInternal ? 'Internal' : 'Client'}
+                          </span>
                         </div>
+                        <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '2px 0 0', fontWeight: 600 }}>
+                          {isInternal
+                            ? `Total Volume: ${totalDone} items produced`
+                            : `${totalDone} / ${totalTarget} deliverables completed`}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                      {canManageClients && (
+                        <button
+                          onClick={() => openEditClient(client)}
+                          style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center',
+                            transition: 'color 0.15s'
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)')}
+                          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
+                          title="Edit client details or monthly targets"
+                        >
+                          <Settings2 size={15} />
+                        </button>
                       )}
                     </div>
-                  )
-                })()}
-              </div>
-            )
-          })}
-        </div>
-      )}
+                  </div>
+
+                  {/* Deliverables List */}
+                  <div style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', flex: 1 }}>
+                    {client.deliverables.length === 0 ? (
+                      <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', padding: '1rem 0' }}>
+                        No content format targets configured.
+                      </p>
+                    ) : (
+                      client.deliverables.map(deliv => {
+                        const dPercent = deliv.percent
+                        const dColor = contentTypeColor(deliv.content_type)
+                        const isDone = !isInternal && deliv.monthly_target > 0 && deliv.completed >= deliv.monthly_target
+
+                        return (
+                          <div key={deliv.id || deliv.content_type} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ color: dColor, display: 'flex', alignItems: 'center' }}>
+                                  {contentTypeIcon(deliv.content_type)}
+                                </span>
+                                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                  {deliv.content_type}
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '0.8rem', fontWeight: 800, color: isDone ? '#16a34a' : 'var(--text-primary)' }}>
+                                  {deliv.completed} {isInternal ? 'done' : `/ ${deliv.monthly_target}`}
+                                </span>
+
+                                <button
+                                  onClick={() => {
+                                    setLogModal({ client, deliverable: deliv })
+                                    setLogCount('1')
+                                    setLogNote('')
+                                    setLogTitle('')
+                                    setLogPhase(
+                                      deliv.content_type.toLowerCase().includes('shoot') ? 'shooting' :
+                                      deliv.content_type.toLowerCase().includes('reel') || deliv.content_type.toLowerCase().includes('youtube') ? 'editing' :
+                                      deliv.content_type.toLowerCase().includes('carousel') || deliv.content_type.toLowerCase().includes('static') ? 'post_creation' :
+                                      'posting'
+                                    )
+                                  }}
+                                  style={{
+                                    width: '22px', height: '22px', borderRadius: '6px',
+                                    background: `${dColor}15`, border: `1px solid ${dColor}35`,
+                                    color: dColor, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    cursor: 'pointer', padding: 0
+                                  }}
+                                  title={`Log work for ${deliv.content_type}`}
+                                >
+                                  <Plus size={13} />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Progress bar */}
+                            {!isInternal && deliv.monthly_target > 0 && (
+                              <div style={{ height: '5px', borderRadius: '99px', background: 'var(--bg-surface)', overflow: 'hidden', border: '1px solid var(--border-subtle)' }}>
+                                <div
+                                  style={{
+                                    height: '100%', borderRadius: '99px',
+                                    width: `${dPercent}%`,
+                                    background: dColor,
+                                    transition: 'width 0.4s ease'
+                                  }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+
+                  {/* History Collapsible Section */}
+                  {(() => {
+                    const allClientLogs = (client.allLogs || client.deliverables.flatMap(d => d.logs || [])).map(l => ({
+                      ...l,
+                      content_type: l.deliverable_content_type || 'Media Work'
+                    }))
+                    allClientLogs.sort((a, b) => new Date(b.log_date).getTime() - new Date(a.log_date).getTime())
+                    const isExpanded = expandedClientIds.includes(client.id)
+
+                    return (
+                      <div style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+                        <button
+                          onClick={() => toggleExpandClient(client.id)}
+                          style={{
+                            width: '100%', background: 'transparent', border: 'none', cursor: 'pointer',
+                            padding: '0.625rem 1.25rem',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)'
+                          }}
+                        >
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Layers size={13} style={{ color: client.color }} />
+                            Production & Deliverables Feed ({allClientLogs.length})
+                          </span>
+                          <span style={{ color: 'var(--brand-primary)', fontSize: '0.72rem' }}>
+                            {isExpanded ? '▲ Hide Details' : '▼ Expand Feed'}
+                          </span>
+                        </button>
+
+                        {isExpanded && (
+                          <div style={{ padding: '0.5rem 1.25rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {allClientLogs.length === 0 ? (
+                              <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', padding: '0.5rem 0' }}>
+                                No deliverables logged yet this month. Click &apos;+&apos; above or submit your Daily Report to sync!
+                              </p>
+                            ) : (
+                              allClientLogs.map(log => (
+                                <div key={log.id} style={{
+                                  background: 'var(--bg-card)', padding: '0.5rem 0.75rem', borderRadius: '8px',
+                                  border: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem'
+                                }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                                    <span style={{
+                                      fontSize: '0.7rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px',
+                                      background: `${contentTypeColor(log.content_type)}20`, color: contentTypeColor(log.content_type)
+                                    }}>
+                                      {log.content_type} (+{log.count})
+                                    </span>
+                                    <div>
+                                      <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                        {log.title || log.notes || 'Deliverable logged'}
+                                      </p>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                                          📅 {log.log_date} • 👤 {log.employee?.full_name || 'Team Member'}
+                                        </span>
+                                        {log.task_phase && (
+                                          <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '1px 5px', borderRadius: '3px', background: 'rgba(99,102,241,0.1)', color: '#818cf8' }}>
+                                            {log.task_phase}
+                                          </span>
+                                        )}
+                                        {log.live_url && (
+                                          <a href={log.live_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: 700, textDecoration: 'underline' }}>
+                                            🔗 Link
+                                          </a>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {canManageClients && (
+                                    <button
+                                      onClick={() => handleDelete(log.id)}
+                                      disabled={deleting === log.id}
+                                      style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
+                                      title="Delete log entry"
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  )}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+                </div>
+              )
+            })}
+          </div>
+        )
+      })()}
 
       {/* ── Log Work Modal ── */}
       {logModal && (
         <div className="modal-overlay" onClick={() => setLogModal(null)}>
-          <div className="modal-content" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+          <div className="modal-content" style={{ maxWidth: '460px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3 style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', margin: 0 }}>
                 Log {logModal.deliverable.content_type} for {logModal.client.name}
@@ -652,22 +732,89 @@ export default function StrategySection({ profile }: { profile: Profile }) {
               <button onClick={() => setLogModal(null)} className="btn btn-ghost btn-sm"><X size={16} /></button>
             </div>
             <div className="modal-body">
+              {/* Phase Selection */}
               <div className="form-group">
-                <label className="form-label">Count Completed Today</label>
+                <label className="form-label">Operational Phase</label>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {[
+                    { id: 'shooting', label: '🎬 Shooting' },
+                    { id: 'editing', label: '✂️ Video Editing' },
+                    { id: 'post_creation', label: '🎨 Post / Carousel Creation' },
+                    { id: 'posting', label: '🚀 Posting / Live' },
+                  ].map(ph => (
+                    <button
+                      key={ph.id}
+                      type="button"
+                      onClick={() => setLogPhase(ph.id)}
+                      style={{
+                        padding: '4px 10px', borderRadius: '6px', border: 'none', cursor: 'pointer',
+                        fontSize: '0.74rem', fontWeight: logPhase === ph.id ? 700 : 500,
+                        background: logPhase === ph.id ? 'var(--brand-primary)' : 'var(--bg-elevated)',
+                        color: logPhase === ph.id ? 'white' : 'var(--text-secondary)'
+                      }}
+                    >
+                      {ph.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Title / Topic */}
+              <div className="form-group">
+                <label className="form-label">Post / Topic Title (e.g. &quot;Post #14: SEO Tips&quot;)</label>
                 <input
-                  type="number"
-                  min="1"
+                  type="text"
                   className="form-input"
-                  value={logCount}
-                  onChange={e => setLogCount(e.target.value)}
+                  placeholder="Topic title or content headline..."
+                  value={logTitle}
+                  onChange={e => setLogTitle(e.target.value)}
                 />
               </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div className="form-group">
+                  <label className="form-label">Count Completed</label>
+                  <input
+                    type="number"
+                    min="1"
+                    className="form-input"
+                    value={logCount}
+                    onChange={e => setLogCount(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Platform</label>
+                  <select
+                    className="form-input"
+                    value={logPlatform}
+                    onChange={e => setLogPlatform(e.target.value)}
+                  >
+                    <option value="Instagram">Instagram</option>
+                    <option value="YouTube">YouTube</option>
+                    <option value="LinkedIn">LinkedIn</option>
+                    <option value="Facebook">Facebook</option>
+                    <option value="Twitter">Twitter / X</option>
+                  </select>
+                </div>
+              </div>
+
               <div className="form-group">
-                <label className="form-label">Notes / Video Topics / Links</label>
+                <label className="form-label">Live URL / Asset Link (Optional)</label>
+                <input
+                  type="url"
+                  className="form-input"
+                  placeholder="https://instagram.com/p/... or Drive link"
+                  value={logLiveUrl}
+                  onChange={e => setLogLiveUrl(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Remarks / Description</label>
                 <textarea
                   rows={2}
                   className="form-textarea"
-                  placeholder="Video topic, link, or remarks..."
+                  placeholder="Additional notes or remarks..."
                   value={logNote}
                   onChange={e => setLogNote(e.target.value)}
                 />
@@ -675,8 +822,8 @@ export default function StrategySection({ profile }: { profile: Profile }) {
             </div>
             <div className="modal-footer">
               <button onClick={() => setLogModal(null)} className="btn btn-secondary">Cancel</button>
-              <button onClick={handleLogWork} disabled={submitting || !logCount} className="btn btn-primary">
-                Save Log
+              <button onClick={handleLogProgress} disabled={submitting || !logCount} className="btn btn-primary">
+                Save Deliverable Log
               </button>
             </div>
           </div>
@@ -688,12 +835,45 @@ export default function StrategySection({ profile }: { profile: Profile }) {
         <div className="modal-overlay" onClick={() => setAddClientModal(false)}>
           <div className="modal-content" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', margin: 0 }}>Add New Client</h3>
+              <h3 style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', margin: 0 }}>Add New Channel / Client</h3>
               <button onClick={() => setAddClientModal(false)} className="btn btn-ghost btn-sm"><X size={16} /></button>
             </div>
             <div className="modal-body">
+              {/* Internal Brand vs External Client Type */}
               <div className="form-group">
-                <label className="form-label">Client / Company Name *</label>
+                <label className="form-label">Property Category</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setNewClientType('internal')}
+                    style={{
+                      flex: 1, padding: '8px 10px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                      fontSize: '0.78rem', fontWeight: 700,
+                      background: newClientType === 'internal' ? 'rgba(16,185,129,0.15)' : 'var(--bg-elevated)',
+                      color: newClientType === 'internal' ? '#10b981' : 'var(--text-secondary)',
+                      outline: newClientType === 'internal' ? '1.5px solid #10b981' : '1px solid var(--border-default)'
+                    }}
+                  >
+                    🏢 Internal Brand
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewClientType('external')}
+                    style={{
+                      flex: 1, padding: '8px 10px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                      fontSize: '0.78rem', fontWeight: 700,
+                      background: newClientType === 'external' ? 'rgba(99,102,241,0.15)' : 'var(--bg-elevated)',
+                      color: newClientType === 'external' ? '#818cf8' : 'var(--text-secondary)',
+                      outline: newClientType === 'external' ? '1.5px solid #818cf8' : '1px solid var(--border-default)'
+                    }}
+                  >
+                    🤝 External Client
+                  </button>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Brand / Client Name *</label>
                 <input
                   type="text"
                   className="form-input"
@@ -705,7 +885,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
 
               {/* Company Logo Upload */}
               <div className="form-group">
-                <label className="form-label">Company Logo</label>
+                <label className="form-label">Brand / Company Logo</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   {newClientLogo ? (
                     <img src={newClientLogo} alt="Logo" style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'contain', background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }} />
@@ -823,8 +1003,41 @@ export default function StrategySection({ profile }: { profile: Profile }) {
               <button onClick={() => setEditClientModal(null)} className="btn btn-ghost btn-sm"><X size={16} /></button>
             </div>
             <div className="modal-body">
+              {/* Internal Brand vs External Client Type */}
               <div className="form-group">
-                <label className="form-label">Client Name *</label>
+                <label className="form-label">Property Category</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setEditClientType('internal')}
+                    style={{
+                      flex: 1, padding: '8px 10px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                      fontSize: '0.78rem', fontWeight: 700,
+                      background: editClientType === 'internal' ? 'rgba(16,185,129,0.15)' : 'var(--bg-elevated)',
+                      color: editClientType === 'internal' ? '#10b981' : 'var(--text-secondary)',
+                      outline: editClientType === 'internal' ? '1.5px solid #10b981' : '1px solid var(--border-default)'
+                    }}
+                  >
+                    🏢 Internal Brand
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditClientType('external')}
+                    style={{
+                      flex: 1, padding: '8px 10px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                      fontSize: '0.78rem', fontWeight: 700,
+                      background: editClientType === 'external' ? 'rgba(99,102,241,0.15)' : 'var(--bg-elevated)',
+                      color: editClientType === 'external' ? '#818cf8' : 'var(--text-secondary)',
+                      outline: editClientType === 'external' ? '1.5px solid #818cf8' : '1px solid var(--border-default)'
+                    }}
+                  >
+                    🤝 External Client
+                  </button>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Brand / Client Name *</label>
                 <input
                   type="text"
                   className="form-input"
@@ -835,7 +1048,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
 
               {/* Edit Company Logo */}
               <div className="form-group">
-                <label className="form-label">Company Logo</label>
+                <label className="form-label">Brand / Company Logo</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   {editClientLogo ? (
                     <img src={editClientLogo} alt="Logo" style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'contain', background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }} />

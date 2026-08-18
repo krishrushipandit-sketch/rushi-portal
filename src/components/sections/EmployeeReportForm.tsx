@@ -5,10 +5,22 @@ import { useRouter } from 'next/navigation'
 import { useTheme } from '@/lib/ThemeContext'
 import { Mic, MicOff, Loader2, Plus, Trash2, X, SendHorizonal, Search, Building2, ChevronDown } from 'lucide-react'
 
-interface Row { responsibility: string; daily_target: number | null; description: string; count: string; isCustom?: boolean; clientId?: string }
+interface Row {
+  responsibility: string
+  daily_target: number | null
+  description: string
+  count: string
+  isCustom?: boolean
+  clientId?: string
+  clientName?: string
+  taskPhase?: string
+  itemTitle?: string
+  liveUrl?: string
+  platform?: string
+}
 
 interface SearchableClientDropdownProps {
-  clients: { id: string; name: string; color: string }[]
+  clients: { id: string; name: string; color: string; client_type?: string }[]
   selectedId: string
   disabled?: boolean
   onSelect: (id: string) => void
@@ -17,15 +29,24 @@ interface SearchableClientDropdownProps {
 function SearchableClientDropdown({ clients, selectedId, disabled, onSelect }: SearchableClientDropdownProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [activeTab, setActiveTab] = useState<'all' | 'internal' | 'external'>('all')
   const dropdownRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   const selectedClient = clients.find(c => c.id === selectedId)
 
   const filteredClients = useMemo(() => {
-    if (!search.trim()) return clients
-    return clients.filter(c => c.name.toLowerCase().includes(search.toLowerCase()))
-  }, [clients, search])
+    return clients.filter(c => {
+      const matchesSearch = !search.trim() || c.name.toLowerCase().includes(search.toLowerCase())
+      const isInternal = c.client_type === 'internal'
+      if (activeTab === 'internal') return matchesSearch && isInternal
+      if (activeTab === 'external') return matchesSearch && !isInternal
+      return matchesSearch
+    })
+  }, [clients, search, activeTab])
+
+  const internalCount = clients.filter(c => c.client_type === 'internal').length
+  const externalCount = clients.filter(c => c.client_type !== 'internal').length
 
   // Click outside to close
   useEffect(() => {
@@ -51,15 +72,21 @@ function SearchableClientDropdown({ clients, selectedId, disabled, onSelect }: S
           fontSize: '0.7rem',
           padding: '3px 8px',
           borderRadius: '6px',
-          background: selectedClient ? 'rgba(99,102,241,0.15)' : 'var(--bg-surface)',
-          color: selectedClient ? '#818cf8' : 'var(--text-muted)',
-          border: selectedClient ? '1px solid rgba(99,102,241,0.4)' : '1px solid var(--border-default)',
+          background: selectedClient
+            ? (selectedClient.client_type === 'internal' ? 'rgba(16,185,129,0.15)' : 'rgba(99,102,241,0.15)')
+            : 'var(--bg-surface)',
+          color: selectedClient
+            ? (selectedClient.client_type === 'internal' ? '#10b981' : '#818cf8')
+            : 'var(--text-muted)',
+          border: selectedClient
+            ? (selectedClient.client_type === 'internal' ? '1px solid rgba(16,185,129,0.4)' : '1px solid rgba(99,102,241,0.4)')
+            : '1px solid var(--border-default)',
           outline: 'none',
           cursor: disabled ? 'not-allowed' : 'pointer',
           display: 'inline-flex',
           alignItems: 'center',
           gap: '5px',
-          maxWidth: '160px',
+          maxWidth: '180px',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
@@ -69,7 +96,7 @@ function SearchableClientDropdown({ clients, selectedId, disabled, onSelect }: S
       >
         <Building2 size={11} style={{ flexShrink: 0 }} />
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {selectedClient ? selectedClient.name : 'Tag Client'}
+          {selectedClient ? `${selectedClient.client_type === 'internal' ? '🏢' : '🤝'} ${selectedClient.name}` : 'Tag Brand / Client'}
         </span>
         <ChevronDown size={10} style={{ flexShrink: 0, opacity: 0.7 }} />
       </button>
@@ -82,11 +109,41 @@ function SearchableClientDropdown({ clients, selectedId, disabled, onSelect }: S
           zIndex: 9999,
           background: 'var(--bg-card)',
           border: '1px solid var(--border-default)',
-          borderRadius: '8px',
-          boxShadow: '0 10px 28px rgba(0,0,0,0.4)',
-          width: '220px',
+          borderRadius: '10px',
+          boxShadow: '0 12px 32px rgba(0,0,0,0.45)',
+          width: '260px',
           overflow: 'hidden'
         }}>
+          {/* Tab Filter: Internal vs External */}
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-elevated)', padding: '4px' }}>
+            {[
+              { id: 'all', label: `All (${clients.length})` },
+              { id: 'internal', label: `🏢 Internal (${internalCount})` },
+              { id: 'external', label: `🤝 Clients (${externalCount})` }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id as any)}
+                style={{
+                  flex: 1,
+                  padding: '4px 6px',
+                  fontSize: '0.66rem',
+                  fontWeight: activeTab === tab.id ? 700 : 500,
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  background: activeTab === tab.id ? 'var(--bg-surface)' : 'transparent',
+                  color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-muted)',
+                  boxShadow: activeTab === tab.id ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
+                  transition: 'all 0.15s'
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
           {/* Search Bar */}
           <div style={{
             padding: '6px 8px',
@@ -100,7 +157,7 @@ function SearchableClientDropdown({ clients, selectedId, disabled, onSelect }: S
             <input
               ref={searchInputRef}
               type="text"
-              placeholder="Search client..."
+              placeholder="Search internal brand / client..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{
@@ -125,7 +182,7 @@ function SearchableClientDropdown({ clients, selectedId, disabled, onSelect }: S
           </div>
 
           {/* Client List */}
-          <div style={{ maxHeight: '170px', overflowY: 'auto', padding: '4px' }}>
+          <div style={{ maxHeight: '190px', overflowY: 'auto', padding: '4px' }}>
             <button
               type="button"
               onClick={() => { onSelect(''); setOpen(false) }}
@@ -144,49 +201,66 @@ function SearchableClientDropdown({ clients, selectedId, disabled, onSelect }: S
                 gap: '6px'
               }}
             >
-              <span style={{ fontStyle: 'italic' }}>— No Client —</span>
+              <span style={{ fontStyle: 'italic' }}>— No Brand / Client Tag —</span>
             </button>
 
-            {filteredClients.map(c => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => { onSelect(c.id); setOpen(false) }}
-                style={{
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '5px 8px',
-                  fontSize: '0.74rem',
-                  fontWeight: selectedId === c.id ? 700 : 500,
-                  background: selectedId === c.id ? 'rgba(99,102,241,0.15)' : 'transparent',
-                  color: selectedId === c.id ? '#818cf8' : 'var(--text-primary)',
-                  border: 'none',
-                  borderRadius: '5px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  transition: 'background 0.1s'
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                onMouseLeave={e => (e.currentTarget.style.background = selectedId === c.id ? 'rgba(99,102,241,0.15)' : 'transparent')}
-              >
-                <span style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  background: c.color || '#6366f1',
-                  flexShrink: 0
-                }} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {c.name}
-                </span>
-              </button>
-            ))}
+            {filteredClients.map(c => {
+              const isInt = c.client_type === 'internal'
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => { onSelect(c.id); setOpen(false) }}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '6px 8px',
+                    fontSize: '0.74rem',
+                    fontWeight: selectedId === c.id ? 700 : 500,
+                    background: selectedId === c.id ? (isInt ? 'rgba(16,185,129,0.15)' : 'rgba(99,102,241,0.15)') : 'transparent',
+                    color: selectedId === c.id ? (isInt ? '#10b981' : '#818cf8') : 'var(--text-primary)',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '6px',
+                    transition: 'background 0.1s'
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = selectedId === c.id ? (isInt ? 'rgba(16,185,129,0.15)' : 'rgba(99,102,241,0.15)') : 'transparent')}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                    <span style={{
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      background: c.color || (isInt ? '#10b981' : '#6366f1'),
+                      flexShrink: 0
+                    }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {c.name}
+                    </span>
+                  </div>
+                  <span style={{
+                    fontSize: '0.6rem',
+                    fontWeight: 700,
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    background: isInt ? 'rgba(16,185,129,0.12)' : 'rgba(99,102,241,0.12)',
+                    color: isInt ? '#10b981' : '#818cf8',
+                    flexShrink: 0
+                  }}>
+                    {isInt ? 'Internal' : 'Client'}
+                  </span>
+                </button>
+              )
+            })}
 
             {filteredClients.length === 0 && (
-              <div style={{ padding: '8px', textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                No client found
+              <div style={{ padding: '12px', textAlign: 'center', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                No {activeTab === 'internal' ? 'internal brands' : activeTab === 'external' ? 'clients' : 'properties'} found
               </div>
             )}
           </div>
@@ -223,7 +297,7 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
   const isLocked = !isAdmin && reportDate < todayDate()
 
   const [rows, setRows] = useState<Row[]>([])
-  const [clientsList, setClientsList] = useState<{ id: string; name: string; color: string }[]>([])
+  const [clientsList, setClientsList] = useState<{ id: string; name: string; color: string; client_type?: string }[]>([])
   const [note, setNote] = useState(existingReport?.note || '')
   const [checkInTime, setCheckInTime] = useState<string>(existingReport?.check_in_time?.slice(0,5) || '')
   const [checkOutTime, setCheckOutTime] = useState<string>(existingReport?.check_out_time?.slice(0,5) || '')
@@ -251,7 +325,12 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
         const cRes = await fetch('/api/client-progress', { headers: { Authorization: `Bearer ${token}` } })
         const cData = await cRes.json()
         if (Array.isArray(cData.clients)) {
-          setClientsList(cData.clients.map((c: any) => ({ id: c.id, name: c.name, color: c.color })))
+          setClientsList(cData.clients.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            color: c.color,
+            client_type: c.client_type || 'external'
+          })))
         }
       } catch {}
 
@@ -532,6 +611,11 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
         count: r.count.trim() ? Number(r.count) : 1,
         clientId: r.clientId || undefined,
         clientName: matchedClient ? matchedClient.name : undefined,
+        clientType: matchedClient?.client_type || undefined,
+        taskPhase: r.taskPhase || undefined,
+        itemTitle: r.itemTitle || (r.description.trim().length > 0 ? r.description.trim() : undefined),
+        liveUrl: r.liveUrl || undefined,
+        platform: r.platform || undefined,
       }
     })
     await fetch('/api/reports', {

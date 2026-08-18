@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     // Ensure target_month column exists
     await execute('ALTER TABLE client_deliverables ADD COLUMN IF NOT EXISTS target_month VARCHAR(7)')
 
-    const { name, color, logo_url, deliverables, month } = await req.json()
+    const { name, color, logo_url, deliverables, month, client_type } = await req.json()
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Client name is required' }, { status: 400 })
@@ -40,13 +40,14 @@ export async function POST(req: NextRequest) {
 
     const currentMonth = month || new Date().toISOString().slice(0, 7)
     const slug = name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+    const finalType = client_type === 'internal' ? 'internal' : 'external'
 
     // Insert client
-    const client = await queryOne<{ id: string; name: string; slug: string; color: string; logo_url: string | null; is_active: boolean }>(
-      `INSERT INTO clients (name, slug, color, logo_url, is_active)
-       VALUES ($1, $2, $3, $4, true)
+    const client = await queryOne<{ id: string; name: string; slug: string; color: string; logo_url: string | null; client_type: string; is_active: boolean }>(
+      `INSERT INTO clients (name, slug, color, logo_url, client_type, is_active)
+       VALUES ($1, $2, $3, $4, $5, true)
        RETURNING *`,
-      [name.trim(), slug, color || '#6366f1', logo_url || null]
+      [name.trim(), slug, color || '#6366f1', logo_url || null, finalType]
     )
 
     if (!client) {
@@ -56,13 +57,13 @@ export async function POST(req: NextRequest) {
     // Insert deliverables with target_month
     if (Array.isArray(deliverables) && deliverables.length > 0) {
       const validDeliverables = deliverables.filter(
-        (d: any) => d.content_type && Number(d.monthly_target) > 0
+        (d: any) => d.content_type && (finalType === 'internal' || Number(d.monthly_target) >= 0)
       )
       for (const d of validDeliverables) {
         await execute(
           `INSERT INTO client_deliverables (client_id, content_type, monthly_target, target_month)
            VALUES ($1, $2, $3, $4)`,
-          [client.id, d.content_type, Number(d.monthly_target), currentMonth]
+          [client.id, d.content_type, Number(d.monthly_target) || 0, currentMonth]
         )
       }
     }
@@ -83,10 +84,11 @@ export async function PATCH(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
   try {
-    // Ensure target_month column exists
+    // Ensure target_month and client_type columns exist
     await execute('ALTER TABLE client_deliverables ADD COLUMN IF NOT EXISTS target_month VARCHAR(7)')
+    await execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS client_type VARCHAR(20) DEFAULT 'external'")
 
-    const { name, color, logo_url, deliverables, month } = await req.json()
+    const { name, color, logo_url, deliverables, month, client_type } = await req.json()
     const targetMonth = month || new Date().toISOString().slice(0, 7)
 
     // Update client record
@@ -104,6 +106,10 @@ export async function PATCH(req: NextRequest) {
     if (logo_url !== undefined) {
       params.push(logo_url || null)
       updates.push(`logo_url = $${params.length}`)
+    }
+    if (client_type) {
+      params.push(client_type === 'internal' ? 'internal' : 'external')
+      updates.push(`client_type = $${params.length}`)
     }
 
     if (updates.length > 0) {

@@ -41,15 +41,71 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Ensure target_month column exists
+    // 1. Ensure target_month and client_type columns exist
     await execute('ALTER TABLE client_deliverables ADD COLUMN IF NOT EXISTS target_month VARCHAR(7)')
+    await execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS client_type VARCHAR(20) DEFAULT 'external'")
+    await execute('ALTER TABLE client_progress_log ADD COLUMN IF NOT EXISTS task_phase VARCHAR(30)')
+    await execute('ALTER TABLE client_progress_log ADD COLUMN IF NOT EXISTS title VARCHAR(255)')
+    await execute('ALTER TABLE client_progress_log ADD COLUMN IF NOT EXISTS live_url TEXT')
+    await execute('ALTER TABLE client_progress_log ADD COLUMN IF NOT EXISTS platform VARCHAR(50)')
+    await execute('ALTER TABLE client_progress_log ADD COLUMN IF NOT EXISTS status VARCHAR(30)')
+
+    // 2. Ensure the 7 Internal Brands exist
+    const internalBrands = [
+      { name: 'RushiPandit Digital Marketing', slug: 'rushipandit-dm', color: '#10b981' },
+      { name: 'Amazon', slug: 'amazon', color: '#f59e0b' },
+      { name: 'AI Course', slug: 'ai-course', color: '#6366f1' },
+      { name: 'Agnomatic', slug: 'agnomatic', color: '#8b5cf6' },
+      { name: 'Cultural Reels', slug: 'cultural-reels', color: '#ec4899' },
+      { name: 'Pandit Capital', slug: 'pandit-capital', color: '#0ea5e9' },
+      { name: 'Agnochat', slug: 'agnochat', color: '#14b8a6' },
+    ]
+
+    for (const b of internalBrands) {
+      const existing = await queryOne<{ id: string }>(
+        `SELECT id FROM clients WHERE LOWER(TRIM(name)) = LOWER($1) OR slug = $2`,
+        [b.name, b.slug]
+      )
+      if (!existing) {
+        const brandRow = await queryOne<{ id: string }>(
+          `INSERT INTO clients (name, slug, color, client_type, is_active)
+           VALUES ($1, $2, $3, 'internal', true)
+           RETURNING id`,
+          [b.name, b.slug, b.color]
+        )
+        if (brandRow) {
+          // Add default content format buckets for internal brand
+          const formats = ['Reel', 'Static Post', 'Carousel', 'YouTube', 'Shooting']
+          for (const fmt of formats) {
+            await execute(
+              `INSERT INTO client_deliverables (client_id, content_type, monthly_target)
+               VALUES ($1, $2, 0)`,
+              [brandRow.id, fmt]
+            )
+          }
+        }
+      } else {
+        // Ensure client_type is marked internal
+        await execute(`UPDATE clients SET client_type = 'internal' WHERE id = $1 AND (client_type IS NULL OR client_type != 'internal')`, [existing.id])
+      }
+    }
+
+    const typeFilter = searchParams.get('type') // 'internal' | 'external' | 'all'
+    let typeSql = ''
+    const clientParams: any[] = []
+    if (typeFilter === 'internal') {
+      typeSql = "AND c.client_type = 'internal'"
+    } else if (typeFilter === 'external') {
+      typeSql = "AND (c.client_type = 'external' OR c.client_type IS NULL)"
+    }
 
     // Get all unique active clients
     const clients = await query<any>(
-      `SELECT DISTINCT ON (LOWER(TRIM(name))) id, name, slug, color, logo_url 
-       FROM clients 
-       WHERE is_active = true AND (status IS NULL OR status != 'inactive')
-       ORDER BY LOWER(TRIM(name)), id ASC`
+      `SELECT DISTINCT ON (LOWER(TRIM(c.name))) c.id, c.name, c.slug, c.color, c.logo_url, COALESCE(c.client_type, 'external') as client_type 
+       FROM clients c
+       WHERE c.is_active = true AND (c.status IS NULL OR c.status != 'inactive') ${typeSql}
+       ORDER BY LOWER(TRIM(c.name)), c.id ASC`,
+      clientParams
     )
 
     // Get all deliverables: both month-specific and baseline templates
@@ -59,35 +115,35 @@ export async function GET(req: NextRequest) {
        ORDER BY target_month DESC NULLS LAST, id ASC`
     )
 
-    // Get all progress logs for this month — include deliverable content type for historical resilience
+    // Get all progress logs for this month — include deliverable content type and task metadata
     const logs = await query<any>(
       `SELECT l.id, l.client_id, l.deliverable_id, l.employee_id, TO_CHAR(l.log_date, 'YYYY-MM-DD') AS log_date, l.count, l.notes,
+              l.task_phase, l.title, l.live_url, l.platform, l.status,
               cd.content_type as deliverable_content_type,
-              json_build_object('full_name', p.full_name) as employee
+              json_build_object('full_name', p.full_name, 'avatar_url', p.avatar_url, 'designation', p.designation) as employee
        FROM client_progress_log l
        LEFT JOIN profiles p ON l.employee_id = p.id
        LEFT JOIN client_deliverables cd ON l.deliverable_id = cd.id
        WHERE l.log_date >= $1 AND l.log_date < $2
-       ORDER BY l.log_date DESC`,
+       ORDER BY l.log_date DESC, l.id DESC`,
       [dateFrom, dateTo]
     )
 
     // Build full picture per client for monthStr
     const clientsWithProgress = (clients || []).map((client: any) => {
+      const isInternal = client.client_type === 'internal'
       const allClientDeliverables = (deliverables || []).filter((d: any) => d.client_id === client.id)
       const clientLogs = (logs || []).filter((l: any) => l.client_id === client.id)
 
-      // 1. Pick month-specific deliverables if available; otherwise only inherit for current/future months
+      // 1. Pick month-specific deliverables if available; otherwise baseline
       const monthSpecific = allClientDeliverables.filter((d: any) => d.target_month === monthStr)
       let activeDeliverables: any[] = []
 
       if (monthSpecific.length > 0) {
-        // Explicit targets set specifically for this month
         activeDeliverables = monthSpecific
       } else {
         const istCurrentMonth = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 7)
-        // If it's the current or future month, inherit the latest active plan so user has a starting template
-        if (monthStr >= istCurrentMonth) {
+        if (monthStr >= istCurrentMonth || isInternal) {
           const baseline = allClientDeliverables.filter((d: any) => d.target_month === null || d.target_month === undefined)
           if (baseline.length > 0) {
             activeDeliverables = baseline
@@ -97,8 +153,6 @@ export async function GET(req: NextRequest) {
             activeDeliverables = sorted.filter(d => d.target_month === latestMonth)
           }
         } else {
-          // For a PAST month (e.g. July):
-          // Do NOT inject August's targets into July! Past months only show deliverables that were explicitly set or actually had logs in that month.
           activeDeliverables = []
         }
       }
@@ -108,7 +162,7 @@ export async function GET(req: NextRequest) {
       const uniqueActive: any[] = []
       for (const d of activeDeliverables) {
         const key = (d.content_type || '').toLowerCase()
-        if (!seenTypes.has(key) && Number(d.monthly_target) > 0) {
+        if (!seenTypes.has(key) && (isInternal || Number(d.monthly_target) > 0)) {
           seenTypes.add(key)
           uniqueActive.push(d)
         }
@@ -129,8 +183,8 @@ export async function GET(req: NextRequest) {
         return {
           ...d,
           completed,
-          remaining: Math.max(0, d.monthly_target - completed),
-          percent: d.monthly_target > 0 ? Math.min(100, Math.round((completed / d.monthly_target) * 100)) : 0,
+          remaining: isInternal ? 0 : Math.max(0, d.monthly_target - completed),
+          percent: isInternal ? 100 : (d.monthly_target > 0 ? Math.min(100, Math.round((completed / d.monthly_target) * 100)) : 0),
           dailyBreakdown,
           logs: delivLogs
         }
@@ -154,7 +208,7 @@ export async function GET(req: NextRequest) {
             id: l.deliverable_id || `hist-${client.id}-${lKey}`,
             client_id: client.id,
             content_type: lType,
-            monthly_target: completed, // Completed matches target for historical logs
+            monthly_target: isInternal ? 0 : completed,
             completed,
             remaining: 0,
             percent: 100,
@@ -165,7 +219,16 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      return { ...client, deliverables: formattedDeliverables, totalLogs: clientLogs.length }
+      // Compute total volume for internal/external
+      const totalVolume = clientLogs.reduce((sum: number, l: any) => sum + (Number(l.count) || 0), 0)
+
+      return {
+        ...client,
+        deliverables: formattedDeliverables,
+        totalLogs: clientLogs.length,
+        totalVolume,
+        allLogs: clientLogs
+      }
     })
 
     return NextResponse.json({ clients: clientsWithProgress, month: monthStr })
@@ -181,10 +244,10 @@ export async function POST(req: NextRequest) {
 
   const { user } = auth
   try {
-    const { client_id, deliverable_id, count, notes, log_date } = await req.json()
+    const { client_id, deliverable_id, count, notes, log_date, task_phase, title, live_url, platform, status } = await req.json()
 
     let actualDeliverableId = deliverable_id
-    if (String(deliverable_id).startsWith('hist-')) {
+    if (String(deliverable_id).startsWith('hist-') || !deliverable_id) {
       const existingDeliv = await queryOne<any>(
         'SELECT id FROM client_deliverables WHERE client_id = $1 LIMIT 1',
         [client_id]
@@ -193,16 +256,21 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await queryOne<any>(
-      `INSERT INTO client_progress_log (client_id, deliverable_id, employee_id, log_date, count, notes)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO client_progress_log (client_id, deliverable_id, employee_id, log_date, count, notes, task_phase, title, live_url, platform, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         client_id,
         actualDeliverableId,
         user.id,
         log_date || new Date().toISOString().slice(0, 10),
-        Number(count),
-        notes || null
+        Number(count) || 1,
+        notes || null,
+        task_phase || null,
+        title || null,
+        live_url || null,
+        platform || null,
+        status || 'published'
       ]
     )
 
