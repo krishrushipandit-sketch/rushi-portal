@@ -1,10 +1,199 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Mic, MicOff, Loader2, Plus, Trash2, X, SendHorizonal } from 'lucide-react'
+import { Mic, MicOff, Loader2, Plus, Trash2, X, SendHorizonal, Search, Building2, ChevronDown } from 'lucide-react'
 
 interface Row { responsibility: string; daily_target: number | null; description: string; count: string; isCustom?: boolean; clientId?: string }
+
+interface SearchableClientDropdownProps {
+  clients: { id: string; name: string; color: string }[]
+  selectedId: string
+  disabled?: boolean
+  onSelect: (id: string) => void
+}
+
+function SearchableClientDropdown({ clients, selectedId, disabled, onSelect }: SearchableClientDropdownProps) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  const selectedClient = clients.find(c => c.id === selectedId)
+
+  const filteredClients = useMemo(() => {
+    if (!search.trim()) return clients
+    return clients.filter(c => c.name.toLowerCase().includes(search.toLowerCase()))
+  }, [clients, search])
+
+  // Click outside to close
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside)
+      setTimeout(() => searchInputRef.current?.focus(), 50)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [open])
+
+  return (
+    <div ref={dropdownRef} style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen(!open)}
+        style={{
+          fontSize: '0.7rem',
+          padding: '3px 8px',
+          borderRadius: '6px',
+          background: selectedClient ? 'rgba(99,102,241,0.15)' : 'var(--bg-surface)',
+          color: selectedClient ? '#818cf8' : 'var(--text-muted)',
+          border: selectedClient ? '1px solid rgba(99,102,241,0.4)' : '1px solid var(--border-default)',
+          outline: 'none',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '5px',
+          maxWidth: '160px',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          fontWeight: selectedClient ? 700 : 500,
+          transition: 'all 0.15s'
+        }}
+      >
+        <Building2 size={11} style={{ flexShrink: 0 }} />
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {selectedClient ? selectedClient.name : 'Tag Client'}
+        </span>
+        <ChevronDown size={10} style={{ flexShrink: 0, opacity: 0.7 }} />
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute',
+          top: 'calc(100% + 4px)',
+          left: 0,
+          zIndex: 9999,
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border-default)',
+          borderRadius: '8px',
+          boxShadow: '0 10px 28px rgba(0,0,0,0.4)',
+          width: '220px',
+          overflow: 'hidden'
+        }}>
+          {/* Search Bar */}
+          <div style={{
+            padding: '6px 8px',
+            borderBottom: '1px solid var(--border-subtle)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            background: 'var(--bg-surface)'
+          }}>
+            <Search size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search client..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{
+                width: '100%',
+                background: 'transparent',
+                border: 'none',
+                outline: 'none',
+                fontSize: '0.74rem',
+                color: 'var(--text-primary)',
+                fontFamily: 'inherit'
+              }}
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0 }}
+              >
+                <X size={10} />
+              </button>
+            )}
+          </div>
+
+          {/* Client List */}
+          <div style={{ maxHeight: '170px', overflowY: 'auto', padding: '4px' }}>
+            <button
+              type="button"
+              onClick={() => { onSelect(''); setOpen(false) }}
+              style={{
+                width: '100%',
+                textAlign: 'left',
+                padding: '5px 8px',
+                fontSize: '0.72rem',
+                background: !selectedId ? 'rgba(99,102,241,0.1)' : 'transparent',
+                color: !selectedId ? '#818cf8' : 'var(--text-muted)',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <span style={{ fontStyle: 'italic' }}>— No Client —</span>
+            </button>
+
+            {filteredClients.map(c => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => { onSelect(c.id); setOpen(false) }}
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '5px 8px',
+                  fontSize: '0.74rem',
+                  fontWeight: selectedId === c.id ? 700 : 500,
+                  background: selectedId === c.id ? 'rgba(99,102,241,0.15)' : 'transparent',
+                  color: selectedId === c.id ? '#818cf8' : 'var(--text-primary)',
+                  border: 'none',
+                  borderRadius: '5px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'background 0.1s'
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                onMouseLeave={e => (e.currentTarget.style.background = selectedId === c.id ? 'rgba(99,102,241,0.15)' : 'transparent')}
+              >
+                <span style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  background: c.color || '#6366f1',
+                  flexShrink: 0
+                }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {c.name}
+                </span>
+              </button>
+            ))}
+
+            {filteredClients.length === 0 && (
+              <div style={{ padding: '8px', textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                No client found
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 const todayDate = () => {
   const d = new Date()
@@ -434,23 +623,12 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
                       {/* Client Tag Dropdown & Add Client Row Button — only for client workers */}
                       {isClientWorker !== false && clientsList.length > 0 && (
                         <div style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-                          <select
+                          <SearchableClientDropdown
+                            clients={clientsList}
+                            selectedId={row.clientId || ''}
                             disabled={isLocked}
-                            value={row.clientId || ''}
-                            onChange={e => update(i, 'clientId', e.target.value)}
-                            style={{
-                              fontSize: '0.68rem', padding: '2px 6px', borderRadius: '5px',
-                              background: row.clientId ? 'rgba(99,102,241,0.12)' : 'var(--bg-surface)',
-                              color: row.clientId ? '#6366f1' : 'var(--text-muted)',
-                              border: row.clientId ? '1px solid rgba(99,102,241,0.35)' : '1px solid var(--border-default)',
-                              outline: 'none', cursor: 'pointer', maxWidth: '140px'
-                            }}
-                          >
-                            <option value="">🏢 Tag Client</option>
-                            {clientsList.map(c => (
-                              <option key={c.id} value={c.id}>🏢 {c.name}</option>
-                            ))}
-                          </select>
+                            onSelect={id => update(i, 'clientId', id)}
+                          />
 
                           {!isLocked && (
                             <button
