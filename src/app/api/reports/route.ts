@@ -327,18 +327,67 @@ function runClientSync(
       const deliverables = matchedClient.deliverables || []
       if (deliverables.length === 0) continue
 
-      // Determine content type (Reel, YouTube, Static Post)
-      let contentType = 'Reel'
-      if (combinedText.includes('youtube') || combinedText.includes('yt ')) {
+      // Check if this is a non-deliverable client activity (e.g. meeting, call, discussion, consultation)
+      const isMeetingOrCall =
+        combinedText.includes('meeting') ||
+        combinedText.includes('call') ||
+        combinedText.includes('discussion') ||
+        combinedText.includes('consultation') ||
+        combinedText.includes('review') ||
+        combinedText.includes('strategy session') ||
+        combinedText.includes('onboarding')
+
+      // Determine content type strictly (Reel, YouTube, Static Post, Shooting, etc.)
+      let contentType: string | null = null
+      if (combinedText.includes('youtube') || combinedText.includes('yt ') || combinedText.includes('yt video') || combinedText.includes('long video')) {
         contentType = 'YouTube'
-      } else if (combinedText.includes('post') || combinedText.includes('static') || combinedText.includes('banner')) {
-        contentType = 'Static Post'
-      } else if (combinedText.includes('reel') || combinedText.includes('short') || combinedText.includes('video')) {
+      } else if (combinedText.includes('reel') || combinedText.includes('shorts') || combinedText.includes('short video')) {
         contentType = 'Reel'
+      } else if (combinedText.includes('shoot') || combinedText.includes('shooting')) {
+        contentType = 'Shooting'
+      } else if (
+        !isMeetingOrCall &&
+        (combinedText.includes('static post') ||
+         combinedText.includes('static') ||
+         combinedText.includes('poster') ||
+         combinedText.includes('banner') ||
+         combinedText.includes('thumbnail') ||
+         combinedText.includes('graphic design') ||
+         combinedText.includes('creative post'))
+      ) {
+        contentType = 'Static Post'
+      } else if (combinedText.includes('story') || combinedText.includes('stories')) {
+        contentType = 'Stories'
+      } else if (combinedText.includes('podcast')) {
+        contentType = 'Podcast'
       }
 
-      const matchedDel = deliverables.find((d: any) => d.content_type.toLowerCase() === contentType.toLowerCase()) || deliverables[0]
-      if (!matchedDel) continue
+      // If it's a meeting or call and client has a specific Meeting deliverable:
+      if (isMeetingOrCall && !contentType) {
+        const meetingDel = deliverables.find((d: any) =>
+          d.content_type.toLowerCase().includes('meeting') ||
+          d.content_type.toLowerCase().includes('call') ||
+          d.content_type.toLowerCase().includes('consultation')
+        )
+        if (meetingDel) {
+          contentType = meetingDel.content_type
+        } else {
+          // It is a client relationship meeting — do NOT increment static post or reel counts!
+          continue
+        }
+      }
+
+      // If no valid deliverable format was found, NEVER guess or default to deliverables[0]!
+      if (!contentType) {
+        continue
+      }
+
+      // Find deliverable with matching content type
+      const matchedDel = deliverables.find((d: any) => d.content_type.toLowerCase() === contentType!.toLowerCase())
+      if (!matchedDel) {
+        // Do not insert into progress log if client does not have this deliverable
+        continue
+      }
 
       await execute(
         `INSERT INTO client_progress_log (client_id, deliverable_id, employee_id, log_date, count, notes)

@@ -34,7 +34,13 @@ interface EmpSummary {
   report: DailyReport | null
 }
 
-interface ReportEntry { description: string; count: number; notes?: string }
+interface ReportEntry {
+  description: string
+  count: number
+  notes?: string
+  clientId?: string
+  clientName?: string
+}
 
 export default function ReportsSection({ profile }: { profile: Profile }) {
   const router = useRouter()
@@ -286,8 +292,26 @@ export default function ReportsSection({ profile }: { profile: Profile }) {
                             <tbody>
                               {report?.entries?.map((e, i) => (
                                 <tr key={i} style={{ borderBottom: i === report.entries.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
-                                  <td style={{ padding: '0.75rem 1rem', width: '25%', verticalAlign: 'top' }}>
-                                    <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>{e.description}</span>
+                                  <td style={{ padding: '0.75rem 1rem', width: '30%', verticalAlign: 'top' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>{e.description}</span>
+                                      {(e.clientName || (e as any).clientId) && (
+                                        <span style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          fontSize: '0.66rem',
+                                          fontWeight: 700,
+                                          padding: '2px 7px',
+                                          borderRadius: '6px',
+                                          background: 'rgba(99,102,241,0.12)',
+                                          color: '#818cf8',
+                                          width: 'fit-content'
+                                        }}>
+                                          🏢 {e.clientName || 'Client Work'}
+                                        </span>
+                                      )}
+                                    </div>
                                   </td>
                                   <td style={{ padding: '0.75rem 1rem', verticalAlign: 'top' }}>
                                     <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>{e.notes || '—'}</p>
@@ -373,10 +397,14 @@ function ReportCards({ reports, isAdmin, expandedId, setExpandedId, onEdit }: {
                 <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '3px 10px', borderRadius: '99px', background: count > 0 ? 'rgba(16,185,129,0.1)' : 'rgba(148,163,184,0.1)', color: count > 0 ? '#10b981' : 'var(--text-muted)' }}>
                   {count > 0 ? `${count} item${count !== 1 ? 's' : ''}` : 'Empty'}
                 </span>
-                {(isAdmin || isToday) && (
+                {(isAdmin || isToday) ? (
                   <button className="btn btn-ghost btn-sm" style={{ padding: '4px 8px' }} onClick={e => { e.stopPropagation(); onEdit(report) }}>
                     <Edit2 size={12} />
                   </button>
+                ) : (
+                  <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px', padding: '2px 6px', borderRadius: '4px', background: 'var(--bg-elevated)' }}>
+                    🔒 Locked
+                  </span>
                 )}
                 {isExp ? <ChevronUp size={15} style={{ color: 'var(--text-muted)' }} /> : <ChevronDown size={15} style={{ color: 'var(--text-muted)' }} />}
               </div>
@@ -394,10 +422,28 @@ function ReportCards({ reports, isAdmin, expandedId, setExpandedId, onEdit }: {
                   <tbody>
                     {report.entries?.map((e, i) => (
                       <tr key={i} style={{ borderTop: '1px solid var(--border-subtle)' }}>
-                        <td style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <CheckCircle2 size={12} style={{ color: '#10b981', flexShrink: 0 }} />
+                        <td style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                          <CheckCircle2 size={12} style={{ color: '#10b981', flexShrink: 0, marginTop: '3px' }} />
                           <div>
-                            <strong>{e.description}</strong>: {e.notes || '—'}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <strong>{e.description}</strong>
+                              {(e.clientName || (e as any).clientId) && (
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                  fontSize: '0.65rem',
+                                  fontWeight: 700,
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  background: 'rgba(99,102,241,0.12)',
+                                  color: '#818cf8'
+                                }}>
+                                  🏢 {e.clientName || 'Client Work'}
+                                </span>
+                              )}
+                            </div>
+                            {e.notes && <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{e.notes}</p>}
                           </div>
                         </td>
                         <td style={{ padding: '0.5rem 1rem', textAlign: 'center', fontSize: '0.85rem', fontWeight: 700, color: 'var(--brand-primary)' }}>

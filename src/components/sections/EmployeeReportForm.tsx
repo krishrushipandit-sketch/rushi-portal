@@ -512,17 +512,26 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
 
 
   const handleSubmit = async () => {
+    if (isLocked) {
+      alert('Daily reports can only be edited on the same day before 12:00 AM midnight IST. Past reports are locked.')
+      return
+    }
+
     const valid = rows.filter(r => r.responsibility.trim() && (r.description.trim() || r.count.trim()))
     if (!valid.length) return
     setSubmitting(true)
     const token = getToken()
     if (!token) return
-    const entries = valid.map(r => ({
-      description: r.responsibility.trim(),
-      notes: r.description.trim(),
-      count: r.count.trim() ? Number(r.count) : 1,
-      clientId: r.clientId || undefined,
-    }))
+    const entries = valid.map(r => {
+      const matchedClient = clientsList.find(c => c.id === r.clientId)
+      return {
+        description: r.responsibility.trim(),
+        notes: r.description.trim(),
+        count: r.count.trim() ? Number(r.count) : 1,
+        clientId: r.clientId || undefined,
+        clientName: matchedClient ? matchedClient.name : undefined,
+      }
+    })
     await fetch('/api/reports', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -547,11 +556,24 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-default)' }}>
           <div>
             <h3 style={{ fontWeight: 700 }}>Daily Report — {fmtDay(reportDate)}</h3>
-            {isAdmin && <p style={{ fontSize: '0.72rem', color: '#6366f1', marginTop: '2px' }}>Admin mode — can edit any date</p>}
-            {isLocked && <p style={{ fontSize: '0.72rem', color: '#ef4444', marginTop: '2px' }}>Previous day — view only</p>}
+            {isAdmin ? (
+              <p style={{ fontSize: '0.72rem', color: '#6366f1', marginTop: '2px' }}>Admin mode — can edit any date</p>
+            ) : isLocked ? (
+              <p style={{ fontSize: '0.72rem', color: '#ef4444', fontWeight: 700, marginTop: '2px' }}>
+                🔒 Past Report Locked (Read-Only after 12:00 AM midnight)
+              </p>
+            ) : null}
           </div>
           <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
         </div>
+
+        {/* Locked Alert if viewing past date */}
+        {isLocked && (
+          <div style={{ padding: '0.75rem 1.25rem', background: 'rgba(239,68,68,0.1)', borderBottom: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>🔒</span>
+            <span><strong>Report Locked:</strong> Daily reports can only be edited on the same day before 12:00 AM midnight IST. Past reports are locked for audit integrity.</span>
+          </div>
+        )}
 
         {/* Mic */}
         {!isLocked && (
