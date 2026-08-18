@@ -87,9 +87,15 @@ export default function StrategySection({ profile }: { profile: Profile }) {
   const [expandedClientIds, setExpandedClientIds] = useState<string[]>([])
 
   const isAdmin = profile.role === 'admin'
-  const canManageClients = isAdmin || profile.full_name?.toLowerCase().includes('kedar') || profile.email?.toLowerCase().includes('kedar')
+  const canManageClients = isAdmin ||
+    profile.full_name?.toLowerCase().includes('kedar') ||
+    profile.email?.toLowerCase().includes('kedar') ||
+    profile.department?.toLowerCase() === 'client_management' ||
+    profile.department?.toLowerCase() === 'strategy'
   const isMediaEmployee = profile.role === 'employee' &&
     (profile.department?.toLowerCase() === 'media' ||
+     profile.department?.toLowerCase() === 'client_management' ||
+     profile.department?.toLowerCase() === 'strategy' ||
      profile.designation?.toLowerCase().includes('video') ||
      profile.designation?.toLowerCase().includes('editor') ||
      profile.full_name?.toLowerCase().includes('kedar') ||

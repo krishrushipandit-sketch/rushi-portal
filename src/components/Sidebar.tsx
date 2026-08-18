@@ -25,7 +25,7 @@ const baseEmployeeNavItems = [
   { id: 'tasks', label: 'My Tasks', icon: CheckSquare, salesOnly: false, mediaOnly: false },
   { id: 'reports', label: 'Daily Report', icon: ClipboardList, salesOnly: false, mediaOnly: false },
   { id: 'attendance', label: 'Attendance', icon: Calendar, salesOnly: false, mediaOnly: false },
-  { id: 'strategy', label: 'Client Work', icon: Clapperboard, salesOnly: false, mediaOnly: true },
+  { id: 'strategy', label: 'Strategy Panel', icon: Clapperboard, salesOnly: false, mediaOnly: true },
   { id: 'notifications', label: 'Notifications', icon: Bell, badge: true, salesOnly: false, mediaOnly: false },
   { id: 'settings', label: 'Settings', icon: Settings, badge: false, salesOnly: false, mediaOnly: false },
 ]
@@ -52,10 +52,17 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
   const { theme } = useTheme()
   const isLight = theme === 'light'
 
-  const isMediaEmployee = (profile.department?.toLowerCase() === 'media' ||
+  const isMediaEmployee = (
+    profile.department?.toLowerCase() === 'media' ||
+    profile.department?.toLowerCase() === 'client_management' ||
+    profile.department?.toLowerCase() === 'strategy' ||
+    profile.full_name?.toLowerCase().includes('kedar') ||
+    profile.email?.toLowerCase().includes('kedar') ||
     profile.designation?.toLowerCase().includes('video') ||
-    profile.designation?.toLowerCase().includes('editor')) && 
-    !profile.full_name?.toLowerCase().includes('suyog')
+    profile.designation?.toLowerCase().includes('editor') ||
+    profile.designation?.toLowerCase().includes('client') ||
+    profile.designation?.toLowerCase().includes('strategy')
+  ) && !profile.full_name?.toLowerCase().includes('suyog')
 
   const navItems = profile.role === 'admin'
     ? adminNavItems
