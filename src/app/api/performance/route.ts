@@ -93,22 +93,7 @@ export async function GET(req: NextRequest) {
         acc[l.category] = (acc[l.category] || 0) + 1
         return acc
       }, {}),
-      enrollments: reports.reduce((acc: Record<string, number>, r) => {
-        const ENROLL_KEYWORDS = ['enrollment', 'enroll', 'admission', 'join', 'amazon', 'dm ', 'target']
-        const entries = (typeof r.entries === 'string' ? JSON.parse(r.entries) : (r.entries || [])) as { description: string; count: number }[]
-        for (const entry of entries) {
-          const desc = entry.description?.toLowerCase() || ''
-          if (ENROLL_KEYWORDS.some(kw => desc.includes(kw))) {
-            let category = 'Others'
-            if (desc.includes('dm')) category = 'DM Enrollment'
-            else if (desc.includes('sm')) category = 'SM Enrollment'
-            else if (desc.includes('amazon')) category = 'Amazon Enrollment'
-            else category = 'General Enrollment'
-            acc[category] = (acc[category] || 0) + (Number(entry.count) || 0)
-          }
-        }
-        return acc
-      }, { 'DM Enrollment': 0, 'SM Enrollment': 0, 'Amazon Enrollment': 0 })
+      enrollments: { 'DM Enrollment': 0, 'SM Enrollment': 0, 'Amazon Enrollment': 0 }
     }
 
     const response = NextResponse.json({ performance, globalStats })

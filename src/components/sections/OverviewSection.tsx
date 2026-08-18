@@ -85,10 +85,10 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
     { label: 'Overdue', value: stats.overdue, icon: AlertTriangle, color: '#ef4444', sub: 'Needs attention' },
     { 
       label: 'Monthly Enrollments', 
-      value: (stats.enrollments?.['DM Enrollment'] || 0) + (stats.enrollments?.['SM Enrollment'] || 0) + (stats.enrollments?.['Amazon Enrollment'] || 0), 
+      value: 0, 
       icon: Users, 
       color: '#10b981', 
-      sub: `DM: ${stats.enrollments?.['DM Enrollment'] || 0} · SM: ${stats.enrollments?.['SM Enrollment'] || 0} · AZ: ${stats.enrollments?.['Amazon Enrollment'] || 0}` 
+      sub: `DM: 0 · SM: 0 · AZ: 0` 
     },
   ] : []
 
