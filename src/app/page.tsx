@@ -16,6 +16,8 @@ export default function LoginPage() {
   // Video Payload State
   const [showVideoPayload, setShowVideoPayload] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
+  const [isUnlocking, setIsUnlocking] = useState(false)
+  const [loggedInUser, setLoggedInUser] = useState<{ id: string; name: string; email: string; role: string } | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
 
   useEffect(() => {
@@ -28,7 +30,11 @@ export default function LoginPage() {
   }, [])
 
   const proceedToDashboard = () => {
-    router.push('/dashboard')
+    if (isUnlocking) return
+    setIsUnlocking(true)
+    setTimeout(() => {
+      router.push('/dashboard')
+    }, 750)
   }
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -57,6 +63,7 @@ export default function LoginPage() {
         localStorage.setItem('rushi_user', JSON.stringify(data.user))
         const istDateStr = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0]
         localStorage.setItem('rushi_login_date', istDateStr)
+        setLoggedInUser(data.user)
       }
 
       // Trigger post-login video payload
@@ -81,6 +88,17 @@ export default function LoginPage() {
         justifyContent: 'center',
         overflow: 'hidden'
       }}>
+        <style>{`
+          @keyframes fillProgress {
+            from { width: 0%; }
+            to { width: 100%; }
+          }
+          @keyframes unlockPulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 25px rgba(16,185,129,0.5); }
+            50% { transform: scale(1.08); box-shadow: 0 0 45px rgba(16,185,129,0.9); }
+          }
+        `}</style>
+
         {/* Top Control Bar */}
         <div style={{
           position: 'absolute',
@@ -92,7 +110,9 @@ export default function LoginPage() {
           alignItems: 'center',
           justifyContent: 'space-between',
           background: 'linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, transparent 100%)',
-          zIndex: 10
+          zIndex: 20,
+          opacity: isUnlocking ? 0 : 1,
+          transition: 'opacity 0.4s ease'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{
@@ -166,10 +186,10 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Fullscreen Edge-to-Edge MP4 Video Player */}
+        {/* Fullscreen Edge-to-Edge Cinematic Video Player */}
         <video
           ref={videoRef}
-          src="/vision.mp4"
+          src="/System_opening_cinematic_animation_202608181747.mp4"
           autoPlay
           playsInline
           controls={false}
@@ -181,29 +201,93 @@ export default function LoginPage() {
             height: '100vh',
             objectFit: 'cover',
             display: 'block',
-            zIndex: 1
+            zIndex: 1,
+            transform: isUnlocking ? 'scale(1.05)' : 'scale(1)',
+            filter: isUnlocking ? 'brightness(1.3) blur(10px)' : 'none',
+            opacity: isUnlocking ? 0 : 1,
+            transition: 'all 0.75s cubic-bezier(0.16, 1, 0.3, 1)'
           }}
         />
 
         {/* Bottom Hint */}
-        <div style={{
-          position: 'absolute',
-          bottom: '1.5rem',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          textAlign: 'center',
-          color: 'rgba(255,255,255,0.75)',
-          fontSize: '0.8rem',
-          fontWeight: 600,
-          background: 'rgba(0, 0, 0, 0.4)',
-          padding: '6px 16px',
-          borderRadius: '99px',
-          backdropFilter: 'blur(8px)',
-          zIndex: 10,
-          letterSpacing: '0.02em'
-        }}>
-          Redirecting to dashboard automatically after video...
-        </div>
+        {!isUnlocking && (
+          <div style={{
+            position: 'absolute',
+            bottom: '1.5rem',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            textAlign: 'center',
+            color: 'rgba(255,255,255,0.75)',
+            fontSize: '0.8rem',
+            fontWeight: 600,
+            background: 'rgba(0, 0, 0, 0.4)',
+            padding: '6px 16px',
+            borderRadius: '99px',
+            backdropFilter: 'blur(8px)',
+            zIndex: 10,
+            letterSpacing: '0.02em',
+            transition: 'opacity 0.3s'
+          }}>
+            Redirecting to dashboard automatically after video...
+          </div>
+        )}
+
+        {/* ── Cinematic Smooth Unlock Overlay ── */}
+        {isUnlocking && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 50,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'radial-gradient(circle at center, rgba(14,61,53,0.94) 0%, rgba(3,10,8,0.98) 100%)',
+            backdropFilter: 'blur(16px)',
+            gap: '1.25rem',
+            animation: 'fadeIn 0.3s ease'
+          }}>
+            <div style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '18px',
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 0 35px rgba(16, 185, 129, 0.6)',
+              animation: 'unlockPulse 1.2s infinite ease-in-out'
+            }}>
+              <ShieldCheck size={32} color="#ffffff" />
+            </div>
+
+            <div style={{ textAlign: 'center' }}>
+              <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.02em', margin: '0 0 0.35rem' }}>
+                Welcome to RushiPandit Portal
+              </h2>
+              <p style={{ fontSize: '0.86rem', color: '#94a3b8', margin: 0 }}>
+                {loggedInUser?.name ? `Signed in as ${loggedInUser.name} · Launching workspace...` : 'Launching workspace...'}
+              </p>
+            </div>
+
+            {/* Glowing Progress Bar */}
+            <div style={{
+              width: '240px',
+              height: '4px',
+              borderRadius: '99px',
+              background: 'rgba(255,255,255,0.1)',
+              overflow: 'hidden',
+              marginTop: '0.5rem'
+            }}>
+              <div style={{
+                height: '100%',
+                background: 'linear-gradient(90deg, #10b981, #34d399, #6366f1)',
+                animation: 'fillProgress 0.75s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                boxShadow: '0 0 12px #10b981'
+              }} />
+            </div>
+          </div>
+        )}
       </div>
     )
   }
