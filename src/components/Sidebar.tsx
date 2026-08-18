@@ -90,9 +90,10 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
     const isActive = activeSection === id
     if (isLight) {
       return {
-        background: isActive ? 'rgba(255, 179, 63, 0.18)' : 'transparent',
-        color: isActive ? '#ffb33f' : 'rgba(255, 255, 255, 0.78)',
-        border: `1px solid ${isActive ? 'rgba(255, 179, 63, 0.3)' : 'transparent'}`,
+        background: isActive ? 'linear-gradient(90deg, #10b981 0%, #059669 100%)' : 'transparent',
+        color: isActive ? '#ffffff' : 'rgba(255, 255, 255, 0.78)',
+        border: isActive ? '1px solid rgba(52, 211, 153, 0.45)' : '1px solid transparent',
+        boxShadow: isActive ? '0 2px 10px rgba(0,0,0,0.25)' : 'none',
         fontWeight: isActive ? 700 : 500
       }
     }

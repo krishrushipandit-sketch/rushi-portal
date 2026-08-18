@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import type { ActiveSection } from '@/app/dashboard/page'
+import { useTheme } from '@/lib/ThemeContext'
 import { CheckSquare, Clock, AlertTriangle, TrendingUp, BarChart3, Users, Star, Trophy } from 'lucide-react'
 import { formatDate, getStatusColor, getPriorityColor } from '@/lib/utils'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
@@ -34,6 +35,8 @@ interface GlobalStats {
 
 export default function OverviewSection({ profile, onNavigate }: Props) {
   const router = useRouter()
+  const { theme } = useTheme()
+  const isLight = theme === 'light'
   const [tasks, setTasks] = useState<Task[]>([])
   const [stats, setStats] = useState<GlobalStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -160,8 +163,10 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
       `}</style>
       <div
         style={{
-          background: 'linear-gradient(135deg, rgba(14, 61, 53, 0.35) 0%, rgba(16, 185, 129, 0.15) 50%, rgba(99, 102, 241, 0.18) 100%)',
-          border: '1.5px solid rgba(16, 185, 129, 0.5)',
+          background: isLight
+            ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(99, 102, 241, 0.08) 100%)'
+            : 'linear-gradient(135deg, rgba(14, 61, 53, 0.35) 0%, rgba(16, 185, 129, 0.15) 50%, rgba(99, 102, 241, 0.18) 100%)',
+          border: isLight ? '1.5px solid rgba(16, 185, 129, 0.45)' : '1.5px solid rgba(16, 185, 129, 0.5)',
           borderRadius: '16px',
           padding: '1.125rem 1.35rem',
           marginBottom: '1.75rem',
@@ -171,7 +176,8 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
           position: 'relative',
           overflow: 'hidden',
           animation: 'visionGlow 3.5s ease-in-out infinite',
-          backdropFilter: 'blur(10px)'
+          backdropFilter: 'blur(10px)',
+          boxShadow: isLight ? '0 4px 20px rgba(16, 185, 129, 0.12)' : '0 4px 24px rgba(0, 0, 0, 0.25)'
         }}
       >
         {/* Glowing Sparkle Icon Badge */}
@@ -180,13 +186,13 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
             width: '42px',
             height: '42px',
             borderRadius: '12px',
-            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(5, 150, 105, 0.2))',
+            background: isLight ? 'rgba(16, 185, 129, 0.18)' : 'linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(5, 150, 105, 0.2))',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
-            border: '1.5px solid rgba(52, 211, 153, 0.5)',
-            boxShadow: '0 0 14px rgba(16, 185, 129, 0.4)'
+            border: isLight ? '1.5px solid rgba(16, 185, 129, 0.4)' : '1.5px solid rgba(52, 211, 153, 0.5)',
+            boxShadow: isLight ? '0 2px 10px rgba(16, 185, 129, 0.2)' : '0 0 14px rgba(16, 185, 129, 0.4)'
           }}
         >
           <span style={{
@@ -214,8 +220,8 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
               fontWeight: 800,
               textTransform: 'uppercase',
               letterSpacing: '0.08em',
-              color: '#34d399',
-              textShadow: '0 0 12px rgba(16, 185, 129, 0.4)'
+              color: isLight ? '#065f46' : '#34d399',
+              textShadow: isLight ? 'none' : '0 0 12px rgba(16, 185, 129, 0.4)'
             }}>
               Our Collective Vision &amp; Growth
             </span>
