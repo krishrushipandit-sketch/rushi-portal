@@ -157,21 +157,24 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
           <div
             style={{
               background: '#ffffff',
-              borderRadius: '8px',
-              padding: '0.5rem 0.875rem',
+              borderRadius: '10px',
+              padding: '6px 14px',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              boxShadow: '0 3px 12px rgba(0,0,0,0.18)',
+              width: '100%',
+              maxWidth: '195px',
+              height: '48px'
             }}
           >
             <img
               src="/logo.png"
               alt="RushiPandit Logo"
               style={{
-                width: '120px',
-                height: 'auto',
-                maxHeight: '34px',
+                width: '100%',
+                maxWidth: '175px',
+                height: '38px',
                 objectFit: 'contain',
                 display: 'block'
               }}
