@@ -123,15 +123,13 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
         boxShadow: isLight ? '4px 0 24px rgba(14, 61, 53, 0.25)' : 'none'
       }}
     >
-      {/* ── Logo Header (Height 64px - Aligned perfectly with Topbar) ── */}
+      {/* ── Logo Header ── */}
       <div
         style={{
-          height: '64px',
-          borderBottom: `1px solid ${sidebarBorderColor}`,
+          padding: collapsed ? '1rem 0' : '1.25rem 1.25rem 0.75rem',
           display: 'flex',
           alignItems: 'center',
           justifyContent: collapsed ? 'center' : 'flex-start',
-          padding: collapsed ? '0' : '0 1.25rem',
           flexShrink: 0,
         }}
       >
@@ -156,33 +154,28 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
             RP
           </div>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-            <div
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: '8px',
+              padding: '0.5rem 0.875rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            }}
+          >
+            <img
+              src="/logo.png"
+              alt="RushiPandit Logo"
               style={{
-                width: '100%',
-                height: '44px',
-                padding: '6px 14px',
-                borderRadius: '10px',
-                background: '#ffffff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 2px 10px rgba(0,0,0,0.15)',
-                border: '1px solid rgba(255,255,255,0.2)',
+                width: '120px',
+                height: 'auto',
+                maxHeight: '34px',
+                objectFit: 'contain',
+                display: 'block'
               }}
-            >
-              <img
-                src="/logo.png"
-                alt="RushiPandit Logo"
-                style={{
-                  height: '30px',
-                  width: 'auto',
-                  maxWidth: '180px',
-                  objectFit: 'contain',
-                  display: 'block'
-                }}
-              />
-            </div>
+            />
           </div>
         )}
       </div>
@@ -191,7 +184,7 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
       <nav
         style={{
           flex: 1,
-          padding: collapsed ? '0.75rem 0.5rem' : '1rem 0.75rem',
+          padding: collapsed ? '0.75rem 0.5rem' : '0.5rem 0.75rem 1rem',
           overflowY: 'auto',
           overflowX: 'hidden',
           display: 'flex',
@@ -205,14 +198,14 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
               color: sectionLabelColor,
               paddingLeft: '0.625rem',
               marginBottom: '0.5rem',
-              fontSize: '0.7rem',
+              fontSize: '0.68rem',
               fontWeight: 800,
               textTransform: 'uppercase',
               letterSpacing: '0.08em',
               margin: '0.25rem 0 0.5rem 0'
             }}
           >
-            Menu
+            NAVIGATION
           </p>
         )}
 

@@ -74,15 +74,15 @@ export default function Topbar({
         backdropFilter: 'blur(20px)'
       }}
     >
-      {/* Left: Sidebar Toggle + Global Search */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, maxWidth: '560px' }}>
-        {/* Toggle Sidebar Icon Button (Agnochat style) */}
+      {/* Left: Sidebar Toggle + User Greeting */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+        {/* Toggle Sidebar Icon Button */}
         <button
           onClick={onToggleSidebar}
           style={{
-            width: '38px',
-            height: '38px',
-            borderRadius: '10px',
+            width: '36px',
+            height: '36px',
+            borderRadius: '8px',
             border: '1px solid var(--border-default)',
             background: 'var(--bg-surface)',
             color: 'var(--text-secondary)',
@@ -95,52 +95,16 @@ export default function Topbar({
           }}
           title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse to Mini Rail'}
         >
-          <PanelLeft size={18} />
+          <PanelLeft size={17} />
         </button>
 
-        {/* Global Search Bar with Ctrl+K badge */}
-        <div
-          className="hidden-mobile"
-          style={{
-            flex: 1,
-            position: 'relative',
-            display: 'flex',
-            alignItems: 'center',
-            background: 'var(--bg-surface)',
-            border: '1px solid var(--border-default)',
-            borderRadius: '10px',
-            padding: '0 0.75rem',
-            height: '38px'
-          }}
-        >
-          <Search size={15} style={{ color: 'var(--text-muted)', marginRight: '8px', flexShrink: 0 }} />
-          <input
-            type="text"
-            placeholder="Search leads, candidates, tasks, reports..."
-            value={searchValue}
-            onChange={e => setSearchValue(e.target.value)}
-            style={{
-              flex: 1,
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              fontSize: '0.82rem',
-              color: 'var(--text-primary)'
-            }}
-          />
-          <span
-            style={{
-              fontSize: '0.68rem',
-              fontWeight: 700,
-              color: 'var(--text-muted)',
-              background: 'var(--bg-elevated)',
-              padding: '2px 6px',
-              borderRadius: '6px',
-              border: '1px solid var(--border-default)',
-              letterSpacing: '0.04em'
-            }}
-          >
-            ⌘K
+        {/* User Greeting (Good morning/afternoon, Name) */}
+        <div>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', lineHeight: 1.2 }}>
+            {greeting},
+          </span>
+          <span style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
+            {profile.full_name}
           </span>
         </div>
       </div>
