@@ -5,8 +5,9 @@ import { getInitials } from '@/lib/utils'
 import type { Profile } from '@/lib/database.types'
 import { useTheme } from '@/lib/ThemeContext'
 import {
-  LayoutDashboard, CheckSquare, TrendingUp, Users,
-  Bell, LogOut, BarChart3, ClipboardList, Clapperboard, Settings, Trophy, Calendar
+  LayoutDashboard, TrendingUp, BarChart3, CheckSquare,
+  ClipboardList, Users, Trophy, Bell, Settings,
+  LogOut, Sun, Moon, Calendar, MessageSquare, Clapperboard, Film
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -26,6 +27,7 @@ const baseEmployeeNavItems = [
   { id: 'reports', label: 'Daily Report', icon: ClipboardList, salesOnly: false, mediaOnly: false },
   { id: 'attendance', label: 'Attendance', icon: Calendar, salesOnly: false, mediaOnly: false },
   { id: 'strategy', label: 'Strategy Panel', icon: Clapperboard, salesOnly: false, mediaOnly: true },
+  { id: 'performance', label: 'Media Reports', icon: Film, salesOnly: false, mediaOnly: true },
   { id: 'notifications', label: 'Notifications', icon: Bell, badge: true, salesOnly: false, mediaOnly: false },
   { id: 'settings', label: 'Settings', icon: Settings, badge: false, salesOnly: false, mediaOnly: false },
 ]
@@ -35,10 +37,10 @@ const adminNavItems = [
   { id: 'leads',         label: 'Inbound Leads',      icon: TrendingUp,      badge: false },
   { id: 'tasks',         label: 'Task Management',    icon: CheckSquare,     badge: false },
   { id: 'reports',       label: 'Daily Reports',      icon: ClipboardList,   badge: false },
+  { id: 'performance',   label: 'Media & Reports',    icon: Film,            badge: false },
   { id: 'sales',         label: 'Sales Metrics',      icon: BarChart3,       badge: false },
   { id: 'strategy',      label: 'Strategy Panel',     icon: Clapperboard,    badge: false },
   { id: 'attendance',    label: 'Attendance',         icon: Calendar,        badge: false },
-  { id: 'performance',   label: 'Performance',        icon: BarChart3,       badge: false },
   { id: 'leaderboard',   label: 'Leaderboard',        icon: Trophy,          badge: false },
   { id: 'employees',     label: 'Employees',          icon: Users,           badge: false },
   { id: 'notifications', label: 'Notifications',      icon: Bell,            badge: true  },
