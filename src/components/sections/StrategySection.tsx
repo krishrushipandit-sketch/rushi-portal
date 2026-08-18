@@ -6,7 +6,7 @@ import type { Profile } from '@/lib/database.types'
 import {
   Video, PlayCircle, Grid3x3, Plus, CheckCircle2, AlertCircle,
   Pencil, Trash2, X, UserPlus, Edit2, Upload, Calendar,
-  TrendingUp, BarChart2, Check, Clock, Layers, Sparkles
+  TrendingUp, BarChart2, Check, Clock, Layers, Sparkles, SlidersHorizontal, Settings2
 } from 'lucide-react'
 
 interface LogEntry {
@@ -56,10 +56,15 @@ export default function StrategySection({ profile }: { profile: Profile }) {
   const [logModal, setLogModal] = useState<{ client: Client; deliverable: Deliverable } | null>(null)
   const [editModal, setEditModal] = useState<{ client: Client; deliverable: Deliverable } | null>(null)
   
+  // Quick Target Editor Modal
+  const [quickTargetModal, setQuickTargetModal] = useState<{ client: Client; deliverable: Deliverable } | null>(null)
+  const [quickTargetValue, setQuickTargetValue] = useState('')
+
   const [addClientModal, setAddClientModal] = useState(false)
   const [newClientName, setNewClientName] = useState('')
   const [newClientColor, setNewClientColor] = useState('#6366f1')
   const [newClientLogo, setNewClientLogo] = useState('')
+  const [newCustomFormat, setNewCustomFormat] = useState('')
   const [newDeliverables, setNewDeliverables] = useState([
     { content_type: 'Reel', monthly_target: '15' },
     { content_type: 'YouTube', monthly_target: '8' },
@@ -71,7 +76,8 @@ export default function StrategySection({ profile }: { profile: Profile }) {
   const [editClientName, setEditClientName] = useState('')
   const [editClientColor, setEditClientColor] = useState('#6366f1')
   const [editClientLogo, setEditClientLogo] = useState('')
-  const [editDeliverables, setEditDeliverables] = useState([
+  const [editCustomFormat, setEditCustomFormat] = useState('')
+  const [editDeliverables, setEditDeliverables] = useState<{ content_type: string; monthly_target: string }[]>([
     { content_type: 'Reel', monthly_target: '' },
     { content_type: 'YouTube', monthly_target: '' },
     { content_type: 'Static Post', monthly_target: '' },
@@ -205,11 +211,49 @@ export default function StrategySection({ profile }: { profile: Profile }) {
     setEditClientName(client.name)
     setEditClientColor(client.color)
     setEditClientLogo(client.logo_url || '')
-    const types = ['Reel', 'YouTube', 'Static Post']
-    setEditDeliverables(types.map(ct => {
-      const found = client.deliverables.find(d => d.content_type === ct)
-      return { content_type: ct, monthly_target: found ? String(found.monthly_target) : '' }
+    setEditCustomFormat('')
+    
+    // Include all existing deliverables
+    const existing = (client.deliverables || []).map(d => ({
+      content_type: d.content_type,
+      monthly_target: String(d.monthly_target)
     }))
+    
+    // Add standard types if not present
+    const defaultTypes = ['Reel', 'YouTube', 'Static Post']
+    for (const t of defaultTypes) {
+      if (!existing.some(d => d.content_type.toLowerCase() === t.toLowerCase())) {
+        existing.push({ content_type: t, monthly_target: '' })
+      }
+    }
+    setEditDeliverables(existing)
+  }
+
+  const handleQuickUpdateTarget = async (newTarget: number) => {
+    if (!quickTargetModal) return
+    const token = getToken()
+    if (!token) return
+    setSubmitting(true)
+    
+    const updatedDeliverables = quickTargetModal.client.deliverables.map(d => ({
+      content_type: d.content_type,
+      monthly_target: d.id === quickTargetModal.deliverable.id ? newTarget : d.monthly_target
+    }))
+    
+    const res = await fetch(`/api/clients?id=${quickTargetModal.client.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ deliverables: updatedDeliverables })
+    })
+    
+    if (!res.ok) {
+      const data = await res.json()
+      alert(data.error || 'Failed to update target')
+    }
+    
+    setQuickTargetModal(null)
+    setSubmitting(false)
+    load()
   }
 
   const handleEditClient = async () => {
@@ -221,11 +265,16 @@ export default function StrategySection({ profile }: { profile: Profile }) {
       .filter(d => Number(d.monthly_target) > 0)
       .map(d => ({ content_type: d.content_type, monthly_target: Number(d.monthly_target) }))
 
-    await fetch(`/api/clients?id=${editClientModal.id}`, {
+    const res = await fetch(`/api/clients?id=${editClientModal.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ name: editClientName.trim(), color: editClientColor, logo_url: editClientLogo || null, deliverables })
     })
+
+    if (!res.ok) {
+      const data = await res.json()
+      alert(data.error || 'Failed to save changes')
+    }
 
     setEditClientModal(null)
     setSubmitting(false)
@@ -236,11 +285,19 @@ export default function StrategySection({ profile }: { profile: Profile }) {
     if (!confirm('Are you sure you want to remove this client from the strategy panel?')) return
     const token = getToken()
     if (!token) return
-    await fetch(`/api/clients?id=${clientId}`, {
+    setSubmitting(true)
+    const res = await fetch(`/api/clients?id=${clientId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` }
     })
+    if (!res.ok) {
+      const data = await res.json()
+      alert(data.error || 'Failed to remove client')
+    } else {
+      setClients(prev => prev.filter(c => c.id !== clientId))
+    }
     setEditClientModal(null)
+    setSubmitting(false)
     load()
   }
 
@@ -430,10 +487,25 @@ export default function StrategySection({ profile }: { profile: Profile }) {
                             {isBehind && <AlertCircle size={13} style={{ color: '#d97706' }} />}
                           </div>
 
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                             <span style={{ fontSize: '0.82rem', fontWeight: 800, color: isComplete ? '#16a34a' : 'var(--text-primary)' }}>
                               {deliv.completed} / {deliv.monthly_target}
                             </span>
+
+                            {/* Quick Edit Target for Admins & Kedar */}
+                            {canManageClients && (
+                              <button
+                                onClick={() => {
+                                  setQuickTargetValue(String(deliv.monthly_target))
+                                  setQuickTargetModal({ client, deliverable: deliv })
+                                }}
+                                className="btn btn-ghost btn-sm"
+                                style={{ height: '22px', padding: '0 6px', fontSize: '0.68rem', gap: '3px', color: 'var(--text-muted)' }}
+                                title="Adjust this month's content calendar target"
+                              >
+                                <SlidersHorizontal size={10} /> Target
+                              </button>
+                            )}
 
                             {/* View / Edit Log History */}
                             {hasLogs && (
@@ -669,23 +741,64 @@ export default function StrategySection({ profile }: { profile: Profile }) {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Monthly Target Deliverables</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.625rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label className="form-label" style={{ margin: 0 }}>Monthly Content Calendar Targets</label>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Adjustable anytime per calendar</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '0.625rem' }}>
                   {newDeliverables.map((d, i) => (
-                    <div key={d.content_type}>
-                      <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{d.content_type}</label>
+                    <div key={d.content_type} style={{ background: 'var(--bg-surface)', padding: '6px 8px', borderRadius: '8px', border: '1px solid var(--border-default)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                        <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-primary)' }}>{d.content_type}</label>
+                        {i >= 3 && (
+                          <button
+                            type="button"
+                            onClick={() => setNewDeliverables(prev => prev.filter((_, idx) => idx !== i))}
+                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0 }}
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
                       <input
                         type="number"
                         className="form-input"
+                        placeholder="Target (e.g. 8)"
                         value={d.monthly_target}
                         onChange={e => {
                           const copy = [...newDeliverables]
                           copy[i].monthly_target = e.target.value
                           setNewDeliverables(copy)
                         }}
+                        style={{ height: '32px', fontSize: '0.8rem' }}
                       />
                     </div>
                   ))}
+                </div>
+
+                {/* Add Custom Deliverable Format */}
+                <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Custom format e.g. Stories, Carousel, Shorts..."
+                    value={newCustomFormat}
+                    onChange={e => setNewCustomFormat(e.target.value)}
+                    style={{ height: '32px', fontSize: '0.78rem', flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!newCustomFormat.trim()) return
+                      if (newDeliverables.some(d => d.content_type.toLowerCase() === newCustomFormat.trim().toLowerCase())) return
+                      setNewDeliverables(prev => [...prev, { content_type: newCustomFormat.trim(), monthly_target: '10' }])
+                      setNewCustomFormat('')
+                    }}
+                    className="btn btn-secondary btn-sm"
+                    style={{ height: '32px', whiteSpace: 'nowrap', fontSize: '0.75rem' }}
+                  >
+                    <Plus size={12} /> Add Format
+                  </button>
                 </div>
               </div>
             </div>
@@ -702,7 +815,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
       {/* ── Edit Client Modal ── */}
       {editClientModal && (
         <div className="modal-overlay" onClick={() => setEditClientModal(null)}>
-          <div className="modal-content" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
+          <div className="modal-content" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3 style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', margin: 0 }}>
                 Edit Client: {editClientModal.name}
@@ -758,23 +871,67 @@ export default function StrategySection({ profile }: { profile: Profile }) {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Monthly Target Deliverables</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.625rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label className="form-label" style={{ margin: 0 }}>Monthly Content Calendar Targets</label>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Updated for this month</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '0.625rem' }}>
                   {editDeliverables.map((d, i) => (
-                    <div key={d.content_type}>
-                      <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{d.content_type}</label>
+                    <div key={d.content_type} style={{ background: 'var(--bg-surface)', padding: '6px 8px', borderRadius: '8px', border: '1px solid var(--border-default)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                        <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-primary)' }}>{d.content_type}</label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const copy = [...editDeliverables]
+                            copy[i].monthly_target = ''
+                            setEditDeliverables(copy)
+                          }}
+                          style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0, fontSize: '0.65rem' }}
+                          title="Set to 0 to disable"
+                        >
+                          ✕
+                        </button>
+                      </div>
                       <input
                         type="number"
                         className="form-input"
+                        placeholder="Target (e.g. 8)"
                         value={d.monthly_target}
                         onChange={e => {
                           const copy = [...editDeliverables]
                           copy[i].monthly_target = e.target.value
                           setEditDeliverables(copy)
                         }}
+                        style={{ height: '32px', fontSize: '0.8rem' }}
                       />
                     </div>
                   ))}
+                </div>
+
+                {/* Add Custom Deliverable Format */}
+                <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Add custom format e.g. Stories, Podcasts, Blogs..."
+                    value={editCustomFormat}
+                    onChange={e => setEditCustomFormat(e.target.value)}
+                    style={{ height: '32px', fontSize: '0.78rem', flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!editCustomFormat.trim()) return
+                      if (editDeliverables.some(d => d.content_type.toLowerCase() === editCustomFormat.trim().toLowerCase())) return
+                      setEditDeliverables(prev => [...prev, { content_type: editCustomFormat.trim(), monthly_target: '10' }])
+                      setEditCustomFormat('')
+                    }}
+                    className="btn btn-secondary btn-sm"
+                    style={{ height: '32px', whiteSpace: 'nowrap', fontSize: '0.75rem' }}
+                  >
+                    <Plus size={12} /> Add Format
+                  </button>
                 </div>
               </div>
             </div>
@@ -782,17 +939,103 @@ export default function StrategySection({ profile }: { profile: Profile }) {
               {canManageClients && (
                 <button
                   onClick={() => handleDeleteClient(editClientModal.id)}
+                  disabled={submitting}
                   className="btn btn-danger btn-sm"
                 >
-                  <Trash2 size={13} /> Remove Client
+                  <Trash2 size={13} /> {submitting ? 'Removing...' : 'Remove Client'}
                 </button>
               )}
               <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
                 <button onClick={() => setEditClientModal(null)} className="btn btn-secondary">Cancel</button>
                 <button onClick={handleEditClient} disabled={submitting || !editClientName.trim()} className="btn btn-primary">
-                  Save Changes
+                  {submitting ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Quick Target Adjustment Modal ── */}
+      {quickTargetModal && (
+        <div className="modal-overlay" onClick={() => setQuickTargetModal(null)}>
+          <div className="modal-content" style={{ maxWidth: '380px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3 style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--text-primary)', margin: 0 }}>
+                  Adjust Target: {quickTargetModal.deliverable.content_type}
+                </h3>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '2px 0 0' }}>
+                  {quickTargetModal.client.name} · Content Calendar Schedule
+                </p>
+              </div>
+              <button onClick={() => setQuickTargetModal(null)} className="btn btn-ghost btn-sm"><X size={15} /></button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">
+                  Monthly Target for {new Date(month + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setQuickTargetValue(v => String(Math.max(1, (Number(v) || 1) - 1)))}
+                    className="btn btn-secondary btn-sm"
+                    style={{ width: '36px', height: '36px', fontSize: '1rem', fontWeight: 800 }}
+                  >
+                    -
+                  </button>
+                  <input
+                    type="number"
+                    min="1"
+                    className="form-input"
+                    value={quickTargetValue}
+                    onChange={e => setQuickTargetValue(e.target.value)}
+                    style={{ height: '36px', textAlign: 'center', fontSize: '1.1rem', fontWeight: 800 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setQuickTargetValue(v => String((Number(v) || 0) + 1))}
+                    className="btn btn-secondary btn-sm"
+                    style={{ width: '36px', height: '36px', fontSize: '1rem', fontWeight: 800 }}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick Presets */}
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {[6, 8, 10, 12, 15, 20, 30].map(val => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setQuickTargetValue(String(val))}
+                    style={{
+                      padding: '3px 9px',
+                      borderRadius: '6px',
+                      border: Number(quickTargetValue) === val ? '1.5px solid var(--brand-primary)' : '1px solid var(--border-default)',
+                      background: Number(quickTargetValue) === val ? 'rgba(16,185,129,0.15)' : 'var(--bg-surface)',
+                      color: Number(quickTargetValue) === val ? '#10b981' : 'var(--text-secondary)',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {val}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => setQuickTargetModal(null)} className="btn btn-secondary">Cancel</button>
+              <button
+                onClick={() => handleQuickUpdateTarget(Number(quickTargetValue))}
+                disabled={submitting || !Number(quickTargetValue)}
+                className="btn btn-primary"
+              >
+                {submitting ? 'Updating...' : 'Update Target'}
+              </button>
             </div>
           </div>
         </div>

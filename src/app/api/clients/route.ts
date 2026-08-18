@@ -134,7 +134,15 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
   try {
-    await execute('UPDATE clients SET is_active = false WHERE id = $1', [id])
+    const client = await queryOne<{ id: string; name: string }>('SELECT id, name FROM clients WHERE id = $1', [id])
+    if (client) {
+      await execute(
+        `UPDATE clients SET is_active = false, status = 'inactive' WHERE id = $1 OR LOWER(TRIM(name)) = LOWER(TRIM($2))`,
+        [id, client.name]
+      )
+    } else {
+      await execute(`UPDATE clients SET is_active = false, status = 'inactive' WHERE id = $1`, [id])
+    }
     return NextResponse.json({ success: true })
   } catch (err: unknown) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })

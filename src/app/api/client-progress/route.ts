@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
     const clients = await query<any>(
       `SELECT DISTINCT ON (LOWER(TRIM(name))) id, name, slug, color, logo_url 
        FROM clients 
-       WHERE is_active = true OR status = 'active' 
+       WHERE is_active = true AND (status IS NULL OR status != 'inactive')
        ORDER BY LOWER(TRIM(name)), id ASC`
     )
 
