@@ -82,7 +82,7 @@ export default function ReportsSection({ profile }: { profile: Profile }) {
 
   useEffect(() => { load() }, [load])
 
-  const todayReport = reports.find(r => r.report_date === today())
+  const todayReport = reports.find(r => (r.report_date ? String(r.report_date).slice(0, 10) : '') === today())
 
   if (loading) return <div className="skeleton" style={{ height: '400px', borderRadius: 'var(--radius-lg)' }} />
 
@@ -378,7 +378,8 @@ function ReportCards({ reports, isAdmin, expandedId, setExpandedId, onEdit }: {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
       {reports.map(report => {
         const isExp = expandedId === report.id
-        const isToday = report.report_date === today()
+        const reportDateStr = report.report_date ? String(report.report_date).slice(0, 10) : ''
+        const isToday = reportDateStr === today()
         const count = report.entries?.length || 0
 
         return (

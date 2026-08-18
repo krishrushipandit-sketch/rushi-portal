@@ -19,7 +19,9 @@ export async function GET(req: NextRequest) {
     try {
       const reports = await query<any>(
         `SELECT 
-          dr.*,
+          dr.id, dr.employee_id, TO_CHAR(dr.report_date, 'YYYY-MM-DD') AS report_date,
+          dr.entries, dr.note, dr.submitted_at, dr.updated_at, dr.updated_by_admin,
+          dr.check_in_time, dr.check_out_time, dr.admin_comment,
           json_build_object(
             'id', p.id,
             'full_name', p.full_name,
@@ -51,7 +53,9 @@ export async function GET(req: NextRequest) {
   try {
     let sql = `
       SELECT 
-        dr.*,
+        dr.id, dr.employee_id, TO_CHAR(dr.report_date, 'YYYY-MM-DD') AS report_date,
+        dr.entries, dr.note, dr.submitted_at, dr.updated_at, dr.updated_by_admin,
+        dr.check_in_time, dr.check_out_time, dr.admin_comment,
         json_build_object(
           'id', p.id,
           'full_name', p.full_name,
@@ -101,8 +105,9 @@ export async function POST(req: NextRequest) {
     return istTime.toISOString().slice(0, 10)
   })()
 
-  if (!isAdmin && report_date !== today) {
-    return NextResponse.json({ error: 'You can only update today\'s report' }, { status: 403 })
+  const cleanReportDate = String(report_date).slice(0, 10)
+  if (!isAdmin && cleanReportDate < today) {
+    return NextResponse.json({ error: 'Daily reports can only be edited on the same day before 12:00 AM midnight IST. Past reports are locked.' }, { status: 403 })
   }
 
   try {

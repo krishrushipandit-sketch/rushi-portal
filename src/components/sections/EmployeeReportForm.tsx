@@ -217,8 +217,10 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
   const router = useRouter()
   const { theme } = useTheme()
   const isLight = theme === 'light'
-  const reportDate = isAdmin && targetDate ? targetDate : todayDate()
-  const isLocked = !isAdmin && reportDate !== todayDate()
+  const reportDate = isAdmin && targetDate
+    ? String(targetDate).slice(0, 10)
+    : (existingReport?.report_date ? String(existingReport.report_date).slice(0, 10) : todayDate())
+  const isLocked = !isAdmin && reportDate < todayDate()
 
   const [rows, setRows] = useState<Row[]>([])
   const [clientsList, setClientsList] = useState<{ id: string; name: string; color: string }[]>([])
