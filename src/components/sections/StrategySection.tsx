@@ -190,7 +190,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
     await fetch('/api/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: newClientName.trim(), color: newClientColor, logo_url: newClientLogo || null, deliverables })
+      body: JSON.stringify({ name: newClientName.trim(), color: newClientColor, logo_url: newClientLogo || null, deliverables, month })
     })
 
     setAddClientModal(false)
@@ -243,7 +243,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
     const res = await fetch(`/api/clients?id=${quickTargetModal.client.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ deliverables: updatedDeliverables })
+      body: JSON.stringify({ deliverables: updatedDeliverables, month })
     })
     
     if (!res.ok) {
@@ -268,7 +268,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
     const res = await fetch(`/api/clients?id=${editClientModal.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: editClientName.trim(), color: editClientColor, logo_url: editClientLogo || null, deliverables })
+      body: JSON.stringify({ name: editClientName.trim(), color: editClientColor, logo_url: editClientLogo || null, deliverables, month })
     })
 
     if (!res.ok) {

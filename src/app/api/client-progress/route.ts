@@ -41,7 +41,10 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Get all unique active clients with their deliverables
+    // Ensure target_month column exists
+    await execute('ALTER TABLE client_deliverables ADD COLUMN IF NOT EXISTS target_month VARCHAR(7)')
+
+    // Get all unique active clients
     const clients = await query<any>(
       `SELECT DISTINCT ON (LOWER(TRIM(name))) id, name, slug, color, logo_url 
        FROM clients 
@@ -49,28 +52,62 @@ export async function GET(req: NextRequest) {
        ORDER BY LOWER(TRIM(name)), id ASC`
     )
 
+    // Get all deliverables: both month-specific and baseline templates
     const deliverables = await query<any>(
-      'SELECT DISTINCT ON (client_id, content_type) id, client_id, content_type, monthly_target FROM client_deliverables ORDER BY client_id, content_type, id ASC'
+      `SELECT id, client_id, content_type, monthly_target, target_month 
+       FROM client_deliverables 
+       ORDER BY target_month DESC NULLS LAST, id ASC`
     )
 
-    // Get all progress logs for this month — include id for deletion
+    // Get all progress logs for this month — include deliverable content type for historical resilience
     const logs = await query<any>(
       `SELECT l.id, l.client_id, l.deliverable_id, l.employee_id, TO_CHAR(l.log_date, 'YYYY-MM-DD') AS log_date, l.count, l.notes,
+              cd.content_type as deliverable_content_type,
               json_build_object('full_name', p.full_name) as employee
        FROM client_progress_log l
        LEFT JOIN profiles p ON l.employee_id = p.id
+       LEFT JOIN client_deliverables cd ON l.deliverable_id = cd.id
        WHERE l.log_date >= $1 AND l.log_date < $2
        ORDER BY l.log_date DESC`,
       [dateFrom, dateTo]
     )
 
-    // Build full picture per client
+    // Build full picture per client for monthStr
     const clientsWithProgress = (clients || []).map((client: any) => {
-      const clientDeliverables = (deliverables || []).filter((d: any) => d.client_id === client.id)
+      const allClientDeliverables = (deliverables || []).filter((d: any) => d.client_id === client.id)
       const clientLogs = (logs || []).filter((l: any) => l.client_id === client.id)
-      
-      const formattedDeliverables = clientDeliverables.map((d: any) => {
-        const delivLogs = clientLogs.filter((l: any) => l.deliverable_id === d.id)
+
+      // 1. Pick month-specific deliverables if available; otherwise use baseline/latest deliverables
+      const monthSpecific = allClientDeliverables.filter((d: any) => d.target_month === monthStr)
+      let activeDeliverables = monthSpecific.length > 0
+        ? monthSpecific
+        : allClientDeliverables.filter((d: any) => d.target_month === null || d.target_month === undefined)
+
+      // If still empty, use the most recent configured deliverables prior to or equal to this month
+      if (activeDeliverables.length === 0 && allClientDeliverables.length > 0) {
+        const sorted = [...allClientDeliverables].sort((a, b) => (b.target_month || '').localeCompare(a.target_month || ''))
+        const latestMonth = sorted[0]?.target_month
+        activeDeliverables = sorted.filter(d => d.target_month === latestMonth)
+      }
+
+      // Deduplicate by content_type
+      const seenTypes = new Set<string>()
+      const uniqueActive: any[] = []
+      for (const d of activeDeliverables) {
+        const key = (d.content_type || '').toLowerCase()
+        if (!seenTypes.has(key) && Number(d.monthly_target) > 0) {
+          seenTypes.add(key)
+          uniqueActive.push(d)
+        }
+      }
+
+      // 2. Compute progress for each active deliverable
+      const formattedDeliverables = uniqueActive.map((d: any) => {
+        const dType = (d.content_type || '').toLowerCase()
+        const delivLogs = clientLogs.filter((l: any) =>
+          l.deliverable_id === d.id ||
+          (l.deliverable_content_type && l.deliverable_content_type.toLowerCase() === dType)
+        )
         const completed = delivLogs.reduce((sum: number, l: any) => sum + (Number(l.count) || 0), 0)
         const dailyBreakdown = delivLogs.reduce((acc: Record<string, number>, l: any) => {
           acc[l.log_date] = (acc[l.log_date] || 0) + Number(l.count)
@@ -85,6 +122,35 @@ export async function GET(req: NextRequest) {
           logs: delivLogs
         }
       })
+
+      // 3. Historical Preservation: If logs exist for a content type not in active targets, synthesize it so NO history is lost
+      for (const l of clientLogs) {
+        const lType = l.deliverable_content_type || 'Custom Work'
+        const lKey = lType.toLowerCase()
+        if (!seenTypes.has(lKey)) {
+          seenTypes.add(lKey)
+          const matchedLogs = clientLogs.filter(
+            (cl: any) => (cl.deliverable_content_type || '').toLowerCase() === lKey
+          )
+          const completed = matchedLogs.reduce((sum: number, cl: any) => sum + (Number(cl.count) || 0), 0)
+          const dailyBreakdown = matchedLogs.reduce((acc: Record<string, number>, cl: any) => {
+            acc[cl.log_date] = (acc[cl.log_date] || 0) + Number(cl.count)
+            return acc
+          }, {})
+          formattedDeliverables.push({
+            id: l.deliverable_id || `hist-${client.id}-${lKey}`,
+            client_id: client.id,
+            content_type: lType,
+            monthly_target: completed, // Completed matches target for historical logs
+            completed,
+            remaining: 0,
+            percent: 100,
+            dailyBreakdown,
+            logs: matchedLogs,
+            isHistorical: true
+          })
+        }
+      }
 
       return { ...client, deliverables: formattedDeliverables, totalLogs: clientLogs.length }
     })

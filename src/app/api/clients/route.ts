@@ -29,12 +29,16 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
-    const { name, color, logo_url, deliverables } = await req.json()
+    // Ensure target_month column exists
+    await execute('ALTER TABLE client_deliverables ADD COLUMN IF NOT EXISTS target_month VARCHAR(7)')
+
+    const { name, color, logo_url, deliverables, month } = await req.json()
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Client name is required' }, { status: 400 })
     }
 
+    const currentMonth = month || new Date().toISOString().slice(0, 7)
     const slug = name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
 
     // Insert client
@@ -49,16 +53,16 @@ export async function POST(req: NextRequest) {
       throw new Error('Failed to create client')
     }
 
-    // Insert deliverables if provided
+    // Insert deliverables with target_month
     if (Array.isArray(deliverables) && deliverables.length > 0) {
       const validDeliverables = deliverables.filter(
         (d: any) => d.content_type && Number(d.monthly_target) > 0
       )
       for (const d of validDeliverables) {
         await execute(
-          `INSERT INTO client_deliverables (client_id, content_type, monthly_target)
-           VALUES ($1, $2, $3)`,
-          [client.id, d.content_type, Number(d.monthly_target)]
+          `INSERT INTO client_deliverables (client_id, content_type, monthly_target, target_month)
+           VALUES ($1, $2, $3, $4)`,
+          [client.id, d.content_type, Number(d.monthly_target), currentMonth]
         )
       }
     }
@@ -69,7 +73,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PATCH /api/clients?id=xxx — update client details and deliverables
+// PATCH /api/clients?id=xxx — update client details and deliverables for a specific month
 export async function PATCH(req: NextRequest) {
   const user = await getAdminAuth(req)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -79,7 +83,11 @@ export async function PATCH(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
   try {
-    const { name, color, logo_url, deliverables } = await req.json()
+    // Ensure target_month column exists
+    await execute('ALTER TABLE client_deliverables ADD COLUMN IF NOT EXISTS target_month VARCHAR(7)')
+
+    const { name, color, logo_url, deliverables, month } = await req.json()
+    const targetMonth = month || new Date().toISOString().slice(0, 7)
 
     // Update client record
     const updates: string[] = []
@@ -103,17 +111,21 @@ export async function PATCH(req: NextRequest) {
       await execute(`UPDATE clients SET ${updates.join(', ')} WHERE id = $${params.length}`, params)
     }
 
-    // Upsert deliverables: delete existing then re-insert
+    // Upsert deliverables specifically for targetMonth
     if (Array.isArray(deliverables)) {
-      await execute(`DELETE FROM client_deliverables WHERE client_id = $1`, [id])
+      // Delete existing deliverables for THIS target_month (or NULL if updating baseline)
+      await execute(
+        `DELETE FROM client_deliverables WHERE client_id = $1 AND (target_month = $2 OR target_month IS NULL)`,
+        [id, targetMonth]
+      )
       const validDeliverables = deliverables.filter(
         (d: any) => d.content_type && Number(d.monthly_target) > 0
       )
       for (const d of validDeliverables) {
         await execute(
-          `INSERT INTO client_deliverables (client_id, content_type, monthly_target)
-           VALUES ($1, $2, $3)`,
-          [id, d.content_type, Number(d.monthly_target)]
+          `INSERT INTO client_deliverables (client_id, content_type, monthly_target, target_month)
+           VALUES ($1, $2, $3, $4)`,
+          [id, d.content_type, Number(d.monthly_target), targetMonth]
         )
       }
     }
