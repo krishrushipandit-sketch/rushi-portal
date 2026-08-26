@@ -121,9 +121,9 @@ export async function sendAiSensyRingingSaleTemplate(
   }
 ): Promise<{ success: boolean; error?: string; data?: any }> {
   try {
-    const apiKey = process.env.AISENSY_API_KEY
+    const apiKey = process.env.AISENSY_SALES_API_KEY || process.env.AISENSY_API_KEY
     if (!apiKey) {
-      const msg = 'AISENSY_API_KEY environment variable is not configured'
+      const msg = 'AISENSY_API_KEY (or AISENSY_SALES_API_KEY) environment variable is not configured'
       console.warn(`[AiSensy] ${msg}`)
       return { success: false, error: msg }
     }
