@@ -17,23 +17,23 @@
   --brand-accent: #38bdf8;
 
   /* Deep Navy & Slate Layers (Linear / Notion Modern Dark) */
-  --bg-base: #0b0f19;
-  --bg-surface: #111625;
-  --bg-card: #151b2e;
-  --bg-card-hover: #1c243c;
-  --bg-elevated: #1e2742;
-  --bg-glass: rgba(21, 27, 46, 0.85);
+  --bg-base: #0a0e1a;
+  --bg-surface: #0f1526;
+  --bg-card: #151d33;
+  --bg-card-hover: #1c2744;
+  --bg-elevated: #1e2a4a;
+  --bg-glass: rgba(15, 21, 38, 0.90);
 
   /* Clean Luminous Borders */
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-default: rgba(255, 255, 255, 0.11);
-  --border-strong: rgba(255, 255, 255, 0.20);
-  --border-focus: #6366f1;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-default: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.25);
+  --border-focus: #818cf8;
 
   /* High-Contrast Crisp Typography */
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-primary: #ffffff;
+  --text-secondary: #cbd5e1;
+  --text-muted: #8494ab;
   --text-accent: #818cf8;
 
   /* Status Accents */

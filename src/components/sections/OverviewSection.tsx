@@ -138,22 +138,22 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
       <style>{`
         @keyframes visionGlow {
           0%, 100% {
-            box-shadow: 0 0 15px rgba(16, 185, 129, 0.25), 0 4px 20px rgba(0, 0, 0, 0.15);
-            border-color: rgba(16, 185, 129, 0.4);
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.2), 0 4px 20px rgba(0, 0, 0, 0.2);
+            border-color: rgba(99, 102, 241, 0.4);
           }
           50% {
-            box-shadow: 0 0 25px rgba(16, 185, 129, 0.5), 0 0 45px rgba(99, 102, 241, 0.25), 0 4px 24px rgba(0, 0, 0, 0.25);
-            border-color: rgba(16, 185, 129, 0.85);
+            box-shadow: 0 0 30px rgba(99, 102, 241, 0.4), 0 0 45px rgba(16, 185, 129, 0.25), 0 4px 24px rgba(0, 0, 0, 0.3);
+            border-color: rgba(99, 102, 241, 0.7);
           }
         }
         @keyframes sparkleBlink {
           0%, 100% {
             transform: scale(1) rotate(0deg);
-            filter: drop-shadow(0 0 4px #10b981) drop-shadow(0 0 8px rgba(16, 185, 129, 0.8));
+            filter: drop-shadow(0 0 4px #818cf8) drop-shadow(0 0 8px rgba(99, 102, 241, 0.8));
           }
           50% {
             transform: scale(1.22) rotate(12deg);
-            filter: drop-shadow(0 0 10px #34d399) drop-shadow(0 0 16px rgba(52, 211, 153, 0.95));
+            filter: drop-shadow(0 0 10px #a5b4fc) drop-shadow(0 0 16px rgba(129, 140, 248, 0.95));
           }
         }
         @keyframes livePulseDot {
@@ -165,8 +165,8 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
         style={{
           background: isLight
             ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(99, 102, 241, 0.08) 100%)'
-            : 'linear-gradient(135deg, rgba(14, 61, 53, 0.35) 0%, rgba(16, 185, 129, 0.15) 50%, rgba(99, 102, 241, 0.18) 100%)',
-          border: isLight ? '1.5px solid rgba(16, 185, 129, 0.45)' : '1.5px solid rgba(16, 185, 129, 0.5)',
+            : 'linear-gradient(135deg, rgba(99, 102, 241, 0.16) 0%, rgba(16, 185, 129, 0.10) 100%)',
+          border: isLight ? '1.5px solid rgba(16, 185, 129, 0.45)' : '1.5px solid rgba(99, 102, 241, 0.35)',
           borderRadius: '16px',
           padding: '1.125rem 1.35rem',
           marginBottom: '1.75rem',
@@ -177,7 +177,7 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
           overflow: 'hidden',
           animation: 'visionGlow 3.5s ease-in-out infinite',
           backdropFilter: 'blur(10px)',
-          boxShadow: isLight ? '0 4px 20px rgba(16, 185, 129, 0.12)' : '0 4px 24px rgba(0, 0, 0, 0.25)'
+          boxShadow: isLight ? '0 4px 20px rgba(16, 185, 129, 0.12)' : '0 4px 24px rgba(0, 0, 0, 0.3)'
         }}
       >
         {/* Glowing Sparkle Icon Badge */}
@@ -186,13 +186,13 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
             width: '42px',
             height: '42px',
             borderRadius: '12px',
-            background: isLight ? 'rgba(16, 185, 129, 0.18)' : 'linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(5, 150, 105, 0.2))',
+            background: isLight ? 'rgba(16, 185, 129, 0.18)' : 'linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(16, 185, 129, 0.2))',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
-            border: isLight ? '1.5px solid rgba(16, 185, 129, 0.4)' : '1.5px solid rgba(52, 211, 153, 0.5)',
-            boxShadow: isLight ? '0 2px 10px rgba(16, 185, 129, 0.2)' : '0 0 14px rgba(16, 185, 129, 0.4)'
+            border: isLight ? '1.5px solid rgba(16, 185, 129, 0.4)' : '1.5px solid rgba(129, 140, 248, 0.5)',
+            boxShadow: isLight ? '0 2px 10px rgba(16, 185, 129, 0.2)' : '0 0 14px rgba(99, 102, 241, 0.4)'
           }}
         >
           <span style={{
@@ -210,9 +210,9 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
               width: '8px',
               height: '8px',
               borderRadius: '50%',
-              background: '#10b981',
+              background: '#818cf8',
               display: 'inline-block',
-              boxShadow: '0 0 8px #10b981',
+              boxShadow: '0 0 8px #818cf8',
               animation: 'livePulseDot 1.8s infinite'
             }} />
             <span style={{
@@ -220,8 +220,8 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
               fontWeight: 800,
               textTransform: 'uppercase',
               letterSpacing: '0.08em',
-              color: isLight ? '#065f46' : '#34d399',
-              textShadow: isLight ? 'none' : '0 0 12px rgba(16, 185, 129, 0.4)'
+              color: isLight ? '#065f46' : '#818cf8',
+              textShadow: isLight ? 'none' : '0 0 12px rgba(99, 102, 241, 0.4)'
             }}>
               Our Collective Vision &amp; Growth
             </span>
@@ -242,12 +242,19 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
       {/* Stat Cards */}
       <div className="grid-4" style={{ marginBottom: '2rem' }}>
         {statCards.map(({ label, value, icon: Icon, color, sub }) => (
-          <div key={label} className="stat-card">
+          <div key={label} className="stat-card" style={{
+            background: isLight 
+              ? '#ffffff' 
+              : `linear-gradient(145deg, rgba(21, 27, 46, 0.95) 0%, rgba(17, 22, 37, 0.95) 100%)`,
+            border: isLight ? '1px solid #cbd5e1' : `1px solid rgba(255, 255, 255, 0.12)`,
+            borderTop: isLight ? '1px solid #cbd5e1' : `3px solid ${color}`,
+            boxShadow: isLight ? '0 2px 6px rgba(15, 23, 42, 0.04)' : `0 4px 20px rgba(0, 0, 0, 0.25)`
+          }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
               <div>
-                <div className="metric-value">{value}</div>
-                <div className="metric-label">{label}</div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>{sub}</div>
+                <div className="metric-value" style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary)' }}>{value}</div>
+                <div className="metric-label" style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)', marginTop: '2px' }}>{label}</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>{sub}</div>
               </div>
               <div style={{
                 width: '44px', height: '44px',
@@ -255,7 +262,7 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
                 borderRadius: '12px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 color,
-                border: `1px solid ${color}22`,
+                border: `1px solid ${color}35`,
               }}>
                 <Icon size={20} />
               </div>
