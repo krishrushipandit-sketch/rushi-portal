@@ -311,11 +311,10 @@ const fmtDay = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('en-I
 
 type MicState = 'idle' | 'recording' | 'processing'
 
-export default function DailyReportForm({ onClose, onSaved, existingReport, isAdmin, targetDate, targetEmployeeId, isClientWorker }: {
+export default function DailyReportForm({ onClose, onSaved, existingReport, isAdmin, targetDate, targetEmployeeId }: {
   onClose: () => void; onSaved: () => void
   existingReport?: any; isAdmin?: boolean
   targetDate?: string; targetEmployeeId?: string
-  isClientWorker?: boolean  // if false, hide client tag dropdowns
 }) {
   const router = useRouter()
   const { theme } = useTheme()
@@ -350,11 +349,32 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
       const token = getToken()
       if (!token) return
 
-      // Check if current user is a video editor/media creator or has client assignments
-      let isMedia = false
+      // Fetch employee responsibilities first
+      const empId = isAdmin && targetEmployeeId ? `?employee_id=${targetEmployeeId}` : ''
+      let resps: any[] = []
       try {
-        const userStr = typeof window !== 'undefined' ? localStorage.getItem('rushi_user') : null
-        if (userStr) {
+        const res = await fetch(`/api/responsibilities${empId}`, { headers: { Authorization: `Bearer ${token}` } })
+        resps = await res.json()
+      } catch {}
+
+      // Clean responsibility titles (strip trailing 0 from old seeds)
+      const respList: { title: string; daily_target: number | null }[] = Array.isArray(resps)
+        ? resps
+            .filter((r: any) => {
+              const t = (r.title || '').toLowerCase()
+              return !t.includes('enrollment') && !t.includes('admission')
+            })
+            .map((r: any) => {
+              const cleanTitle = (r.title || '').replace(/0+$/, '').trim()
+              return { title: cleanTitle || r.title, daily_target: r.daily_target ?? null }
+            })
+        : []
+
+      // Check if user is a media creator / video editor
+      let isMedia = false
+      const userStr = typeof window !== 'undefined' ? localStorage.getItem('rushi_user') : null
+      if (userStr) {
+        try {
           const u = JSON.parse(userStr)
           const desig = (u.designation || '').toLowerCase()
           const dept = (u.department || '').toLowerCase()
@@ -364,8 +384,19 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
                     dept === 'media' || dept === 'strategy' || dept === 'content' ||
                     name.includes('suyog') || name.includes('kedar') || name.includes('rohan') ||
                     u.role === 'admin'
-        }
+        } catch {}
+      }
 
+      // Check if responsibilities contain media work (e.g. "Internal reel editing", "Internal YouTube editing")
+      const hasMediaResp = respList.some(r => {
+        const t = r.title.toLowerCase()
+        return t.includes('reel') || t.includes('youtube') || t.includes('video') ||
+               t.includes('edit') || t.includes('shoot') || t.includes('post') ||
+               t.includes('media') || t.includes('graphic') || t.includes('podcast')
+      })
+      if (hasMediaResp) isMedia = true
+
+      try {
         const empParam = isAdmin && targetEmployeeId ? `?employee_id=${targetEmployeeId}` : ''
         const assignRes = await fetch(`/api/employees/assignments${empParam}`, { headers: { Authorization: `Bearer ${token}` } })
         const assignData = await assignRes.json()
@@ -377,7 +408,6 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
         if (Array.isArray(assignData.allClients) && assignData.allClients.length > 0) {
           allAvailableClients = assignData.allClients
         } else {
-          // Fallback fetch active clients
           try {
             const fallbackRes = await fetch('/api/clients', { headers: { Authorization: `Bearer ${token}` } })
             const fallbackData = await fallbackRes.json()
@@ -386,7 +416,6 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
         }
 
         if (isMedia && allAvailableClients.length > 0) {
-          // If specific assignments exist for this user, filter to them; otherwise give full company list
           const available = assignedIds.size > 0
             ? allAvailableClients.filter((c: any) => assignedIds.has(c.id))
             : allAvailableClients
@@ -405,24 +434,6 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
       } catch {
         setIsMediaUser(isMedia)
       }
-
-      // Fetch employee responsibilities
-      const empId = isAdmin && targetEmployeeId ? `?employee_id=${targetEmployeeId}` : ''
-      const res = await fetch(`/api/responsibilities${empId}`, { headers: { Authorization: `Bearer ${token}` } })
-      const resps = await res.json()
-      
-      // Clean responsibility titles (strip trailing 0 from old seeds)
-      const respList: { title: string; daily_target: number | null }[] = Array.isArray(resps)
-        ? resps
-            .filter((r: any) => {
-              const t = (r.title || '').toLowerCase()
-              return !t.includes('enrollment') && !t.includes('admission')
-            })
-            .map((r: any) => {
-              const cleanTitle = (r.title || '').replace(/0+$/, '').trim()
-              return { title: cleanTitle || r.title, daily_target: r.daily_target ?? null }
-            })
-        : []
 
       // Fetch pending regular responsibility tasks assigned to this employee
       const tasksRes = await fetch('/api/tasks', { headers: { Authorization: `Bearer ${token}` } })
@@ -799,7 +810,7 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
                       )}
 
                       {/* Client Tag Dropdown & Add Client Row Button — strictly for video editors & assigned media workers */}
-                      {isMediaUser && isClientWorker !== false && clientsList.length > 0 && (
+                      {clientsList.length > 0 && (
                         <div style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                           <SearchableClientDropdown
                             clients={clientsList}
