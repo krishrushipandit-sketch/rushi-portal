@@ -80,7 +80,15 @@ export function formatStatusForTemplate(status: string): string {
   return status.charAt(0).toUpperCase() + status.slice(1)
 }
 
-const DEFAULT_AISENSY_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY2NzJjOTQ5NmM3YjZlMTM5NWJkYmIzOSIsIm5hbWUiOiJSdXNoaVBhbmRpdCAtIERpZ2l0YWwgQWNhZGVteSIsImFwcE5hbWUiOiJBaVNlbnN5IiwiY2xpZW50SWQiOiI2NjcyYzk0ODZjN2I2ZTEzOTViZGJiMjciLCJhY3RpdmVQbGFuIjoiQkFTSUNfTU9OVEhMWSIsImlhdCI6MTc4NzczMzYwOX0.7z3K8tMpMK9YunrZ1WiICIwEXkgJP4RoRaMX0lm0Im8'
+export const VALID_WORKING_AISENSY_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY2NzJjOTQ5NmM3YjZlMTM5NWJkYmIzOSIsIm5hbWUiOiJSdXNoaVBhbmRpdCAtIERpZ2l0YWwgQWNhZGVteSIsImFwcE5hbWUiOiJBaVNlbnN5IiwiY2xpZW50SWQiOiI2NjcyYzk0ODZjN2I2ZTEzOTViZGJiMjciLCJhY3RpdmVQbGFuIjoiQkFTSUNfTU9OVEhMWSIsImlhdCI6MTc4NzczMzYwOX0.7z3K8tMpMK9YunrZ1WiICIwEXkgJP4RoRaMX0lm0Im8'
+
+export function getAiSensyApiKey(): string {
+  const envKey = process.env.AISENSY_SALES_API_KEY || process.env.AISENSY_API_KEY
+  if (envKey && !envKey.includes('Rh82o4bGgUUBEvHx3h6lIG-3_177shGrGY69UiL8PVU')) {
+    return envKey
+  }
+  return VALID_WORKING_AISENSY_KEY
+}
 
 /**
  * Checks whether this status transition should trigger the ringing_sale AiSensy WhatsApp template.
@@ -115,7 +123,7 @@ export async function sendAiSensyRingingSaleTemplate(
   }
 ): Promise<{ success: boolean; error?: string; data?: any }> {
   try {
-    const apiKey = process.env.AISENSY_SALES_API_KEY || process.env.AISENSY_API_KEY || DEFAULT_AISENSY_KEY
+    const apiKey = getAiSensyApiKey()
 
     const destination = normalizePhoneForWhatsApp(lead.phone)
     if (!destination) {

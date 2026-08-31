@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { normalizePhoneForWhatsApp, formatSalesRepPhone, formatStatusForTemplate } from '@/lib/aisensy'
-
-const DEFAULT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY2NzJjOTQ5NmM3YjZlMTM5NWJkYmIzOSIsIm5hbWUiOiJSdXNoaVBhbmRpdCAtIERpZ2l0YWwgQWNhZGVteSIsImFwcE5hbWUiOiJBaVNlbnN5IiwiY2xpZW50SWQiOiI2NjcyYzk0ODZjN2I2ZTEzOTViZGJiMjciLCJhY3RpdmVQbGFuIjoiQkFTSUNfTU9OVEhMWSIsImlhdCI6MTc4NzczMzYwOX0.7z3K8tMpMK9YunrZ1WiICIwEXkgJP4RoRaMX0lm0Im8'
+import { normalizePhoneForWhatsApp, formatSalesRepPhone, formatStatusForTemplate, getAiSensyApiKey } from '@/lib/aisensy'
 
 /**
  * GET /api/admin/test-aisensy?phone=9768726006&name=Paurnima&status=Ringing
@@ -15,7 +13,7 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status') || 'Ringing'
 
     const envKey = process.env.AISENSY_SALES_API_KEY || process.env.AISENSY_API_KEY
-    const activeKey = envKey || DEFAULT_KEY
+    const activeKey = getAiSensyApiKey()
 
     const destination = normalizePhoneForWhatsApp(phone)
     if (!destination) {
