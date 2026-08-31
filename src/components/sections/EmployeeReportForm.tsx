@@ -53,36 +53,96 @@ function SearchableClientDropdown({ clients, selectedId, disabled, onSelect }: S
 
   return (
     <div ref={dropdownRef} style={{ position: 'relative', display: 'inline-block' }}>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen(!open)}
-        style={{
-          fontSize: '0.7rem',
-          padding: '3px 8px',
-          borderRadius: '6px',
-          background: selectedClient ? 'rgba(99,102,241,0.15)' : 'var(--bg-surface)',
-          color: selectedClient ? '#818cf8' : 'var(--text-muted)',
-          border: selectedClient ? '1px solid rgba(99,102,241,0.4)' : '1px solid var(--border-default)',
-          outline: 'none',
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '5px',
-          maxWidth: '160px',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          fontWeight: selectedClient ? 700 : 500,
-          transition: 'all 0.15s'
-        }}
-      >
-        <Building2 size={11} style={{ flexShrink: 0 }} />
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {selectedClient ? selectedClient.name : 'Tag Client'}
-        </span>
-        <ChevronDown size={10} style={{ flexShrink: 0, opacity: 0.7 }} />
-      </button>
+      {selectedClient ? (
+        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => setOpen(!open)}
+            style={{
+              fontSize: '0.7rem',
+              padding: '3px 8px',
+              borderRadius: '6px 0 0 6px',
+              background: selectedClient.client_type === 'internal' ? 'rgba(99,102,241,0.18)' : 'rgba(16,185,129,0.18)',
+              color: selectedClient.client_type === 'internal' ? '#818cf8' : '#10b981',
+              border: `1px solid ${selectedClient.client_type === 'internal' ? 'rgba(99,102,241,0.45)' : 'rgba(16,185,129,0.45)'}`,
+              borderRight: 'none',
+              outline: 'none',
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              maxWidth: '150px',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              fontWeight: 700,
+            }}
+            title="Click to switch company"
+          >
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: selectedClient.color || '#6366f1', flexShrink: 0 }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {selectedClient.client_type === 'internal' ? '🌟 ' : '🌐 '}
+              {selectedClient.name}
+            </span>
+            <ChevronDown size={10} style={{ flexShrink: 0, opacity: 0.7 }} />
+          </button>
+          {!disabled && (
+            <button
+              type="button"
+              onClick={() => onSelect('')}
+              style={{
+                fontSize: '0.7rem',
+                padding: '3px 6px',
+                borderRadius: '0 6px 6px 0',
+                background: selectedClient.client_type === 'internal' ? 'rgba(99,102,241,0.18)' : 'rgba(16,185,129,0.18)',
+                color: 'var(--text-muted)',
+                border: `1px solid ${selectedClient.client_type === 'internal' ? 'rgba(99,102,241,0.45)' : 'rgba(16,185,129,0.45)'}`,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              title="Untag company"
+            >
+              <X size={11} />
+            </button>
+          )}
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setOpen(!open)}
+          style={{
+            fontSize: '0.68rem',
+            padding: '3px 8px',
+            borderRadius: '6px',
+            background: 'var(--bg-surface)',
+            color: 'var(--text-muted)',
+            border: '1px dashed var(--border-default)',
+            outline: 'none',
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            fontWeight: 600,
+            transition: 'all 0.15s'
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.borderColor = 'var(--brand-primary)'
+            e.currentTarget.style.color = 'var(--text-primary)'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.borderColor = 'var(--border-default)'
+            e.currentTarget.style.color = 'var(--text-muted)'
+          }}
+        >
+          <Building2 size={11} style={{ flexShrink: 0, opacity: 0.7 }} />
+          <span>Tag a client / brand</span>
+          <ChevronDown size={9} style={{ flexShrink: 0, opacity: 0.5 }} />
+        </button>
+      )}
 
       {open && (
         <div style={{
@@ -300,7 +360,8 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
           const dept = (u.department || '').toLowerCase()
           const name = (u.full_name || '').toLowerCase()
           isMedia = desig.includes('video') || desig.includes('editor') || desig.includes('media') ||
-                    desig.includes('creator') || dept === 'media' || dept === 'strategy' ||
+                    desig.includes('creator') || desig.includes('reel') || desig.includes('animat') ||
+                    dept === 'media' || dept === 'strategy' || dept === 'content' ||
                     name.includes('suyog') || name.includes('kedar') || name.includes('rohan') ||
                     u.role === 'admin'
         }
@@ -311,13 +372,24 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
 
         const assignedIds = new Set(assignData.assignments || [])
         if (assignedIds.size > 0) isMedia = true
-        setIsMediaUser(isMedia)
 
-        if (isMedia && Array.isArray(assignData.allClients)) {
-          // If specific assignments exist, only show those; otherwise if admin, show all
+        let allAvailableClients: any[] = []
+        if (Array.isArray(assignData.allClients) && assignData.allClients.length > 0) {
+          allAvailableClients = assignData.allClients
+        } else {
+          // Fallback fetch active clients
+          try {
+            const fallbackRes = await fetch('/api/clients', { headers: { Authorization: `Bearer ${token}` } })
+            const fallbackData = await fallbackRes.json()
+            if (Array.isArray(fallbackData)) allAvailableClients = fallbackData
+          } catch {}
+        }
+
+        if (isMedia && allAvailableClients.length > 0) {
+          // If specific assignments exist for this user, filter to them; otherwise give full company list
           const available = assignedIds.size > 0
-            ? assignData.allClients.filter((c: any) => assignedIds.has(c.id))
-            : (isAdmin ? assignData.allClients : [])
+            ? allAvailableClients.filter((c: any) => assignedIds.has(c.id))
+            : allAvailableClients
           
           setClientsList(available.map((c: any) => ({
             id: c.id,
@@ -328,6 +400,8 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
         } else {
           setClientsList([])
         }
+
+        setIsMediaUser(isMedia)
       } catch {
         setIsMediaUser(isMedia)
       }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { query, execute } from '@/lib/db'
+import { query, queryOne, execute } from '@/lib/db'
 import { getUserFromRequest } from '@/lib/auth'
 
 export async function GET(req: NextRequest) {
@@ -22,6 +22,33 @@ export async function GET(req: NextRequest) {
     `)
     await execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS client_type VARCHAR(20) DEFAULT 'external'")
 
+    // Ensure 7 internal brands exist
+    const internalCheck = await queryOne<{ count: string }>(`SELECT COUNT(*) as count FROM clients WHERE client_type = 'internal'`)
+    if (!internalCheck || parseInt(internalCheck.count) === 0) {
+      await execute(`
+        INSERT INTO clients (name, slug, color, client_type, is_active) VALUES
+          ('RushiPandit Digital Marketing', 'rushipandit-digital', '#6366f1', 'internal', true),
+          ('Amazon', 'amazon-course', '#f59e0b', 'internal', true),
+          ('AI Course', 'ai-course', '#10b981', 'internal', true),
+          ('Agnomatic', 'agnomatic', '#8b5cf6', 'internal', true),
+          ('Cultural Reels', 'cultural-reels', '#ec4899', 'internal', true),
+          ('Pandit Capital', 'pandit-capital', '#3b82f6', 'internal', true),
+          ('Agnochat', 'agnochat', '#06b6d4', 'internal', true)
+        ON CONFLICT (slug) DO UPDATE SET client_type = 'internal', is_active = true
+      `)
+
+      // Seed standard deliverables for internal brands
+      const internalBrands = await query<{ id: string }>(`SELECT id FROM clients WHERE client_type = 'internal'`)
+      for (const b of internalBrands) {
+        await execute(
+          `INSERT INTO client_deliverables (client_id, content_type, monthly_target)
+           VALUES ($1, 'Reel', 15), ($1, 'YouTube', 4), ($1, 'Static Post', 20)
+           ON CONFLICT DO NOTHING`,
+          [b.id]
+        )
+      }
+    }
+
     // Fetch assigned client IDs for employee
     const rows = await query<{ client_id: string }>(
       `SELECT client_id FROM employee_client_assignments WHERE employee_id = $1`,
@@ -34,7 +61,7 @@ export async function GET(req: NextRequest) {
       `SELECT id, name, slug, color, COALESCE(client_type, 'external') as client_type 
        FROM clients 
        WHERE is_active = true AND (status IS NULL OR status != 'inactive')
-       ORDER BY name ASC`
+       ORDER BY client_type ASC, name ASC`
     )
 
     return NextResponse.json({

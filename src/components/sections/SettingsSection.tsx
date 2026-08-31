@@ -230,7 +230,7 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
               style={{
                 position: 'absolute', bottom: '-2px', right: '-2px',
                 width: '28px', height: '28px', borderRadius: '50%',
-                background: '#0e3d35', color: '#ffffff',
+                background: 'var(--brand-primary)', color: '#ffffff',
                 border: '2px solid var(--bg-surface)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.3)',

@@ -312,25 +312,16 @@ function runClientSync(
       const combinedText = `${responsibilityTitle} ${notesText}`
       const entryCount = Number(entry.count) || 1
 
-      // 1. Check if entry explicitly provided clientId
+      // Require explicit client tagging for sync to internal/client deliverables
       let matchedClient: any = null
       if (entry.clientId) {
         matchedClient = (clients as any[]).find((c: any) => c.id === entry.clientId)
       }
 
-      // 2. Otherwise match client by name/slug in notes or description
-      if (!matchedClient) {
-        matchedClient = (clients as any[]).find((c: any) => {
-          const clientName = c.name.toLowerCase()
-          const slug = (c.slug || '').toLowerCase()
-          return combinedText.includes(clientName) || (slug.length >= 2 && combinedText.includes(slug))
-        })
-      }
-
+      // If client is not tagged on this row, do NOT reflect in internal/client deliverables
       if (!matchedClient) continue
 
       const deliverables = matchedClient.deliverables || []
-      if (deliverables.length === 0) continue
 
       // Check if this is a non-deliverable client activity (e.g. meeting, call, discussion, consultation)
       const isMeetingOrCall =
@@ -342,7 +333,7 @@ function runClientSync(
         combinedText.includes('strategy session') ||
         combinedText.includes('onboarding')
 
-      // Determine content type strictly (Reel, YouTube, Static Post, Shooting, etc.)
+      // Determine content type (Reel, YouTube, Static Post, Shooting, etc.)
       let contentType: string | null = null
       if (combinedText.includes('youtube') || combinedText.includes('yt ') || combinedText.includes('yt video') || combinedText.includes('long video')) {
         contentType = 'YouTube'
@@ -365,6 +356,13 @@ function runClientSync(
         contentType = 'Stories'
       } else if (combinedText.includes('podcast')) {
         contentType = 'Podcast'
+      } else {
+        // Default to Reel if video editing responsibility, or Static Post
+        if (responsibilityTitle.includes('video') || responsibilityTitle.includes('reel') || responsibilityTitle.includes('edit')) {
+          contentType = responsibilityTitle.includes('youtube') ? 'YouTube' : 'Reel'
+        } else {
+          contentType = 'Static Post'
+        }
       }
 
       // If it's a meeting or call and client has a specific Meeting deliverable:
@@ -377,22 +375,28 @@ function runClientSync(
         if (meetingDel) {
           contentType = meetingDel.content_type
         } else {
-          // It is a client relationship meeting — do NOT increment static post or reel counts!
           continue
         }
       }
 
-      // If no valid deliverable format was found, NEVER guess or default to deliverables[0]!
-      if (!contentType) {
-        continue
+      if (!contentType) continue
+
+      // Find deliverable with matching content type or auto-create if missing
+      let matchedDel = deliverables.find((d: any) => d.content_type.toLowerCase() === contentType!.toLowerCase())
+      if (!matchedDel) {
+        try {
+          const targetMonth = String(report_date).slice(0, 7)
+          const newDel = await queryOne<{ id: string }>(
+            `INSERT INTO client_deliverables (client_id, content_type, monthly_target, target_month)
+             VALUES ($1, $2, 0, $3)
+             RETURNING id`,
+            [matchedClient.id, contentType, targetMonth]
+          )
+          if (newDel) matchedDel = { id: newDel.id, content_type: contentType }
+        } catch {}
       }
 
-      // Find deliverable with matching content type
-      const matchedDel = deliverables.find((d: any) => d.content_type.toLowerCase() === contentType!.toLowerCase())
-      if (!matchedDel) {
-        // Do not insert into progress log if client does not have this deliverable
-        continue
-      }
+      if (!matchedDel) continue
 
       await execute(
         `INSERT INTO client_progress_log (client_id, deliverable_id, employee_id, log_date, count, notes)
