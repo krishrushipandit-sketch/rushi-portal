@@ -135,9 +135,9 @@ export default function PerformanceSection({ profile }: { profile: Profile }) {
       {/* ── Header & Month Selector ── */}
       <div className="page-header" style={{ alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Production & Performance Reports</h1>
+          <h1 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Tasks &amp; Performance Reports</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            {currentMonthLabel} — Monthly deliverables, video editing, shoots & task analytics
+            {currentMonthLabel} — Task KPIs, team completion rates &amp; daily report analytics
           </p>
         </div>
 
@@ -162,51 +162,6 @@ export default function PerformanceSection({ profile }: { profile: Profile }) {
           </div>
           <button className="btn btn-secondary btn-sm" onClick={fetchData}>Refresh</button>
         </div>
-      </div>
-
-      {/* ── Sub Navigation Tabs ── */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.75rem' }}>
-        <button
-          onClick={() => setActiveTab('media')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '8px 16px',
-            borderRadius: '99px',
-            border: activeTab === 'media' ? '1.5px solid var(--brand-primary)' : '1px solid var(--border-default)',
-            background: activeTab === 'media' ? 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(5,150,105,0.08) 100%)' : 'var(--bg-card)',
-            color: activeTab === 'media' ? '#10b981' : 'var(--text-secondary)',
-            fontWeight: 800,
-            fontSize: '0.875rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            boxShadow: activeTab === 'media' ? '0 2px 8px rgba(16,185,129,0.15)' : 'none'
-          }}
-        >
-          <Film size={16} /> 🎬 Video & Media Production (Suyog, Kedar, Rohan)
-        </button>
-
-        <button
-          onClick={() => setActiveTab('tasks')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '8px 16px',
-            borderRadius: '99px',
-            border: activeTab === 'tasks' ? '1.5px solid var(--brand-primary)' : '1px solid var(--border-default)',
-            background: activeTab === 'tasks' ? 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(5,150,105,0.08) 100%)' : 'var(--bg-card)',
-            color: activeTab === 'tasks' ? '#10b981' : 'var(--text-secondary)',
-            fontWeight: 800,
-            fontSize: '0.875rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            boxShadow: activeTab === 'tasks' ? '0 2px 8px rgba(16,185,129,0.15)' : 'none'
-          }}
-        >
-          <BarChart3 size={16} /> 📋 Tasks & Team KPI Overview
-        </button>
       </div>
 
       {/* ══════════════════════════════════════════════════════════
