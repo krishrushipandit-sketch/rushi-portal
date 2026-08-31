@@ -45,7 +45,7 @@ export default function RealtimeLeadAlert({ onViewLead, userRole }: Props) {
     }
   }, [activeAlert])
 
-  // Poll for genuine newly captured leads every 6 seconds
+  // Poll for genuine newly captured leads every 4 seconds
   const checkNewLeads = useCallback(async () => {
     const token = getToken()
     if (!token) return
@@ -59,7 +59,7 @@ export default function RealtimeLeadAlert({ onViewLead, userRole }: Props) {
       const data = await res.json()
       if (!Array.isArray(data) || data.length === 0) return
 
-      // On first load, mark all existing leads as already seen so we NEVER alert for old leads
+      // On first load, record all existing lead IDs so we don't alert on page refresh
       if (isInitialLoadRef.current) {
         data.forEach((l: any) => {
           if (l.id) seenLeadIdsRef.current.add(l.id)
@@ -68,14 +68,9 @@ export default function RealtimeLeadAlert({ onViewLead, userRole }: Props) {
         return
       }
 
-      // Check for brand new leads that were just inserted (within last 90 seconds)
-      const nowMs = Date.now()
+      // Check for any brand new lead that was not in our seen set
       for (const lead of data) {
-        const leadAgeMs = nowMs - new Date(lead.created_at).getTime()
-        const isVeryRecent = leadAgeMs < 90000 // created less than 90 seconds ago
-
-        // If this is a brand new lead we have never seen and was created in the last 90s
-        if (!seenLeadIdsRef.current.has(lead.id) && isVeryRecent) {
+        if (lead.id && !seenLeadIdsRef.current.has(lead.id)) {
           seenLeadIdsRef.current.add(lead.id)
 
           const newLead: NewLeadAlert = {
@@ -103,9 +98,6 @@ export default function RealtimeLeadAlert({ onViewLead, userRole }: Props) {
           // 3. Set In-App Floating Toast
           setActiveAlert(newLead)
           break // Alert for the newest one
-        } else {
-          // Add to seen set anyway
-          seenLeadIdsRef.current.add(lead.id)
         }
       }
     } catch (e) {
@@ -115,7 +107,7 @@ export default function RealtimeLeadAlert({ onViewLead, userRole }: Props) {
 
   useEffect(() => {
     checkNewLeads()
-    const interval = setInterval(checkNewLeads, 6000)
+    const interval = setInterval(checkNewLeads, 4000)
     return () => clearInterval(interval)
   }, [checkNewLeads])
 

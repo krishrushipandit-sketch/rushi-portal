@@ -289,7 +289,14 @@ async function handleLeadWebhook(req: NextRequest) {
       body.Counselor
 
     if (explicitRepInput && typeof explicitRepInput === 'string' && explicitRepInput.trim()) {
-      const searchRep = explicitRepInput.trim()
+      const searchRep = explicitRepInput.trim().toLowerCase()
+      let extraCond = ''
+      if (searchRep.includes('nav')) {
+        extraCond = " OR LOWER(full_name) ILIKE '%naveen%' OR LOWER(full_name) ILIKE '%navin%'"
+      } else if (searchRep.includes('poon') || searchRep.includes('pun')) {
+        extraCond = " OR LOWER(full_name) ILIKE '%poonam%' OR LOWER(full_name) ILIKE '%punam%'"
+      }
+
       const matchedProfile = await queryOne<{ id: string; full_name: string; email: string }>(
         `SELECT id, full_name, email
          FROM profiles
@@ -298,6 +305,7 @@ async function handleLeadWebhook(req: NextRequest) {
            LOWER(full_name) ILIKE '%' || LOWER($1) || '%' OR
            LOWER(email) = LOWER($1) OR
            LOWER(email) ILIKE '%' || LOWER($1) || '%'
+           ${extraCond}
          )
          AND is_active = true
          ORDER BY (LOWER(full_name) = LOWER($1)) DESC, is_active DESC
@@ -312,7 +320,7 @@ async function handleLeadWebhook(req: NextRequest) {
       }
     }
 
-    // 5.3 Check if Pabbly passed a number field (1 -> Navin, 2 -> Poonam)
+    // 5.3 Check if Pabbly passed a number field (1 -> Naveen/Navin, 2 -> Poonam)
     const routingNumInput =
       body.number ||
       body.salesperson_number ||
@@ -339,21 +347,34 @@ async function handleLeadWebhook(req: NextRequest) {
       const numStr = String(routingNumInput).trim()
       const num = parseInt(numStr, 10)
       
-      let targetNameQuery = ''
       if (num === 1 || numStr === '1' || numStr === '01') {
-        targetNameQuery = 'Navin'
-      } else if (num === 2 || numStr === '2' || numStr === '02') {
-        targetNameQuery = 'Poonam'
-      }
-
-      if (targetNameQuery) {
         const matchedProfile = await queryOne<{ id: string; full_name: string; email: string }>(
           `SELECT id, full_name, email
            FROM profiles
-           WHERE LOWER(full_name) ILIKE '%' || LOWER($1) || '%'
-             AND is_active = true
-           LIMIT 1`,
-          [targetNameQuery]
+           WHERE (
+             LOWER(full_name) ILIKE '%naveen%' OR
+             LOWER(full_name) ILIKE '%navin%' OR
+             LOWER(email) ILIKE '%nav%'
+           )
+           AND is_active = true
+           LIMIT 1`
+        )
+        if (matchedProfile) {
+          assignedToId = matchedProfile.id
+          assignedToName = matchedProfile.full_name
+          assignedToEmail = matchedProfile.email
+        }
+      } else if (num === 2 || numStr === '2' || numStr === '02') {
+        const matchedProfile = await queryOne<{ id: string; full_name: string; email: string }>(
+          `SELECT id, full_name, email
+           FROM profiles
+           WHERE (
+             LOWER(full_name) ILIKE '%poonam%' OR
+             LOWER(full_name) ILIKE '%punam%' OR
+             LOWER(email) ILIKE '%poonam%'
+           )
+           AND is_active = true
+           LIMIT 1`
         )
         if (matchedProfile) {
           assignedToId = matchedProfile.id
