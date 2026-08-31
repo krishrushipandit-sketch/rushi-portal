@@ -41,12 +41,13 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Ensure target_month column exists
+    // Ensure target_month column and client_type column exist
     await execute('ALTER TABLE client_deliverables ADD COLUMN IF NOT EXISTS target_month VARCHAR(7)')
+    await execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS client_type VARCHAR(20) DEFAULT 'external'")
 
     // Get all unique active clients
     const clients = await query<any>(
-      `SELECT DISTINCT ON (LOWER(TRIM(name))) id, name, slug, color, logo_url 
+      `SELECT DISTINCT ON (LOWER(TRIM(name))) id, name, slug, color, logo_url, COALESCE(client_type, 'external') AS client_type
        FROM clients 
        WHERE is_active = true AND (status IS NULL OR status != 'inactive')
        ORDER BY LOWER(TRIM(name)), id ASC`

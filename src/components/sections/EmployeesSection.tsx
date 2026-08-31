@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { getInitials, formatDate } from '@/lib/utils'
-import { Plus, Trash2, X, Loader2, Users, Phone, Mail, Edit2, ToggleLeft, ToggleRight, Upload, Tag } from 'lucide-react'
+import { Plus, Trash2, X, Loader2, Users, Phone, Mail, Edit2, ToggleLeft, ToggleRight, Upload, Tag, Building2, Globe, Sparkles, Check } from 'lucide-react'
 
 interface Props { profile: Profile }
 
@@ -22,7 +22,15 @@ interface Employee {
   avatar_url?: string | null
 }
 
-const DEPARTMENTS = ['Sales', 'Administration', 'Academic', 'Finance', 'Operations', 'Marketing', 'IT']
+interface ClientBrandItem {
+  id: string
+  name: string
+  slug: string
+  color: string
+  client_type: string
+}
+
+const DEPARTMENTS = ['Sales', 'Administration', 'Academic', 'Finance', 'Operations', 'Marketing', 'IT', 'Media', 'Strategy']
 const ALL_INDUSTRIES = ['Digital Marketing', 'Share Market', 'Amazon', 'AI Course', 'BBA/MBA', 'Other']
 
 export default function EmployeesSection({ profile }: Props) {
@@ -39,6 +47,13 @@ export default function EmployeesSection({ profile }: Props) {
   const [customIndustry, setCustomIndustry] = useState('')
   const [allSkills, setAllSkills] = useState<{ employee_id?: string; user_id?: string; industry: string }[]>([])
   const [savingSkills, setSavingSkills] = useState(false)
+
+  // Internal Brands & External Clients Assignment state
+  const [brandEmployee, setBrandEmployee] = useState<Employee | null>(null)
+  const [allBrands, setAllBrands] = useState<ClientBrandItem[]>([])
+  const [assignedBrandIds, setAssignedBrandIds] = useState<string[]>([])
+  const [loadingAssignments, setLoadingAssignments] = useState(false)
+  const [savingBrandAssignments, setSavingBrandAssignments] = useState(false)
 
   const [form, setForm] = useState({
     full_name: '', email: '', password: '', role: 'employee',
@@ -96,6 +111,44 @@ export default function EmployeesSection({ profile }: Props) {
     await fetchAllSkills()
     setSkillsEmployee(null)
     setSavingSkills(false)
+  }
+
+  const openBrandAssignmentManager = async (emp: Employee) => {
+    setBrandEmployee(emp)
+    setLoadingAssignments(true)
+    const token = getToken()
+    if (!token) return
+    try {
+      const res = await fetch(`/api/employees/assignments?employee_id=${emp.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (data.assignments) setAssignedBrandIds(data.assignments)
+      if (data.allClients) setAllBrands(data.allClients)
+    } catch {}
+    setLoadingAssignments(false)
+  }
+
+  const saveBrandAssignments = async () => {
+    if (!brandEmployee) return
+    setSavingBrandAssignments(true)
+    const token = getToken()
+    if (!token) return
+    try {
+      await fetch('/api/employees/assignments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          employee_id: brandEmployee.id,
+          client_ids: assignedBrandIds
+        })
+      })
+      setBrandEmployee(null)
+    } catch (err: any) {
+      alert('Failed to save assignments: ' + err.message)
+    } finally {
+      setSavingBrandAssignments(false)
+    }
   }
 
   const openCreate = () => {
@@ -309,6 +362,16 @@ export default function EmployeesSection({ profile }: Props) {
                           data-tooltip="Edit employee"
                         >
                           <Edit2 size={13} />
+                        </button>
+                        {/* Internal Brands & External Clients Assignment — for video editors and team members */}
+                        <button
+                          className="btn btn-sm"
+                          style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.25)' }}
+                          onClick={() => openBrandAssignmentManager(emp)}
+                          data-tooltip="Assign Brands & Clients"
+                          title="Assign Internal Brands & External Clients"
+                        >
+                          <Building2 size={13} />
                         </button>
                         {/* Industry Skills Manager — for Sales employees */}
                         {emp.department?.toLowerCase() === 'sales' && (
@@ -525,6 +588,182 @@ export default function EmployeesSection({ profile }: Props) {
               <button className="btn btn-primary" onClick={saveSkills} disabled={savingSkills}>
                 {savingSkills ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Saving...</> : '💾 Save Industries'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Internal Brands & External Clients Assignment Modal */}
+      {brandEmployee && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setBrandEmployee(null)}>
+          <div className="modal-content" style={{ maxWidth: '640px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div className="modal-header">
+              <div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Building2 size={18} style={{ color: '#10b981' }} /> Brand &amp; Client Assignments
+                </h3>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '3px 0 0' }}>
+                  {brandEmployee.full_name} ({brandEmployee.designation || 'Team Member'}) — Choose which companies appear in their daily report &amp; workflow
+                </p>
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => setBrandEmployee(null)}><X size={18} /></button>
+            </div>
+
+            <div className="modal-body" style={{ overflowY: 'auto', flex: 1, padding: '1.25rem' }}>
+              {loadingAssignments ? (
+                <div style={{ padding: '2rem', textAlign: 'center' }}>
+                  <Loader2 size={24} style={{ animation: 'spin 1s linear infinite', color: 'var(--brand-primary)', margin: '0 auto 8px' }} />
+                  <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Loading client assignments...</p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                  
+                  {/* Internal Brands Section */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#818cf8', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+                        <Sparkles size={15} /> 🌟 Internal Brands (In-House Properties)
+                      </h4>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const internalIds = allBrands.filter(b => b.client_type === 'internal').map(b => b.id)
+                            setAssignedBrandIds(prev => Array.from(new Set([...prev, ...internalIds])))
+                          }}
+                          style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '6px', background: 'rgba(99,102,241,0.12)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.25)', cursor: 'pointer', fontWeight: 700 }}
+                        >
+                          Select All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const internalIds = new Set(allBrands.filter(b => b.client_type === 'internal').map(b => b.id))
+                            setAssignedBrandIds(prev => prev.filter(id => !internalIds.has(id)))
+                          }}
+                          style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '6px', background: 'var(--bg-surface)', color: 'var(--text-muted)', border: '1px solid var(--border-default)', cursor: 'pointer', fontWeight: 600 }}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.5rem' }}>
+                      {allBrands.filter(b => b.client_type === 'internal').map(brand => {
+                        const isAssigned = assignedBrandIds.includes(brand.id)
+                        return (
+                          <label
+                            key={brand.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.625rem',
+                              padding: '0.625rem 0.875rem',
+                              borderRadius: '10px',
+                              cursor: 'pointer',
+                              background: isAssigned ? 'rgba(99,102,241,0.12)' : 'var(--bg-surface)',
+                              border: isAssigned ? '1.5px solid rgba(99,102,241,0.4)' : '1px solid var(--border-default)',
+                              transition: 'all 0.15s'
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isAssigned}
+                              onChange={e => {
+                                if (e.target.checked) setAssignedBrandIds(prev => [...prev, brand.id])
+                                else setAssignedBrandIds(prev => prev.filter(id => id !== brand.id))
+                              }}
+                              style={{ width: '15px', height: '15px', accentColor: '#6366f1' }}
+                            />
+                            <span style={{ fontSize: '0.82rem', fontWeight: isAssigned ? 700 : 500, color: isAssigned ? '#f8fafc' : 'var(--text-secondary)' }}>
+                              {brand.name}
+                            </span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* External Clients Section */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#10b981', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+                        <Globe size={15} /> 🌐 External Clients (Agency Accounts)
+                      </h4>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const extIds = allBrands.filter(b => (b.client_type || 'external') === 'external').map(b => b.id)
+                            setAssignedBrandIds(prev => Array.from(new Set([...prev, ...extIds])))
+                          }}
+                          style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '6px', background: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.25)', cursor: 'pointer', fontWeight: 700 }}
+                        >
+                          Select All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const extIds = new Set(allBrands.filter(b => (b.client_type || 'external') === 'external').map(b => b.id))
+                            setAssignedBrandIds(prev => prev.filter(id => !extIds.has(id)))
+                          }}
+                          style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '6px', background: 'var(--bg-surface)', color: 'var(--text-muted)', border: '1px solid var(--border-default)', cursor: 'pointer', fontWeight: 600 }}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.5rem' }}>
+                      {allBrands.filter(b => (b.client_type || 'external') === 'external').map(client => {
+                        const isAssigned = assignedBrandIds.includes(client.id)
+                        return (
+                          <label
+                            key={client.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.625rem',
+                              padding: '0.625rem 0.875rem',
+                              borderRadius: '10px',
+                              cursor: 'pointer',
+                              background: isAssigned ? 'rgba(16,185,129,0.12)' : 'var(--bg-surface)',
+                              border: isAssigned ? '1.5px solid rgba(16,185,129,0.4)' : '1px solid var(--border-default)',
+                              transition: 'all 0.15s'
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isAssigned}
+                              onChange={e => {
+                                if (e.target.checked) setAssignedBrandIds(prev => [...prev, client.id])
+                                else setAssignedBrandIds(prev => prev.filter(id => id !== client.id))
+                              }}
+                              style={{ width: '15px', height: '15px', accentColor: '#10b981' }}
+                            />
+                            <span style={{ fontSize: '0.82rem', fontWeight: isAssigned ? 700 : 500, color: isAssigned ? '#f8fafc' : 'var(--text-secondary)' }}>
+                              {client.name}
+                            </span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer" style={{ borderTop: '1px solid var(--border-default)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                {assignedBrandIds.length} compan{assignedBrandIds.length === 1 ? 'y' : 'ies'} assigned
+              </span>
+              <div style={{ display: 'flex', gap: '0.625rem' }}>
+                <button className="btn btn-secondary" onClick={() => setBrandEmployee(null)}>Cancel</button>
+                <button className="btn btn-primary" onClick={saveBrandAssignments} disabled={savingBrandAssignments || loadingAssignments}>
+                  {savingBrandAssignments ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Saving...</> : '💾 Save Assignments'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -6,7 +6,8 @@ import type { Profile } from '@/lib/database.types'
 import {
   Video, PlayCircle, Grid3x3, Plus, CheckCircle2, AlertCircle,
   Pencil, Trash2, X, UserPlus, Edit2, Upload, Calendar,
-  TrendingUp, BarChart2, Check, Clock, Layers, Sparkles, SlidersHorizontal, Settings2
+  TrendingUp, BarChart2, Check, Clock, Layers, Sparkles, SlidersHorizontal, Settings2,
+  Globe, Building2
 } from 'lucide-react'
 
 interface LogEntry {
@@ -33,6 +34,7 @@ interface Client {
   name: string
   slug: string
   color: string
+  client_type?: string
   logo_url?: string | null
   deliverables: Deliverable[]
 }
@@ -53,6 +55,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
   const router = useRouter()
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<'external' | 'internal'>('external')
   const [logModal, setLogModal] = useState<{ client: Client; deliverable: Deliverable } | null>(null)
   const [editModal, setEditModal] = useState<{ client: Client; deliverable: Deliverable } | null>(null)
   
@@ -63,6 +66,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
   const [addClientModal, setAddClientModal] = useState(false)
   const [newClientName, setNewClientName] = useState('')
   const [newClientColor, setNewClientColor] = useState('#6366f1')
+  const [newClientType, setNewClientType] = useState<'external' | 'internal'>('external')
   const [newClientLogo, setNewClientLogo] = useState('')
   const [newCustomFormat, setNewCustomFormat] = useState('')
   const [newDeliverables, setNewDeliverables] = useState([
@@ -75,6 +79,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
   const [editClientModal, setEditClientModal] = useState<Client | null>(null)
   const [editClientName, setEditClientName] = useState('')
   const [editClientColor, setEditClientColor] = useState('#6366f1')
+  const [editClientType, setEditClientType] = useState<'external' | 'internal'>('external')
   const [editClientLogo, setEditClientLogo] = useState('')
   const [editCustomFormat, setEditCustomFormat] = useState('')
   const [editDeliverables, setEditDeliverables] = useState<{ content_type: string; monthly_target: string }[]>([
@@ -190,7 +195,14 @@ export default function StrategySection({ profile }: { profile: Profile }) {
     await fetch('/api/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: newClientName.trim(), color: newClientColor, logo_url: newClientLogo || null, deliverables, month })
+      body: JSON.stringify({
+        name: newClientName.trim(),
+        color: newClientColor,
+        logo_url: newClientLogo || null,
+        client_type: newClientType,
+        deliverables,
+        month
+      })
     })
 
     setAddClientModal(false)
@@ -210,6 +222,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
     setEditClientModal(client)
     setEditClientName(client.name)
     setEditClientColor(client.color)
+    setEditClientType((client.client_type as any) || 'external')
     setEditClientLogo(client.logo_url || '')
     setEditCustomFormat('')
     
@@ -268,7 +281,14 @@ export default function StrategySection({ profile }: { profile: Profile }) {
     const res = await fetch(`/api/clients?id=${editClientModal.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: editClientName.trim(), color: editClientColor, logo_url: editClientLogo || null, deliverables, month })
+      body: JSON.stringify({
+        name: editClientName.trim(),
+        color: editClientColor,
+        client_type: editClientType,
+        logo_url: editClientLogo || null,
+        deliverables,
+        month
+      })
     })
 
     if (!res.ok) {
@@ -355,12 +375,63 @@ export default function StrategySection({ profile }: { profile: Profile }) {
         </div>
       </div>
 
+      {/* ── Sub Navigation Tabs: External Clients vs Internal Brands ── */}
+      {canManageClients && (
+        <div style={{ display: 'flex', gap: '0.625rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.75rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => setActiveTab('external')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 18px',
+              borderRadius: '99px',
+              border: activeTab === 'external' ? '1.5px solid #10b981' : '1px solid var(--border-default)',
+              background: activeTab === 'external' ? 'rgba(16,185,129,0.15)' : 'var(--bg-card)',
+              color: activeTab === 'external' ? '#10b981' : 'var(--text-secondary)',
+              fontWeight: 800,
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              boxShadow: activeTab === 'external' ? '0 2px 10px rgba(16,185,129,0.2)' : 'none'
+            }}
+          >
+            <Globe size={16} /> 🌐 External Clients ({clients.filter(c => (c.client_type || 'external') === 'external').length})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('internal')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 18px',
+              borderRadius: '99px',
+              border: activeTab === 'internal' ? '1.5px solid #6366f1' : '1px solid var(--border-default)',
+              background: activeTab === 'internal' ? 'rgba(99,102,241,0.15)' : 'var(--bg-card)',
+              color: activeTab === 'internal' ? '#818cf8' : 'var(--text-secondary)',
+              fontWeight: 800,
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              boxShadow: activeTab === 'internal' ? '0 2px 10px rgba(99,102,241,0.2)' : 'none'
+            }}
+          >
+            <Sparkles size={16} /> 🌟 Internal Brands &amp; Media ({clients.filter(c => c.client_type === 'internal').length})
+          </button>
+        </div>
+      )}
+
       {/* ── Month Pace Banner ── */}
       <div className="glass-card" style={{ padding: '1rem 1.25rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.625rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Calendar size={15} style={{ color: 'var(--brand-primary)' }} />
-            <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-primary)' }}>{monthLabel} Pace</span>
+            <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              {monthLabel} Pace — {activeTab === 'internal' ? 'Internal Brands Production' : 'Client Deliverables'}
+            </span>
           </div>
           <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>
             Day {todayDay} of {totalDays} &nbsp;·&nbsp; <strong style={{ color: 'var(--text-primary)' }}>{monthProgress}%</strong> of month elapsed
@@ -378,26 +449,39 @@ export default function StrategySection({ profile }: { profile: Profile }) {
             <div key={i} className="glass-card" style={{ height: '260px', opacity: 0.5 }} />
           ))}
         </div>
-      ) : clients.length === 0 ? (
-        <div className="glass-card empty-state">
-          <div className="empty-state-icon">
-            <Layers size={24} />
-          </div>
-          <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-            No clients found. Click &quot;Add Client&quot; to set monthly targets.
-          </p>
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '1.25rem' }}>
-          {clients.map(client => {
-            const totalTarget = client.deliverables.reduce((s, d) => s + d.monthly_target, 0)
-            const totalDone = client.deliverables.reduce((s, d) => s + d.completed, 0)
-            const pct = totalTarget > 0 ? Math.round((totalDone / totalTarget) * 100) : 0
-            const paceColor = pct >= 100 ? '#16a34a' : pct >= monthProgress ? '#4f46e5' : '#d97706'
+      ) : (() => {
+        const displayedClients = clients.filter(c => {
+          if (!canManageClients) return true
+          if (activeTab === 'internal') return c.client_type === 'internal'
+          return (c.client_type || 'external') === 'external'
+        })
 
-            return (
-              <div
-                key={client.id}
+        if (displayedClients.length === 0) {
+          return (
+            <div className="glass-card empty-state">
+              <div className="empty-state-icon">
+                <Layers size={24} />
+              </div>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                {activeTab === 'internal' 
+                  ? 'No internal brands found. Click "Add Client" to register internal properties.'
+                  : 'No external clients found. Click "Add Client" to set monthly targets.'}
+              </p>
+            </div>
+          )
+        }
+
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '1.25rem' }}>
+            {displayedClients.map(client => {
+              const totalTarget = client.deliverables.reduce((s, d) => s + d.monthly_target, 0)
+              const totalDone = client.deliverables.reduce((s, d) => s + d.completed, 0)
+              const pct = totalTarget > 0 ? Math.round((totalDone / totalTarget) * 100) : 0
+              const paceColor = pct >= 100 ? '#16a34a' : pct >= monthProgress ? '#4f46e5' : '#d97706'
+
+              return (
+                <div
+                  key={client.id}
                 className="glass-card"
                 style={{
                   display: 'flex', flexDirection: 'column', overflow: 'hidden',
@@ -639,7 +723,8 @@ export default function StrategySection({ profile }: { profile: Profile }) {
             )
           })}
         </div>
-      )}
+      )
+    })()}
 
       {/* ── Log Work Modal ── */}
       {logModal && (
@@ -701,6 +786,28 @@ export default function StrategySection({ profile }: { profile: Profile }) {
                   value={newClientName}
                   onChange={e => setNewClientName(e.target.value)}
                 />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Account Category</label>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <label style={{
+                    flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '8px', cursor: 'pointer',
+                    background: newClientType === 'external' ? 'rgba(16,185,129,0.12)' : 'var(--bg-surface)',
+                    border: newClientType === 'external' ? '1.5px solid #10b981' : '1px solid var(--border-default)'
+                  }}>
+                    <input type="radio" name="newClientType" checked={newClientType === 'external'} onChange={() => setNewClientType('external')} style={{ accentColor: '#10b981' }} />
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: newClientType === 'external' ? '#10b981' : 'var(--text-secondary)' }}>🌐 External Client</span>
+                  </label>
+                  <label style={{
+                    flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '8px', cursor: 'pointer',
+                    background: newClientType === 'internal' ? 'rgba(99,102,241,0.12)' : 'var(--bg-surface)',
+                    border: newClientType === 'internal' ? '1.5px solid #6366f1' : '1px solid var(--border-default)'
+                  }}>
+                    <input type="radio" name="newClientType" checked={newClientType === 'internal'} onChange={() => setNewClientType('internal')} style={{ accentColor: '#6366f1' }} />
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: newClientType === 'internal' ? '#818cf8' : 'var(--text-secondary)' }}>🌟 Internal Brand</span>
+                  </label>
+                </div>
               </div>
 
               {/* Company Logo Upload */}
@@ -831,6 +938,28 @@ export default function StrategySection({ profile }: { profile: Profile }) {
                   value={editClientName}
                   onChange={e => setEditClientName(e.target.value)}
                 />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Account Category</label>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <label style={{
+                    flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '8px', cursor: 'pointer',
+                    background: editClientType === 'external' ? 'rgba(16,185,129,0.12)' : 'var(--bg-surface)',
+                    border: editClientType === 'external' ? '1.5px solid #10b981' : '1px solid var(--border-default)'
+                  }}>
+                    <input type="radio" name="editClientType" checked={editClientType === 'external'} onChange={() => setEditClientType('external')} style={{ accentColor: '#10b981' }} />
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: editClientType === 'external' ? '#10b981' : 'var(--text-secondary)' }}>🌐 External Client</span>
+                  </label>
+                  <label style={{
+                    flex: 1, display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '8px', cursor: 'pointer',
+                    background: editClientType === 'internal' ? 'rgba(99,102,241,0.12)' : 'var(--bg-surface)',
+                    border: editClientType === 'internal' ? '1.5px solid #6366f1' : '1px solid var(--border-default)'
+                  }}>
+                    <input type="radio" name="editClientType" checked={editClientType === 'internal'} onChange={() => setEditClientType('internal')} style={{ accentColor: '#6366f1' }} />
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: editClientType === 'internal' ? '#818cf8' : 'var(--text-secondary)' }}>🌟 Internal Brand</span>
+                  </label>
+                </div>
               </div>
 
               {/* Edit Company Logo */}

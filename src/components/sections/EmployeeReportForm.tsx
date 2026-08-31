@@ -7,8 +7,15 @@ import { Mic, MicOff, Loader2, Plus, Trash2, X, SendHorizonal, Search, Building2
 
 interface Row { responsibility: string; daily_target: number | null; description: string; count: string; isCustom?: boolean; clientId?: string }
 
+interface ClientItem {
+  id: string
+  name: string
+  color: string
+  client_type?: string
+}
+
 interface SearchableClientDropdownProps {
-  clients: { id: string; name: string; color: string }[]
+  clients: ClientItem[]
   selectedId: string
   disabled?: boolean
   onSelect: (id: string) => void
@@ -26,6 +33,9 @@ function SearchableClientDropdown({ clients, selectedId, disabled, onSelect }: S
     if (!search.trim()) return clients
     return clients.filter(c => c.name.toLowerCase().includes(search.toLowerCase()))
   }, [clients, search])
+
+  const internalList = useMemo(() => filteredClients.filter(c => c.client_type === 'internal'), [filteredClients])
+  const externalList = useMemo(() => filteredClients.filter(c => (c.client_type || 'external') === 'external'), [filteredClients])
 
   // Click outside to close
   useEffect(() => {
@@ -147,46 +157,79 @@ function SearchableClientDropdown({ clients, selectedId, disabled, onSelect }: S
               <span style={{ fontStyle: 'italic' }}>— No Client —</span>
             </button>
 
-            {filteredClients.map(c => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => { onSelect(c.id); setOpen(false) }}
-                style={{
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '5px 8px',
-                  fontSize: '0.74rem',
-                  fontWeight: selectedId === c.id ? 700 : 500,
-                  background: selectedId === c.id ? 'rgba(99,102,241,0.15)' : 'transparent',
-                  color: selectedId === c.id ? '#818cf8' : 'var(--text-primary)',
-                  border: 'none',
-                  borderRadius: '5px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  transition: 'background 0.1s'
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                onMouseLeave={e => (e.currentTarget.style.background = selectedId === c.id ? 'rgba(99,102,241,0.15)' : 'transparent')}
-              >
-                <span style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  background: c.color || '#6366f1',
-                  flexShrink: 0
-                }} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {c.name}
-                </span>
-              </button>
-            ))}
+            {/* Internal Brands Group */}
+            {internalList.length > 0 && (
+              <div style={{ marginBottom: '4px' }}>
+                <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#818cf8', padding: '4px 6px 2px' }}>
+                  🌟 Internal Brands
+                </div>
+                {internalList.map(c => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => { onSelect(c.id); setOpen(false) }}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '4px 8px',
+                      fontSize: '0.74rem',
+                      fontWeight: selectedId === c.id ? 700 : 500,
+                      background: selectedId === c.id ? 'rgba(99,102,241,0.15)' : 'transparent',
+                      color: selectedId === c.id ? '#818cf8' : 'var(--text-primary)',
+                      border: 'none',
+                      borderRadius: '5px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      transition: 'background 0.1s'
+                    }}
+                  >
+                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: c.color || '#6366f1', flexShrink: 0 }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* External Clients Group */}
+            {externalList.length > 0 && (
+              <div>
+                <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#10b981', padding: '4px 6px 2px', borderTop: internalList.length > 0 ? '1px solid var(--border-subtle)' : 'none', marginTop: internalList.length > 0 ? '4px' : '0' }}>
+                  🌐 External Clients
+                </div>
+                {externalList.map(c => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => { onSelect(c.id); setOpen(false) }}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '4px 8px',
+                      fontSize: '0.74rem',
+                      fontWeight: selectedId === c.id ? 700 : 500,
+                      background: selectedId === c.id ? 'rgba(16,185,129,0.15)' : 'transparent',
+                      color: selectedId === c.id ? '#10b981' : 'var(--text-primary)',
+                      border: 'none',
+                      borderRadius: '5px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      transition: 'background 0.1s'
+                    }}
+                  >
+                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: c.color || '#10b981', flexShrink: 0 }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
 
             {filteredClients.length === 0 && (
               <div style={{ padding: '8px', textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                No client found
+                No companies found
               </div>
             )}
           </div>
@@ -223,7 +266,8 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
   const isLocked = !isAdmin && reportDate < todayDate()
 
   const [rows, setRows] = useState<Row[]>([])
-  const [clientsList, setClientsList] = useState<{ id: string; name: string; color: string }[]>([])
+  const [clientsList, setClientsList] = useState<ClientItem[]>([])
+  const [isMediaUser, setIsMediaUser] = useState(false)
   const [note, setNote] = useState(existingReport?.note || '')
   const [checkInTime, setCheckInTime] = useState<string>(existingReport?.check_in_time?.slice(0,5) || '')
   const [checkOutTime, setCheckOutTime] = useState<string>(existingReport?.check_out_time?.slice(0,5) || '')
@@ -246,14 +290,47 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
       const token = getToken()
       if (!token) return
 
-      // Fetch active clients for tagging
+      // Check if current user is a video editor/media creator or has client assignments
+      let isMedia = false
       try {
-        const cRes = await fetch('/api/client-progress', { headers: { Authorization: `Bearer ${token}` } })
-        const cData = await cRes.json()
-        if (Array.isArray(cData.clients)) {
-          setClientsList(cData.clients.map((c: any) => ({ id: c.id, name: c.name, color: c.color })))
+        const userStr = typeof window !== 'undefined' ? localStorage.getItem('rushi_user') : null
+        if (userStr) {
+          const u = JSON.parse(userStr)
+          const desig = (u.designation || '').toLowerCase()
+          const dept = (u.department || '').toLowerCase()
+          const name = (u.full_name || '').toLowerCase()
+          isMedia = desig.includes('video') || desig.includes('editor') || desig.includes('media') ||
+                    desig.includes('creator') || dept === 'media' || dept === 'strategy' ||
+                    name.includes('suyog') || name.includes('kedar') || name.includes('rohan') ||
+                    u.role === 'admin'
         }
-      } catch {}
+
+        const empParam = isAdmin && targetEmployeeId ? `?employee_id=${targetEmployeeId}` : ''
+        const assignRes = await fetch(`/api/employees/assignments${empParam}`, { headers: { Authorization: `Bearer ${token}` } })
+        const assignData = await assignRes.json()
+
+        const assignedIds = new Set(assignData.assignments || [])
+        if (assignedIds.size > 0) isMedia = true
+        setIsMediaUser(isMedia)
+
+        if (isMedia && Array.isArray(assignData.allClients)) {
+          // If specific assignments exist, only show those; otherwise if admin, show all
+          const available = assignedIds.size > 0
+            ? assignData.allClients.filter((c: any) => assignedIds.has(c.id))
+            : (isAdmin ? assignData.allClients : [])
+          
+          setClientsList(available.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            color: c.color,
+            client_type: c.client_type || 'external'
+          })))
+        } else {
+          setClientsList([])
+        }
+      } catch {
+        setIsMediaUser(isMedia)
+      }
 
       // Fetch employee responsibilities
       const empId = isAdmin && targetEmployeeId ? `?employee_id=${targetEmployeeId}` : ''
@@ -647,8 +724,8 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
                         </span>
                       )}
 
-                      {/* Client Tag Dropdown & Add Client Row Button — only for client workers */}
-                      {isClientWorker !== false && clientsList.length > 0 && (
+                      {/* Client Tag Dropdown & Add Client Row Button — strictly for video editors & assigned media workers */}
+                      {isMediaUser && isClientWorker !== false && clientsList.length > 0 && (
                         <div style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                           <SearchableClientDropdown
                             clients={clientsList}
