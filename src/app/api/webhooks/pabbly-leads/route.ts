@@ -219,12 +219,62 @@ async function handleLeadWebhook(req: NextRequest) {
       }
     }
 
-    // 5. Sales Representative Routing (Explicit Match OR Round-Robin)
+    // 5. Sales Representative Routing (Explicit Rep, Router Number, or Round-Robin)
     let assignedToId: string | null = null
     let assignedToName: string = 'Unassigned'
     let assignedToEmail: string | null = null
 
-    // 5.1 Check if Pabbly / Sheet passed an explicit salesperson / counselor
+    // 5.1 Fetch active sales reps for this industry (Ordered: Navin -> Poonam)
+    const industryReps = await query<{ employee_id: string; full_name: string; email: string }>(
+      `SELECT DISTINCT s.employee_id, p.full_name, p.email
+       FROM sales_industry_skills s
+       INNER JOIN profiles p ON s.employee_id = p.id
+       WHERE LOWER(TRIM(s.industry)) = LOWER(TRIM($1))
+         AND p.is_active = true
+         AND p.role = 'employee'
+         AND LOWER(p.department) = 'sales'
+       ORDER BY p.full_name ASC`,
+      [industry]
+    )
+
+    let eligibleRepIds: { id: string; name: string; email: string }[] = []
+    if (industryReps && industryReps.length > 0) {
+      eligibleRepIds = industryReps.map(r => ({ id: r.employee_id, name: r.full_name || 'Sales Rep', email: r.email }))
+    }
+
+    // Fallback: Check for 'All' or 'General' skill
+    if (eligibleRepIds.length === 0) {
+      const generalReps = await query<{ employee_id: string; full_name: string; email: string }>(
+        `SELECT DISTINCT s.employee_id, p.full_name, p.email
+         FROM sales_industry_skills s
+         INNER JOIN profiles p ON s.employee_id = p.id
+         WHERE (LOWER(TRIM(s.industry)) = 'all' OR LOWER(TRIM(s.industry)) = 'general' OR LOWER(TRIM(s.industry)) = 'other')
+           AND p.is_active = true
+           AND p.role = 'employee'
+           AND LOWER(p.department) = 'sales'
+         ORDER BY p.full_name ASC`
+      )
+      if (generalReps && generalReps.length > 0) {
+        eligibleRepIds = generalReps.map(r => ({ id: r.employee_id, name: r.full_name || 'Sales Rep', email: r.email }))
+      }
+    }
+
+    // Fallback: All active sales employees
+    if (eligibleRepIds.length === 0) {
+      const allActiveSales = await query<{ id: string; full_name: string; email: string }>(
+        `SELECT id, full_name, email
+         FROM profiles
+         WHERE role = 'employee'
+           AND is_active = true
+           AND LOWER(department) = 'sales'
+         ORDER BY full_name ASC`
+      )
+      if (allActiveSales && allActiveSales.length > 0) {
+        eligibleRepIds = allActiveSales.map(e => ({ id: e.id, name: e.full_name, email: e.email }))
+      }
+    }
+
+    // 5.2 Check if Pabbly / Sheet passed an explicit salesperson / counselor by name
     const explicitRepInput =
       body.assigned_to ||
       body.salesperson ||
@@ -240,7 +290,6 @@ async function handleLeadWebhook(req: NextRequest) {
 
     if (explicitRepInput && typeof explicitRepInput === 'string' && explicitRepInput.trim()) {
       const searchRep = explicitRepInput.trim()
-      // Try exact or partial match on full_name or email
       const matchedProfile = await queryOne<{ id: string; full_name: string; email: string }>(
         `SELECT id, full_name, email
          FROM profiles
@@ -263,79 +312,49 @@ async function handleLeadWebhook(req: NextRequest) {
       }
     }
 
-    // 5.2 If no explicit rep was passed or found, use strict round-robin
-    if (!assignedToId) {
-      // Find active sales reps assigned to this specific industry
-      const industryReps = await query<{ employee_id: string; full_name: string; email: string }>(
-        `SELECT DISTINCT s.employee_id, p.full_name, p.email
-         FROM sales_industry_skills s
-         INNER JOIN profiles p ON s.employee_id = p.id
-         WHERE LOWER(TRIM(s.industry)) = LOWER(TRIM($1))
-           AND p.is_active = true
-           AND p.role = 'employee'
-           AND LOWER(p.department) = 'sales'
-         ORDER BY p.full_name ASC`,
+    // 5.3 Check if Pabbly passed a router number (e.g. 1 -> Navin, 2 -> Poonam)
+    const routingNumInput =
+      body.routing_number ||
+      body.router_number ||
+      body.route ||
+      body.router ||
+      body.routing_no ||
+      body.round_robin_no ||
+      body.round_robin_number ||
+      body.routingNumber ||
+      body.routerNumber
+
+    if (!assignedToId && routingNumInput !== undefined && routingNumInput !== null && routingNumInput !== '') {
+      const num = parseInt(String(routingNumInput), 10)
+      if (!isNaN(num) && num > 0 && eligibleRepIds.length > 0) {
+        const targetIdx = (num - 1) % eligibleRepIds.length
+        assignedToId = eligibleRepIds[targetIdx].id
+        assignedToName = eligibleRepIds[targetIdx].name
+        assignedToEmail = eligibleRepIds[targetIdx].email
+      }
+    }
+
+    // 5.4 Standard Round-Robin if not assigned by above steps
+    if (!assignedToId && eligibleRepIds.length > 0) {
+      const state = await queryOne<{ last_assigned_index: number }>(
+        `SELECT last_assigned_index FROM industry_round_robin_state WHERE industry = $1`,
         [industry]
       )
 
-      let eligibleRepIds: { id: string; name: string; email: string }[] = []
-      if (industryReps && industryReps.length > 0) {
-        eligibleRepIds = industryReps.map(r => ({ id: r.employee_id, name: r.full_name || 'Sales Rep', email: r.email }))
-      }
+      const currentIndex = state ? state.last_assigned_index : -1
+      const nextIndex = (currentIndex + 1) % eligibleRepIds.length
 
-      // Fallback: If no rep has this specific industry, check for 'All' or 'General' skill
-      if (eligibleRepIds.length === 0) {
-        const generalReps = await query<{ employee_id: string; full_name: string; email: string }>(
-          `SELECT DISTINCT s.employee_id, p.full_name, p.email
-           FROM sales_industry_skills s
-           INNER JOIN profiles p ON s.employee_id = p.id
-           WHERE (LOWER(TRIM(s.industry)) = 'all' OR LOWER(TRIM(s.industry)) = 'general' OR LOWER(TRIM(s.industry)) = 'other')
-             AND p.is_active = true
-             AND p.role = 'employee'
-             AND LOWER(p.department) = 'sales'
-           ORDER BY p.full_name ASC`
-        )
-        if (generalReps && generalReps.length > 0) {
-          eligibleRepIds = generalReps.map(r => ({ id: r.employee_id, name: r.full_name || 'Sales Rep', email: r.email }))
-        }
-      }
+      assignedToId = eligibleRepIds[nextIndex].id
+      assignedToName = eligibleRepIds[nextIndex].name
+      assignedToEmail = eligibleRepIds[nextIndex].email
 
-      // Fallback: If still no mapped reps, route among all active sales department employees
-      if (eligibleRepIds.length === 0) {
-        const allActiveSales = await query<{ id: string; full_name: string; email: string }>(
-          `SELECT id, full_name, email
-           FROM profiles
-           WHERE role = 'employee'
-             AND is_active = true
-             AND LOWER(department) = 'sales'
-           ORDER BY full_name ASC`
-        )
-        if (allActiveSales && allActiveSales.length > 0) {
-          eligibleRepIds = allActiveSales.map(e => ({ id: e.id, name: e.full_name, email: e.email }))
-        }
-      }
-
-      if (eligibleRepIds.length > 0) {
-        const state = await queryOne<{ last_assigned_index: number }>(
-          `SELECT last_assigned_index FROM industry_round_robin_state WHERE industry = $1`,
-          [industry]
-        )
-
-        const currentIndex = state ? state.last_assigned_index : -1
-        const nextIndex = (currentIndex + 1) % eligibleRepIds.length
-
-        assignedToId = eligibleRepIds[nextIndex].id
-        assignedToName = eligibleRepIds[nextIndex].name
-        assignedToEmail = eligibleRepIds[nextIndex].email
-
-        await execute(
-          `INSERT INTO industry_round_robin_state (industry, last_assigned_index, updated_at)
-           VALUES ($1, $2, $3)
-           ON CONFLICT (industry)
-           DO UPDATE SET last_assigned_index = EXCLUDED.last_assigned_index, updated_at = EXCLUDED.updated_at`,
-          [industry, nextIndex, new Date().toISOString()]
-        )
-      }
+      await execute(
+        `INSERT INTO industry_round_robin_state (industry, last_assigned_index, updated_at)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (industry)
+         DO UPDATE SET last_assigned_index = EXCLUDED.last_assigned_index, updated_at = EXCLUDED.updated_at`,
+        [industry, nextIndex, new Date().toISOString()]
+      )
     }
 
     // 6. Insert Lead into Database (initial notes are blank)
