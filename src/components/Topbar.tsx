@@ -115,9 +115,15 @@ export default function Topbar({
         <span
           className="badge hidden-mobile"
           style={{
-            background: profile.role === 'admin' ? 'rgba(99, 102, 241, 0.12)' : 'rgba(16, 185, 129, 0.12)',
-            color: profile.role === 'admin' ? '#6366f1' : '#16a34a',
-            border: `1px solid ${profile.role === 'admin' ? 'rgba(99, 102, 241, 0.25)' : 'rgba(16, 185, 129, 0.25)'}`,
+            background: isLight 
+              ? (profile.role === 'admin' ? 'rgba(14, 61, 53, 0.1)' : 'rgba(16, 185, 129, 0.12)')
+              : 'rgba(255, 255, 255, 0.08)',
+            color: isLight 
+              ? (profile.role === 'admin' ? '#0e3d35' : '#16a34a')
+              : '#ffffff',
+            border: isLight 
+              ? `1px solid ${profile.role === 'admin' ? 'rgba(14, 61, 53, 0.25)' : 'rgba(16, 185, 129, 0.25)'}`
+              : '1px solid rgba(255, 255, 255, 0.2)',
             fontWeight: 700,
             fontSize: '0.75rem',
             padding: '4px 10px'
@@ -158,7 +164,7 @@ export default function Topbar({
         >
           <Moon
             size={14}
-            style={{ color: !isLight ? '#6366f1' : '#94a3b8', transition: 'color 0.2s', flexShrink: 0 }}
+            style={{ color: !isLight ? '#ffffff' : '#94a3b8', transition: 'color 0.2s', flexShrink: 0 }}
           />
           <div
             style={{

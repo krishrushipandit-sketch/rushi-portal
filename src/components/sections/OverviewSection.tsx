@@ -138,22 +138,22 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
       <style>{`
         @keyframes visionGlow {
           0%, 100% {
-            box-shadow: 0 0 20px rgba(99, 102, 241, 0.2), 0 4px 20px rgba(0, 0, 0, 0.2);
-            border-color: rgba(99, 102, 241, 0.4);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.08), 0 4px 20px rgba(0, 0, 0, 0.5);
+            border-color: rgba(255, 255, 255, 0.18);
           }
           50% {
-            box-shadow: 0 0 30px rgba(99, 102, 241, 0.4), 0 0 45px rgba(16, 185, 129, 0.25), 0 4px 24px rgba(0, 0, 0, 0.3);
-            border-color: rgba(99, 102, 241, 0.7);
+            box-shadow: 0 0 25px rgba(255, 255, 255, 0.15), 0 4px 24px rgba(0, 0, 0, 0.7);
+            border-color: rgba(255, 255, 255, 0.35);
           }
         }
         @keyframes sparkleBlink {
           0%, 100% {
             transform: scale(1) rotate(0deg);
-            filter: drop-shadow(0 0 4px #818cf8) drop-shadow(0 0 8px rgba(99, 102, 241, 0.8));
+            filter: drop-shadow(0 0 4px #ffffff);
           }
           50% {
             transform: scale(1.22) rotate(12deg);
-            filter: drop-shadow(0 0 10px #a5b4fc) drop-shadow(0 0 16px rgba(129, 140, 248, 0.95));
+            filter: drop-shadow(0 0 10px #ffffff);
           }
         }
         @keyframes livePulseDot {
@@ -165,8 +165,8 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
         style={{
           background: isLight
             ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(99, 102, 241, 0.08) 100%)'
-            : 'linear-gradient(135deg, rgba(99, 102, 241, 0.16) 0%, rgba(16, 185, 129, 0.10) 100%)',
-          border: isLight ? '1.5px solid rgba(16, 185, 129, 0.45)' : '1.5px solid rgba(99, 102, 241, 0.35)',
+            : 'linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
+          border: isLight ? '1.5px solid rgba(16, 185, 129, 0.45)' : '1px solid rgba(255, 255, 255, 0.18)',
           borderRadius: '16px',
           padding: '1.125rem 1.35rem',
           marginBottom: '1.75rem',
@@ -175,9 +175,9 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
           gap: '1rem',
           position: 'relative',
           overflow: 'hidden',
-          animation: 'visionGlow 3.5s ease-in-out infinite',
+          animation: 'visionGlow 4s ease-in-out infinite',
           backdropFilter: 'blur(10px)',
-          boxShadow: isLight ? '0 4px 20px rgba(16, 185, 129, 0.12)' : '0 4px 24px rgba(0, 0, 0, 0.3)'
+          boxShadow: isLight ? '0 4px 20px rgba(16, 185, 129, 0.12)' : '0 4px 24px rgba(0, 0, 0, 0.6)'
         }}
       >
         {/* Glowing Sparkle Icon Badge */}
@@ -186,19 +186,19 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
             width: '42px',
             height: '42px',
             borderRadius: '12px',
-            background: isLight ? 'rgba(16, 185, 129, 0.18)' : 'linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(16, 185, 129, 0.2))',
+            background: isLight ? 'rgba(16, 185, 129, 0.18)' : 'rgba(255, 255, 255, 0.08)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
-            border: isLight ? '1.5px solid rgba(16, 185, 129, 0.4)' : '1.5px solid rgba(129, 140, 248, 0.5)',
-            boxShadow: isLight ? '0 2px 10px rgba(16, 185, 129, 0.2)' : '0 0 14px rgba(99, 102, 241, 0.4)'
+            border: isLight ? '1.5px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255, 255, 255, 0.25)',
+            boxShadow: isLight ? '0 2px 10px rgba(16, 185, 129, 0.2)' : '0 0 14px rgba(255, 255, 255, 0.1)'
           }}
         >
           <span style={{
             fontSize: '1.35rem',
             display: 'inline-block',
-            animation: 'sparkleBlink 2s ease-in-out infinite'
+            animation: 'sparkleBlink 2.5s ease-in-out infinite'
           }}>
             ✨
           </span>
@@ -210,9 +210,9 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
               width: '8px',
               height: '8px',
               borderRadius: '50%',
-              background: '#818cf8',
+              background: '#ffffff',
               display: 'inline-block',
-              boxShadow: '0 0 8px #818cf8',
+              boxShadow: '0 0 8px #ffffff',
               animation: 'livePulseDot 1.8s infinite'
             }} />
             <span style={{
@@ -220,8 +220,8 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
               fontWeight: 800,
               textTransform: 'uppercase',
               letterSpacing: '0.08em',
-              color: isLight ? '#065f46' : '#818cf8',
-              textShadow: isLight ? 'none' : '0 0 12px rgba(99, 102, 241, 0.4)'
+              color: isLight ? '#065f46' : '#ffffff',
+              textShadow: isLight ? 'none' : '0 0 12px rgba(255, 255, 255, 0.4)'
             }}>
               Our Collective Vision &amp; Growth
             </span>
@@ -245,10 +245,10 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
           <div key={label} className="stat-card" style={{
             background: isLight 
               ? '#ffffff' 
-              : `linear-gradient(145deg, rgba(21, 27, 46, 0.95) 0%, rgba(17, 22, 37, 0.95) 100%)`,
+              : `linear-gradient(145deg, #121215 0%, #0d0d0f 100%)`,
             border: isLight ? '1px solid #cbd5e1' : `1px solid rgba(255, 255, 255, 0.12)`,
-            borderTop: isLight ? '1px solid #cbd5e1' : `3px solid ${color}`,
-            boxShadow: isLight ? '0 2px 6px rgba(15, 23, 42, 0.04)' : `0 4px 20px rgba(0, 0, 0, 0.25)`
+            borderTop: isLight ? '1px solid #cbd5e1' : `3px solid rgba(255, 255, 255, 0.35)`,
+            boxShadow: isLight ? '0 2px 6px rgba(15, 23, 42, 0.04)' : `0 4px 20px rgba(0, 0, 0, 0.4)`
           }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
               <div>
@@ -258,11 +258,11 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
               </div>
               <div style={{
                 width: '44px', height: '44px',
-                background: `${color}18`,
+                background: 'rgba(255, 255, 255, 0.06)',
                 borderRadius: '12px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color,
-                border: `1px solid ${color}35`,
+                color: '#ffffff',
+                border: `1px solid rgba(255, 255, 255, 0.14)`,
               }}>
                 <Icon size={20} />
               </div>

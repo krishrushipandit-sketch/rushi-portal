@@ -204,8 +204,8 @@ function SearchableClientDropdown({ clients, selectedId, disabled, onSelect }: S
                 textAlign: 'left',
                 padding: '5px 8px',
                 fontSize: '0.72rem',
-                background: !selectedId ? 'rgba(99,102,241,0.1)' : 'transparent',
-                color: !selectedId ? '#818cf8' : 'var(--text-muted)',
+                background: !selectedId ? 'rgba(255,255,255,0.08)' : 'transparent',
+                color: !selectedId ? '#ffffff' : 'var(--text-muted)',
                 border: 'none',
                 borderRadius: '5px',
                 cursor: 'pointer',
@@ -220,7 +220,7 @@ function SearchableClientDropdown({ clients, selectedId, disabled, onSelect }: S
             {/* Internal Brands Group */}
             {internalList.length > 0 && (
               <div style={{ marginBottom: '4px' }}>
-                <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#818cf8', padding: '4px 6px 2px' }}>
+                <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#e4e4e7', padding: '4px 6px 2px' }}>
                   🌟 Internal Brands
                 </div>
                 {internalList.map(c => (
@@ -234,8 +234,8 @@ function SearchableClientDropdown({ clients, selectedId, disabled, onSelect }: S
                       padding: '4px 8px',
                       fontSize: '0.74rem',
                       fontWeight: selectedId === c.id ? 700 : 500,
-                      background: selectedId === c.id ? 'rgba(99,102,241,0.15)' : 'transparent',
-                      color: selectedId === c.id ? '#818cf8' : 'var(--text-primary)',
+                      background: selectedId === c.id ? 'rgba(255,255,255,0.14)' : 'transparent',
+                      color: selectedId === c.id ? '#ffffff' : 'var(--text-primary)',
                       border: 'none',
                       borderRadius: '5px',
                       cursor: 'pointer',
@@ -245,7 +245,7 @@ function SearchableClientDropdown({ clients, selectedId, disabled, onSelect }: S
                       transition: 'background 0.1s'
                     }}
                   >
-                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: c.color || '#6366f1', flexShrink: 0 }} />
+                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: c.color || '#ffffff', flexShrink: 0 }} />
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
                   </button>
                 ))}

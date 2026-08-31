@@ -409,14 +409,14 @@ export default function StrategySection({ profile }: { profile: Profile }) {
               gap: '8px',
               padding: '8px 18px',
               borderRadius: '99px',
-              border: activeTab === 'internal' ? '1.5px solid #6366f1' : '1px solid var(--border-default)',
-              background: activeTab === 'internal' ? 'rgba(99,102,241,0.15)' : 'var(--bg-card)',
-              color: activeTab === 'internal' ? '#818cf8' : 'var(--text-secondary)',
+              border: activeTab === 'internal' ? '1.5px solid #ffffff' : '1px solid var(--border-default)',
+              background: activeTab === 'internal' ? 'rgba(255, 255, 255, 0.12)' : 'var(--bg-card)',
+              color: activeTab === 'internal' ? '#ffffff' : 'var(--text-secondary)',
               fontWeight: 800,
               fontSize: '0.875rem',
               cursor: 'pointer',
               transition: 'all 0.2s',
-              boxShadow: activeTab === 'internal' ? '0 2px 10px rgba(99,102,241,0.2)' : 'none'
+              boxShadow: activeTab === 'internal' ? '0 2px 10px rgba(255, 255, 255, 0.1)' : 'none'
             }}
           >
             <Sparkles size={16} /> 🌟 Internal Brands &amp; Media ({clients.filter(c => c.client_type === 'internal').length})

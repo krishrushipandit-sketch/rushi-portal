@@ -10,33 +10,33 @@
 }
 
 :root {
-  /* Brand Colors — Electric Indigo & Luminous Accents */
-  --brand-primary: #6366f1;
-  --brand-primary-hover: #4f46e5;
-  --brand-secondary: #818cf8;
-  --brand-accent: #38bdf8;
+  /* Brand Colors — Pure White, Silver & Monochrome Accents */
+  --brand-primary: #ffffff;
+  --brand-primary-hover: #e4e4e7;
+  --brand-secondary: #d4d4d8;
+  --brand-accent: #a1a1aa;
 
-  /* Deep Navy & Slate Layers (Linear / Notion Modern Dark) */
-  --bg-base: #0a0e1a;
-  --bg-surface: #0f1526;
-  --bg-card: #151d33;
-  --bg-card-hover: #1c2744;
-  --bg-elevated: #1e2a4a;
-  --bg-glass: rgba(15, 21, 38, 0.90);
+  /* Deep Space Black & Obsidian Charcoal Layers */
+  --bg-base: #050505;
+  --bg-surface: #0a0a0c;
+  --bg-card: #121215;
+  --bg-card-hover: #18181c;
+  --bg-elevated: #1e1e24;
+  --bg-glass: rgba(10, 10, 12, 0.92);
 
-  /* Clean Luminous Borders */
+  /* Clean Silver & Metallic Hairline Borders */
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border-default: rgba(255, 255, 255, 0.14);
-  --border-strong: rgba(255, 255, 255, 0.25);
-  --border-focus: #818cf8;
+  --border-strong: rgba(255, 255, 255, 0.28);
+  --border-focus: #ffffff;
 
-  /* High-Contrast Crisp Typography */
+  /* High-Contrast Crisp Pure White & Silver Typography */
   --text-primary: #ffffff;
-  --text-secondary: #cbd5e1;
-  --text-muted: #8494ab;
-  --text-accent: #818cf8;
+  --text-secondary: #d4d4d8;
+  --text-muted: #71717a;
+  --text-accent: #ffffff;
 
-  /* Status Accents */
+  /* Status Accents (Clean, non-intrusive) */
   --status-success: #10b981;
   --status-warning: #f59e0b;
   --status-danger: #ef4444;
@@ -349,15 +349,15 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .nav-item:hover {
-  background: rgba(99, 102, 241, 0.08);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text-primary);
-  border-color: rgba(99, 102, 241, 0.15);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .nav-item.active {
-  background: rgba(99, 102, 241, 0.12);
-  color: var(--brand-primary);
-  border-color: rgba(99, 102, 241, 0.2);
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.22);
 }
 
 .nav-section-label {
@@ -386,25 +386,28 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
-  color: white;
-  box-shadow: 0 2px 12px rgba(99, 102, 241, 0.3);
+  background: linear-gradient(180deg, #ffffff 0%, #e4e4e7 100%);
+  color: #09090b;
+  font-weight: 700;
+  border: 1px solid #ffffff;
+  box-shadow: 0 2px 10px rgba(255, 255, 255, 0.15);
 }
 
 .btn-primary:hover {
-  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.5);
+  background: #f4f4f5;
+  box-shadow: 0 4px 18px rgba(255, 255, 255, 0.25);
   transform: translateY(-1px);
 }
 
 .btn-secondary {
-  background: var(--bg-elevated);
+  background: #18181b;
   color: var(--text-primary);
-  border: 1px solid var(--border-default);
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .btn-secondary:hover {
-  background: var(--bg-card-hover);
-  border-color: var(--border-strong);
+  background: #27272a;
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .btn-danger {
@@ -423,7 +426,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .btn-ghost:hover {
-  background: var(--bg-elevated);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
 }
 
@@ -449,7 +452,7 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--bg-card);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -471,9 +474,9 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .form-input:focus, .form-select:focus, .form-textarea:focus {
-  background: var(--bg-card);
-  border-color: var(--brand-primary);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+  background: #18181b;
+  border-color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12);
 }
 
 /* Badges */
