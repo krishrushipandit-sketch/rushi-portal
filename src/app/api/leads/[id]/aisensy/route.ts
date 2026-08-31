@@ -26,7 +26,7 @@ export async function POST(
     const body = await req.json().catch(() => ({}))
     const templateName = body.templateName || 'ringing_sale'
 
-    const result = await sendAiSensyRingingSaleTemplate(lead, templateName)
+    const result = await sendAiSensyRingingSaleTemplate(lead, { templateName })
 
     return NextResponse.json(result)
   } catch (err: unknown) {
