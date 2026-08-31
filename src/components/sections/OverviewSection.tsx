@@ -134,108 +134,163 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
         </div>
       </div>
 
-      {/* ── Organization Vision & Leadership Banner (Glowing & Eye-Catching) ── */}
+      {/* ── Organization Vision & Leadership Hero Card ── */}
       <style>{`
-        @keyframes visionGlow {
+        @keyframes visionAurora {
           0%, 100% {
-            box-shadow: 0 0 15px rgba(255, 255, 255, 0.08), 0 4px 20px rgba(0, 0, 0, 0.5);
-            border-color: rgba(255, 255, 255, 0.18);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.45), 0 0 20px rgba(16, 185, 129, 0.15), 0 0 40px rgba(59, 130, 246, 0.1);
+            border-color: rgba(16, 185, 129, 0.4);
           }
           50% {
-            box-shadow: 0 0 25px rgba(255, 255, 255, 0.15), 0 4px 24px rgba(0, 0, 0, 0.7);
-            border-color: rgba(255, 255, 255, 0.35);
+            box-shadow: 0 4px 35px rgba(0, 0, 0, 0.55), 0 0 35px rgba(16, 185, 129, 0.3), 0 0 50px rgba(245, 158, 11, 0.18);
+            border-color: rgba(52, 211, 153, 0.7);
           }
         }
         @keyframes sparkleBlink {
-          0%, 100% {
-            transform: scale(1) rotate(0deg);
-            filter: drop-shadow(0 0 4px #ffffff);
-          }
-          50% {
-            transform: scale(1.22) rotate(12deg);
-            filter: drop-shadow(0 0 10px #ffffff);
-          }
+          0%, 100% { transform: scale(1) rotate(0deg); filter: drop-shadow(0 0 4px #fbbf24) drop-shadow(0 0 10px rgba(245, 158, 11, 0.8)); }
+          50% { transform: scale(1.2) rotate(12deg); filter: drop-shadow(0 0 10px #fde68a) drop-shadow(0 0 18px rgba(251, 191, 36, 0.95)); }
         }
         @keyframes livePulseDot {
           0%, 100% { transform: scale(1); opacity: 0.8; }
           50% { transform: scale(1.4); opacity: 1; }
         }
       `}</style>
+      
       <div
         style={{
           background: isLight
             ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(99, 102, 241, 0.08) 100%)'
-            : 'linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
-          border: isLight ? '1.5px solid rgba(16, 185, 129, 0.45)' : '1px solid rgba(255, 255, 255, 0.18)',
-          borderRadius: '16px',
-          padding: '1.125rem 1.35rem',
+            : 'linear-gradient(135deg, rgba(16, 185, 129, 0.14) 0%, rgba(14, 20, 36, 0.95) 45%, rgba(59, 130, 246, 0.12) 100%)',
+          border: isLight ? '1.5px solid rgba(16, 185, 129, 0.45)' : '1.5px solid rgba(16, 185, 129, 0.45)',
+          borderRadius: '18px',
+          padding: '1.35rem 1.5rem',
           marginBottom: '1.75rem',
           display: 'flex',
-          alignItems: 'center',
+          flexDirection: 'column',
           gap: '1rem',
           position: 'relative',
           overflow: 'hidden',
-          animation: 'visionGlow 4s ease-in-out infinite',
-          backdropFilter: 'blur(10px)',
-          boxShadow: isLight ? '0 4px 20px rgba(16, 185, 129, 0.12)' : '0 4px 24px rgba(0, 0, 0, 0.6)'
+          animation: 'visionAurora 4s ease-in-out infinite',
+          backdropFilter: 'blur(12px)',
+          boxShadow: isLight ? '0 4px 20px rgba(16, 185, 129, 0.12)' : '0 8px 32px rgba(0, 0, 0, 0.5)'
         }}
       >
-        {/* Glowing Sparkle Icon Badge */}
-        <div
-          style={{
-            width: '42px',
-            height: '42px',
-            borderRadius: '12px',
-            background: isLight ? 'rgba(16, 185, 129, 0.18)' : 'rgba(255, 255, 255, 0.08)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-            border: isLight ? '1.5px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255, 255, 255, 0.25)',
-            boxShadow: isLight ? '0 2px 10px rgba(16, 185, 129, 0.2)' : '0 0 14px rgba(255, 255, 255, 0.1)'
-          }}
-        >
-          <span style={{
-            fontSize: '1.35rem',
-            display: 'inline-block',
-            animation: 'sparkleBlink 2.5s ease-in-out infinite'
-          }}>
-            ✨
-          </span>
-        </div>
-
-        <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
-            <span style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              background: '#ffffff',
-              display: 'inline-block',
-              boxShadow: '0 0 8px #ffffff',
-              animation: 'livePulseDot 1.8s infinite'
-            }} />
-            <span style={{
-              fontSize: '0.74rem',
-              fontWeight: 800,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              color: isLight ? '#065f46' : '#ffffff',
-              textShadow: isLight ? 'none' : '0 0 12px rgba(255, 255, 255, 0.4)'
-            }}>
-              Our Collective Vision &amp; Growth
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1.125rem' }}>
+          {/* Glowing Golden-Emerald 3D Icon Badge */}
+          <div
+            style={{
+              width: '46px',
+              height: '46px',
+              borderRadius: '14px',
+              background: isLight
+                ? 'rgba(16, 185, 129, 0.18)'
+                : 'linear-gradient(135deg, rgba(245, 158, 11, 0.25) 0%, rgba(16, 185, 129, 0.3) 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              border: isLight ? '1.5px solid rgba(16, 185, 129, 0.4)' : '1.5px solid rgba(251, 191, 36, 0.5)',
+              boxShadow: isLight ? '0 2px 10px rgba(16, 185, 129, 0.2)' : '0 0 16px rgba(245, 158, 11, 0.35)'
+            }}
+          >
+            <span style={{ fontSize: '1.45rem', display: 'inline-block', animation: 'sparkleBlink 2.5s ease-in-out infinite' }}>
+              ✨
             </span>
           </div>
-          <p style={{
-            fontSize: '0.88rem',
-            lineHeight: 1.6,
-            color: 'var(--text-primary)',
-            margin: 0,
-            fontWeight: 600,
-            letterSpacing: '-0.01em'
+
+          <div style={{ flex: 1 }}>
+            {/* Header Pill */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.45rem' }}>
+              <span style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: '#10b981',
+                display: 'inline-block',
+                boxShadow: '0 0 10px #10b981',
+                animation: 'livePulseDot 1.8s infinite'
+              }} />
+              <span style={{
+                fontSize: '0.74rem',
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                color: isLight ? '#065f46' : '#34d399',
+                textShadow: isLight ? 'none' : '0 0 12px rgba(16, 185, 129, 0.4)'
+              }}>
+                Our Collective Vision &amp; Growth Mission
+              </span>
+            </div>
+
+            {/* Tagline with Color Accents & Visual Polish */}
+            <p style={{
+              fontSize: '0.94rem',
+              lineHeight: 1.65,
+              color: 'var(--text-primary)',
+              margin: 0,
+              fontWeight: 500,
+              letterSpacing: '-0.01em'
+            }}>
+              &ldquo;We&apos;re building an organization that can become one of India&apos;s leading{' '}
+              <span style={{ color: isLight ? '#0369a1' : '#38bdf8', fontWeight: 800 }}>
+                AI, Business Transformation
+              </span>
+              , and{' '}
+              <span style={{ color: isLight ? '#047857' : '#34d399', fontWeight: 800 }}>
+                Digital Growth
+              </span>{' '}
+              companies, including{' '}
+              <span style={{ color: isLight ? '#b45309' : '#fbbf24', fontWeight: 800 }}>
+                Stock Advisory
+              </span>
+              . Every one of you has the opportunity to{' '}
+              <span style={{
+                color: '#ffffff',
+                fontWeight: 800,
+                background: isLight ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.25)',
+                padding: '2px 8px',
+                borderRadius: '6px',
+                border: '1px solid rgba(16, 185, 129, 0.45)',
+                display: 'inline-block'
+              }}>
+                grow into a leader as we scale together.
+              </span>
+              &rdquo;
+            </p>
+          </div>
+        </div>
+
+        {/* 3 Visual Pillars */}
+        <div style={{
+          display: 'flex',
+          gap: '0.75rem',
+          flexWrap: 'wrap',
+          borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+          paddingTop: '0.75rem'
+        }}>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '8px',
+            background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)'
           }}>
-            &ldquo;We&apos;re building an organization that can become one of India&apos;s leading AI, Business Transformation, and Digital Growth companies, including Stock Advisory. Every one of you has the opportunity to grow into a leader as we scale together.&rdquo;
-          </p>
+            🤖 AI &amp; Business Transformation
+          </div>
+
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '8px',
+            background: 'rgba(245, 158, 11, 0.12)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.3)'
+          }}>
+            📈 Stock &amp; Wealth Advisory
+          </div>
+
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '8px',
+            background: 'rgba(16, 185, 129, 0.12)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)'
+          }}>
+            🚀 Digital Growth &amp; Media Production
+          </div>
         </div>
       </div>
 
@@ -245,26 +300,30 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
           <div key={label} className="stat-card" style={{
             background: isLight 
               ? '#ffffff' 
-              : `linear-gradient(145deg, #121215 0%, #0d0d0f 100%)`,
+              : `linear-gradient(145deg, ${color}12 0%, rgba(17, 24, 39, 0.95) 100%)`,
             border: isLight ? '1px solid #cbd5e1' : `1px solid rgba(255, 255, 255, 0.12)`,
-            borderTop: isLight ? '1px solid #cbd5e1' : `3px solid rgba(255, 255, 255, 0.35)`,
-            boxShadow: isLight ? '0 2px 6px rgba(15, 23, 42, 0.04)' : `0 4px 20px rgba(0, 0, 0, 0.4)`
+            borderTop: `3px solid ${color}`,
+            boxShadow: isLight ? '0 2px 6px rgba(15, 23, 42, 0.04)' : `0 4px 20px rgba(0, 0, 0, 0.4), 0 0 15px ${color}15`,
+            borderRadius: '16px',
+            padding: '1.35rem',
+            transition: 'all 0.2s ease'
           }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
               <div>
-                <div className="metric-value" style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary)' }}>{value}</div>
-                <div className="metric-label" style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)', marginTop: '2px' }}>{label}</div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>{sub}</div>
+                <div className="metric-value" style={{ fontSize: '2rem', fontWeight: 800, color }}>{value}</div>
+                <div className="metric-label" style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>{label}</div>
+                <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>{sub}</div>
               </div>
               <div style={{
-                width: '44px', height: '44px',
-                background: 'rgba(255, 255, 255, 0.06)',
+                width: '46px', height: '46px',
+                background: `${color}18`,
                 borderRadius: '12px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#ffffff',
-                border: `1px solid rgba(255, 255, 255, 0.14)`,
+                color,
+                border: `1px solid ${color}35`,
+                boxShadow: `0 0 12px ${color}20`
               }}>
-                <Icon size={20} />
+                <Icon size={22} />
               </div>
             </div>
           </div>

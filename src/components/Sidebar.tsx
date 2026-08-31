@@ -100,10 +100,10 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
       }
     }
     return {
-      background: isActive ? 'rgba(255, 255, 255, 0.10)' : 'transparent',
-      color: isActive ? '#ffffff' : 'var(--text-secondary)',
-      border: `1px solid ${isActive ? 'rgba(255, 255, 255, 0.22)' : 'transparent'}`,
-      boxShadow: isActive ? '0 2px 10px rgba(0, 0, 0, 0.35)' : 'none',
+      background: isActive ? 'linear-gradient(90deg, rgba(16, 185, 129, 0.18) 0%, rgba(59, 130, 246, 0.08) 100%)' : 'transparent',
+      color: isActive ? '#34d399' : 'var(--text-secondary)',
+      border: `1px solid ${isActive ? 'rgba(52, 211, 153, 0.35)' : 'transparent'}`,
+      boxShadow: isActive ? '0 2px 12px rgba(16, 185, 129, 0.18)' : 'none',
       fontWeight: isActive ? 700 : 500
     }
   }
