@@ -80,30 +80,24 @@ export function formatStatusForTemplate(status: string): string {
   return status.charAt(0).toUpperCase() + status.slice(1)
 }
 
+const DEFAULT_AISENSY_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY2NzJjOTQ5NmM3YjZlMTM5NWJkYmIzOSIsIm5hbWUiOiJSdXNoaVBhbmRpdCAtIERpZ2l0YWwgQWNhZGVteSIsImFwcE5hbWUiOiJBaVNlbnN5IiwiY2xpZW50SWQiOiI2NjcyYzk0ODZjN2I2ZTEzOTViZGJiMjciLCJhY3RpdmVQbGFuIjoiQkFTSUNfTU9OVEhMWSIsImlhdCI6MTc4NzczMzYwOX0.7z3K8tMpMK9YunrZ1WiICIwEXkgJP4RoRaMX0lm0Im8'
+
 /**
- * Checks whether this status transition should trigger the 1-time ringing_sale AiSensy WhatsApp template.
+ * Checks whether this status transition should trigger the ringing_sale AiSensy WhatsApp template.
  * 
- * Rules:
- * - Only triggers for ringing/not_connected/switched_off/busy_callback statuses
- * - Only when PREVIOUS status was 'new' (first-time call attempt)
- * - Never triggers twice (whatsapp_ringing_sent guard)
+ * Eligible statuses:
+ * - ringing (Ringing)
+ * - callback (Call Back)
+ * - switched_off (Switch Off)
+ * - busy (Busy)
+ * - not_connected (Not Reachable)
  */
 export function shouldTriggerRingingSaleWhatsApp(
   oldStatus: string | null | undefined,
-  newStatus: string,
-  alreadySent: boolean | null | undefined
+  newStatus: string
 ): boolean {
-  if (alreadySent) return false
-
   const cleanNew = (newStatus || '').toLowerCase().trim()
-  const cleanOld = (oldStatus || 'new').toLowerCase().trim()
-
-  if (DISALLOWED_STATUSES.has(cleanNew)) return false
-  if (!ELIGIBLE_RINGING_STATUSES.has(cleanNew)) return false
-
-  // Only trigger on first call attempt — when previous status was 'new'
-  const isFromNew = cleanOld === 'new' || !cleanOld
-  return isFromNew
+  return ELIGIBLE_RINGING_STATUSES.has(cleanNew)
 }
 
 /**
@@ -121,12 +115,7 @@ export async function sendAiSensyRingingSaleTemplate(
   }
 ): Promise<{ success: boolean; error?: string; data?: any }> {
   try {
-    const apiKey = process.env.AISENSY_SALES_API_KEY || process.env.AISENSY_API_KEY
-    if (!apiKey) {
-      const msg = 'AISENSY_API_KEY (or AISENSY_SALES_API_KEY) environment variable is not configured'
-      console.warn(`[AiSensy] ${msg}`)
-      return { success: false, error: msg }
-    }
+    const apiKey = process.env.AISENSY_SALES_API_KEY || process.env.AISENSY_API_KEY || DEFAULT_AISENSY_KEY
 
     const destination = normalizePhoneForWhatsApp(lead.phone)
     if (!destination) {
@@ -175,7 +164,6 @@ export async function sendAiSensyRingingSaleTemplate(
     if (!res.ok || resData.success === false) {
       const errMsg = resData.message || resData.error || `HTTP ${res.status}`
       console.error('[AiSensy] API Error:', errMsg, resData)
-      // Safely update status - ignore error if column doesn't exist yet
       try {
         await execute(
           `UPDATE leads SET whatsapp_msg_status = $1, updated_at = NOW() WHERE id = $2`,
@@ -187,7 +175,7 @@ export async function sendAiSensyRingingSaleTemplate(
 
     console.log(`[AiSensy] Successfully delivered '${templateName}' to ${destination}`)
 
-    // Mark as sent - use safe column update
+    // Mark as sent in database
     try {
       await execute(
         `UPDATE leads SET 
@@ -209,35 +197,19 @@ export async function sendAiSensyRingingSaleTemplate(
 
 /**
  * Main trigger function. Called AFTER the lead is updated.
- * 
- * IMPORTANT: oldStatus must be passed in explicitly from BEFORE the DB update.
- * Do NOT rely on querying lead.status from the DB here — it will already be the new status.
  */
 export async function handleLeadStatusChangeAiSensy(
   leadId: string,
   newStatus: string,
-  updatedByUserId: string,
-  oldStatus: string   // <-- MUST be passed from BEFORE the DB update
+  updatedByUserId?: string,
+  oldStatus?: string
 ): Promise<void> {
   try {
     console.log(`[AiSensy] Status change: "${oldStatus}" -> "${newStatus}" for lead ${leadId}`)
 
-    // Check whatsapp_ringing_sent safely
-    let alreadySent = false
-    try {
-      const row = await queryOne<{ whatsapp_ringing_sent: boolean | null }>(
-        `SELECT whatsapp_ringing_sent FROM leads WHERE id = $1`,
-        [leadId]
-      )
-      alreadySent = !!row?.whatsapp_ringing_sent
-    } catch (_) {
-      // Column might not exist yet — proceed as not sent
-      alreadySent = false
-    }
+    const shouldSend = shouldTriggerRingingSaleWhatsApp(oldStatus, newStatus)
 
-    const shouldSend = shouldTriggerRingingSaleWhatsApp(oldStatus, newStatus, alreadySent)
-
-    console.log(`[AiSensy] shouldSend=${shouldSend} | alreadySent=${alreadySent} | old="${oldStatus}" new="${newStatus}"`)
+    console.log(`[AiSensy] shouldSend=${shouldSend} | old="${oldStatus}" new="${newStatus}"`)
 
     if (!shouldSend) return
 
