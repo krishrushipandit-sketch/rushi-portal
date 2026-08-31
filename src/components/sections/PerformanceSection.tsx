@@ -29,22 +29,13 @@ interface EmployeePerf {
   reports: { total_this_month: number; details: ReportDetail[] }
 }
 
-interface ContentItem {
+interface MediaLog {
   id: string
-  brandName: string
-  brandColor: string
-  clientType: 'internal' | 'external'
-  contentType: string
-  taskPhase: string
-  title: string
-  liveUrl?: string | null
-  platform?: string | null
-  status: string
+  log_date: string
   count: number
-  logDate: string
-  creatorName: string
-  creatorAvatar?: string | null
-  creatorDesignation?: string | null
+  notes: string | null
+  client_name: string | null
+  content_type: string | null
 }
 
 interface MediaProductionEmployee {
@@ -53,18 +44,11 @@ interface MediaProductionEmployee {
   youtube: number
   shooting: number
   staticPosts: number
-  carousels: number
-  published: number
-  lnsTasks: number
   other: number
-  internalTotal: number
-  externalTotal: number
   totalDeliverables: number
-  internalBreakdown: { brandName: string; type: 'internal'; reels: number; youtube: number; shooting: number; staticPosts: number; carousels: number; published: number; total: number }[]
-  externalBreakdown: { brandName: string; type: 'external'; reels: number; youtube: number; shooting: number; staticPosts: number; carousels: number; published: number; total: number }[]
-  clientBreakdown: any[]
+  clientBreakdown: { clientName: string; reels: number; youtube: number; shooting: number; staticPosts: number; total: number }[]
   logsCount: number
-  recentLogs: any[]
+  recentLogs: MediaLog[]
 }
 
 interface MediaTotals {
@@ -72,10 +56,6 @@ interface MediaTotals {
   totalYoutube: number
   totalShooting: number
   totalStaticPosts: number
-  totalCarousels: number
-  totalPublished: number
-  totalInternal: number
-  totalExternal: number
   grandTotal: number
 }
 
@@ -87,15 +67,10 @@ interface GlobalStats {
 export default function PerformanceSection({ profile }: { profile: Profile }) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'media' | 'tasks'>('media')
-  const [mediaSubTab, setMediaSubTab] = useState<'matrix' | 'internal' | 'external' | 'inventory'>('matrix')
-  const [inventorySearch, setInventorySearch] = useState('')
-  const [inventoryFilterPhase, setInventoryFilterPhase] = useState<string>('all')
-  const [inventoryFilterBrand, setInventoryFilterBrand] = useState<string>('all')
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
   const [performance, setPerformance] = useState<EmployeePerf[]>([])
   const [mediaProduction, setMediaProduction] = useState<MediaProductionEmployee[]>([])
   const [mediaTotals, setMediaTotals] = useState<MediaTotals | null>(null)
-  const [contentInventory, setContentInventory] = useState<ContentItem[]>([])
   const [globalStats, setGlobalStats] = useState<GlobalStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [expandedEmpId, setExpandedEmpId] = useState<string | null>(null)
@@ -118,7 +93,6 @@ export default function PerformanceSection({ profile }: { profile: Profile }) {
       setGlobalStats(data.globalStats)
       setMediaProduction(data.mediaProduction || [])
       setMediaTotals(data.mediaTotals || null)
-      setContentInventory(data.contentInventory || [])
     }
     setLoading(false)
   }, [selectedMonth, router])
@@ -156,20 +130,6 @@ export default function PerformanceSection({ profile }: { profile: Profile }) {
 
   const currentMonthLabel = new Date(selectedMonth + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
 
-  // Filtered inventory list
-  const filteredInventory = contentInventory.filter(item => {
-    const matchesSearch = !inventorySearch.trim() ||
-      item.title.toLowerCase().includes(inventorySearch.toLowerCase()) ||
-      item.brandName.toLowerCase().includes(inventorySearch.toLowerCase()) ||
-      item.creatorName.toLowerCase().includes(inventorySearch.toLowerCase())
-    const matchesPhase = inventoryFilterPhase === 'all' || item.taskPhase.toLowerCase() === inventoryFilterPhase.toLowerCase()
-    const matchesBrand = inventoryFilterBrand === 'all' ||
-      (inventoryFilterBrand === 'internal' ? item.clientType === 'internal' :
-       inventoryFilterBrand === 'external' ? item.clientType === 'external' :
-       item.brandName.toLowerCase() === inventoryFilterBrand.toLowerCase())
-    return matchesSearch && matchesPhase && matchesBrand
-  })
-
   return (
     <div className="animate-fade-in">
       {/* ── Header & Month Selector ── */}
@@ -177,52 +137,66 @@ export default function PerformanceSection({ profile }: { profile: Profile }) {
         <div>
           <h1 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Production & Performance Reports</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            {currentMonthLabel} — Internal Brands (7 Properties), Client Deliverables, Shoots & Media Operations
+            {currentMonthLabel} — Monthly deliverables, video editing, shoots & task analytics
           </p>
         </div>
-        <input
-          type="month"
-          className="form-input"
-          value={selectedMonth}
-          max={new Date().toISOString().slice(0, 7)}
-          onChange={e => setSelectedMonth(e.target.value)}
-          style={{ width: 'auto', height: '36px', fontSize: '0.82rem', padding: '0 0.75rem' }}
-        />
+
+        {/* Month Selector & Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginLeft: 'auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'var(--bg-card)', padding: '4px 8px', borderRadius: '8px', border: '1px solid var(--border-default)' }}>
+            <Calendar size={15} style={{ color: 'var(--brand-primary)' }} />
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={e => setSelectedMonth(e.target.value)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-primary)',
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                outline: 'none'
+              }}
+            />
+          </div>
+          <button className="btn btn-secondary btn-sm" onClick={fetchData}>Refresh</button>
+        </div>
       </div>
 
-      {/* ── Top Level Mode Selector ── */}
-      <div style={{ display: 'flex', gap: '0.625rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-default)', paddingBottom: '0.75rem' }}>
+      {/* ── Sub Navigation Tabs ── */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.75rem' }}>
         <button
           onClick={() => setActiveTab('media')}
           style={{
-            padding: '8px 18px',
-            borderRadius: '99px',
-            border: 'none',
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
-            background: activeTab === 'media' ? 'rgba(99,102,241,0.15)' : 'transparent',
-            color: activeTab === 'media' ? '#818cf8' : 'var(--text-secondary)',
+            padding: '8px 16px',
+            borderRadius: '99px',
+            border: activeTab === 'media' ? '1.5px solid var(--brand-primary)' : '1px solid var(--border-default)',
+            background: activeTab === 'media' ? 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(5,150,105,0.08) 100%)' : 'var(--bg-card)',
+            color: activeTab === 'media' ? '#10b981' : 'var(--text-secondary)',
             fontWeight: 800,
             fontSize: '0.875rem',
             cursor: 'pointer',
             transition: 'all 0.2s',
-            boxShadow: activeTab === 'media' ? '0 2px 8px rgba(99,102,241,0.15)' : 'none'
+            boxShadow: activeTab === 'media' ? '0 2px 8px rgba(16,185,129,0.15)' : 'none'
           }}
         >
-          <Film size={16} /> 🎬 Media & Creator Production Hub
+          <Film size={16} /> 🎬 Video & Media Production (Suyog, Kedar, Rohan)
         </button>
 
         <button
           onClick={() => setActiveTab('tasks')}
           style={{
-            padding: '8px 18px',
-            borderRadius: '99px',
-            border: 'none',
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
-            background: activeTab === 'tasks' ? 'rgba(16,185,129,0.15)' : 'transparent',
+            padding: '8px 16px',
+            borderRadius: '99px',
+            border: activeTab === 'tasks' ? '1.5px solid var(--brand-primary)' : '1px solid var(--border-default)',
+            background: activeTab === 'tasks' ? 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(5,150,105,0.08) 100%)' : 'var(--bg-card)',
             color: activeTab === 'tasks' ? '#10b981' : 'var(--text-secondary)',
             fontWeight: 800,
             fontSize: '0.875rem',
@@ -236,50 +210,36 @@ export default function PerformanceSection({ profile }: { profile: Profile }) {
       </div>
 
       {/* ══════════════════════════════════════════════════════════
-          TAB 1: MEDIA & VIDEO PRODUCTION REPORT (SUYOG, KEDAR, ROHAN, POOJA, SHREYA)
+          TAB 1: MEDIA & VIDEO PRODUCTION REPORT (SUYOG, KEDAR, ROHAN)
       ══════════════════════════════════════════════════════════ */}
       {activeTab === 'media' && (
         <div className="animate-fade-in">
-          {/* Executive Totals Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.875rem', marginBottom: '1.5rem' }}>
-            <div className="stat-card" style={{ borderLeft: '4px solid #10b981' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <div className="metric-value" style={{ color: '#10b981' }}>{mediaTotals?.totalInternal || 0}</div>
-                  <div className="metric-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    🏢 Internal Brands Output
-                  </div>
-                </div>
-                <div style={{ width: '38px', height: '38px', background: 'rgba(16,185,129,0.12)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}>
-                  <Sparkles size={18} />
-                </div>
-              </div>
-            </div>
-
+          {/* Team Production KPI Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
             <div className="stat-card" style={{ borderLeft: '4px solid #6366f1' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
-                  <div className="metric-value" style={{ color: '#6366f1' }}>{mediaTotals?.totalExternal || 0}</div>
+                  <div className="metric-value" style={{ color: '#6366f1' }}>{mediaTotals?.totalReels || 0}</div>
                   <div className="metric-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    🤝 Client Deliverables
+                    <PlayCircle size={13} style={{ color: '#6366f1' }} /> Reels Edited & Produced
                   </div>
                 </div>
-                <div style={{ width: '38px', height: '38px', background: 'rgba(99,102,241,0.12)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6366f1' }}>
-                  <Users size={18} />
+                <div style={{ width: '42px', height: '42px', background: 'rgba(99,102,241,0.12)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6366f1' }}>
+                  <Film size={20} />
                 </div>
               </div>
             </div>
 
-            <div className="stat-card" style={{ borderLeft: '4px solid #3b82f6' }}>
+            <div className="stat-card" style={{ borderLeft: '4px solid #ef4444' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
-                  <div className="metric-value" style={{ color: '#3b82f6' }}>{mediaTotals?.totalReels || 0}</div>
+                  <div className="metric-value" style={{ color: '#ef4444' }}>{mediaTotals?.totalYoutube || 0}</div>
                   <div className="metric-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <PlayCircle size={12} style={{ color: '#3b82f6' }} /> Reels Edited
+                    <Video size={13} style={{ color: '#ef4444' }} /> YouTube Videos Edited
                   </div>
                 </div>
-                <div style={{ width: '38px', height: '38px', background: 'rgba(59,130,246,0.12)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3b82f6' }}>
-                  <Film size={18} />
+                <div style={{ width: '42px', height: '42px', background: 'rgba(239,68,68,0.12)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}>
+                  <Video size={20} />
                 </div>
               </div>
             </div>
@@ -289,11 +249,11 @@ export default function PerformanceSection({ profile }: { profile: Profile }) {
                 <div>
                   <div className="metric-value" style={{ color: '#ec4899' }}>{mediaTotals?.totalShooting || 0}</div>
                   <div className="metric-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Camera size={12} style={{ color: '#ec4899' }} /> Shoots Done
+                    <Camera size={13} style={{ color: '#ec4899' }} /> Shoots Completed
                   </div>
                 </div>
-                <div style={{ width: '38px', height: '38px', background: 'rgba(236,72,153,0.12)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ec4899' }}>
-                  <Camera size={18} />
+                <div style={{ width: '42px', height: '42px', background: 'rgba(236,72,153,0.12)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ec4899' }}>
+                  <Camera size={20} />
                 </div>
               </div>
             </div>
@@ -301,70 +261,55 @@ export default function PerformanceSection({ profile }: { profile: Profile }) {
             <div className="stat-card" style={{ borderLeft: '4px solid #8b5cf6' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
-                  <div className="metric-value" style={{ color: '#8b5cf6' }}>{(mediaTotals?.totalStaticPosts || 0) + (mediaTotals?.totalCarousels || 0)}</div>
+                  <div className="metric-value" style={{ color: '#8b5cf6' }}>{mediaTotals?.totalStaticPosts || 0}</div>
                   <div className="metric-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Grid3x3 size={12} style={{ color: '#8b5cf6' }} /> Posts & Carousels
+                    <Grid3x3 size={13} style={{ color: '#8b5cf6' }} /> Static Posts & Graphics
                   </div>
                 </div>
-                <div style={{ width: '38px', height: '38px', background: 'rgba(139,92,246,0.12)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8b5cf6' }}>
-                  <Grid3x3 size={18} />
+                <div style={{ width: '42px', height: '42px', background: 'rgba(139,92,246,0.12)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8b5cf6' }}>
+                  <Grid3x3 size={20} />
                 </div>
               </div>
             </div>
 
-            <div className="stat-card" style={{ borderLeft: '4px solid #f59e0b' }}>
+            <div className="stat-card" style={{ borderLeft: '4px solid #10b981' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
-                  <div className="metric-value" style={{ color: '#f59e0b' }}>{mediaTotals?.grandTotal || 0}</div>
+                  <div className="metric-value" style={{ color: '#10b981' }}>{mediaTotals?.grandTotal || 0}</div>
                   <div className="metric-label" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Award size={12} style={{ color: '#f59e0b' }} /> Grand Total Output
+                    <Award size={13} style={{ color: '#10b981' }} /> Total Content Output
                   </div>
                 </div>
-                <div style={{ width: '38px', height: '38px', background: 'rgba(245,158,11,0.12)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b' }}>
-                  <Award size={18} />
+                <div style={{ width: '42px', height: '42px', background: 'rgba(16,185,129,0.12)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}>
+                  <Sparkles size={20} />
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Media Sub-Tabs */}
-          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
-            {[
-              { id: 'matrix', label: `👥 Creator Output Matrix (${mediaProduction.length})` },
-              { id: 'internal', label: `🏢 Internal Brands (7 Properties)` },
-              { id: 'external', label: `🤝 External Clients` },
-              { id: 'inventory', label: `📁 Itemized Content Catalog (${contentInventory.length})` }
-            ].map(sub => (
-              <button
-                key={sub.id}
-                onClick={() => setMediaSubTab(sub.id as any)}
-                style={{
-                  padding: '6px 14px', borderRadius: '8px', border: 'none', cursor: 'pointer',
-                  fontSize: '0.78rem', fontWeight: 700, transition: 'all 0.15s',
-                  background: mediaSubTab === sub.id ? 'var(--brand-primary)' : 'var(--bg-elevated)',
-                  color: mediaSubTab === sub.id ? 'white' : 'var(--text-secondary)'
-                }}
-              >
-                {sub.label}
-              </button>
-            ))}
+          {/* Creators Breakdown List */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Users size={18} style={{ color: 'var(--brand-primary)' }} /> Creator & Editor Monthly Production Breakdown
+            </h2>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              Filtered for {currentMonthLabel}
+            </span>
           </div>
 
-          {/* SUB-VIEW 1: CREATOR OUTPUT MATRIX */}
-          {mediaSubTab === 'matrix' && (
+          {mediaProduction.length === 0 ? (
+            <div className="glass-card">
+              <div className="empty-state">
+                <div className="empty-state-icon"><Film size={24} /></div>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>No media production data logged for {currentMonthLabel}</p>
+              </div>
+            </div>
+          ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {mediaProduction.map(item => {
                 const isExp = expandedMediaId === item.employee.id
                 const name = item.employee.full_name || 'Team Member'
-                const nameLower = name.toLowerCase()
-
-                const roleBadge = 
-                  nameLower.includes('suyog') ? { title: '🎬 Lead Video Editor - Internal Brands & Shoots', color: '#6366f1' } :
-                  nameLower.includes('kedar') ? { title: '🤝 Co-Founder & Client Strategy - Client Videos & Shoots', color: '#10b981' } :
-                  nameLower.includes('rohan') ? { title: '🎨 Post & Carousel Creation - Graphics & Shoots', color: '#f59e0b' } :
-                  nameLower.includes('pooja') ? { title: '🚀 Social Media Distribution & LNS Operations', color: '#ec4899' } :
-                  nameLower.includes('shreya') ? { title: '🚀 Social Media Posting & Channel Management', color: '#8b5cf6' } :
-                  { title: item.employee.designation || 'Media Team Member', color: 'var(--brand-primary)' }
+                const isLead = name.toLowerCase().includes('suyog') || name.toLowerCase().includes('kedar') || name.toLowerCase().includes('rohan')
 
                 return (
                   <div
@@ -372,8 +317,9 @@ export default function PerformanceSection({ profile }: { profile: Profile }) {
                     className="glass-card"
                     style={{
                       overflow: 'hidden',
-                      border: '1px solid var(--border-default)',
+                      border: isLead ? '1px solid rgba(16,185,129,0.25)' : '1px solid var(--border-default)',
                       background: 'var(--bg-card)',
+                      boxShadow: isLead ? '0 4px 16px rgba(0,0,0,0.06)' : 'none'
                     }}
                   >
                     {/* Header Row */}
@@ -387,10 +333,11 @@ export default function PerformanceSection({ profile }: { profile: Profile }) {
                         gap: '1rem',
                         cursor: 'pointer',
                         flexWrap: 'wrap',
+                        background: isLead ? 'linear-gradient(90deg, rgba(16,185,129,0.04) 0%, transparent 100%)' : 'transparent'
                       }}
                     >
                       {/* Creator Profile */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', minWidth: '240px', flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', minWidth: '220px', flex: 1 }}>
                         {item.employee.avatar_url ? (
                           <img
                             src={item.employee.avatar_url}
@@ -401,52 +348,59 @@ export default function PerformanceSection({ profile }: { profile: Profile }) {
                           <div className="avatar avatar-lg" style={{ flexShrink: 0, fontWeight: 800 }}>{getInitials(name)}</div>
                         )}
                         <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <p style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)', margin: 0 }}>{name}</p>
-                            <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '2px 7px', borderRadius: '99px', background: `${roleBadge.color}18`, color: roleBadge.color, border: `1px solid ${roleBadge.color}30` }}>
-                              {roleBadge.title}
-                            </span>
+                            {name.toLowerCase().includes('suyog') && (
+                              <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '2px 7px', borderRadius: '99px', background: 'rgba(99,102,241,0.12)', color: '#6366f1' }}>
+                                🎬 Video Editor
+                              </span>
+                            )}
+                            {name.toLowerCase().includes('kedar') && (
+                              <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '2px 7px', borderRadius: '99px', background: 'rgba(16,185,129,0.12)', color: '#10b981' }}>
+                                ⭐ Co-Founder
+                              </span>
+                            )}
+                            {name.toLowerCase().includes('rohan') && (
+                              <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '2px 7px', borderRadius: '99px', background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}>
+                                🎥 Media Production
+                              </span>
+                            )}
                           </div>
-                          <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '3px 0 0' }}>
-                            🏢 Internal: <strong style={{ color: '#10b981' }}>{item.internalTotal}</strong> &nbsp;·&nbsp; 🤝 Clients: <strong style={{ color: '#818cf8' }}>{item.externalTotal}</strong> &nbsp;·&nbsp; {item.employee.email}
+                          <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '2px 0 0' }}>
+                            {item.employee.designation || 'Media Creator'} {item.employee.department ? `· ${item.employee.department}` : ''}
                           </p>
                         </div>
                       </div>
 
                       {/* Production KPIs Pills */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                        <div style={{ padding: '4px 8px', borderRadius: '6px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', textAlign: 'center', minWidth: '55px' }}>
-                          <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#6366f1' }}>{item.reels}</span>
-                          <p style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', margin: 0 }}>Reels</p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <div style={{ padding: '4px 10px', borderRadius: '8px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', textAlign: 'center', minWidth: '65px' }}>
+                          <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#6366f1' }}>{item.reels}</span>
+                          <p style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-muted)', margin: 0 }}>Reels</p>
                         </div>
 
-                        <div style={{ padding: '4px 8px', borderRadius: '6px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', textAlign: 'center', minWidth: '55px' }}>
-                          <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#ef4444' }}>{item.youtube}</span>
-                          <p style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', margin: 0 }}>YouTube</p>
+                        <div style={{ padding: '4px 10px', borderRadius: '8px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', textAlign: 'center', minWidth: '65px' }}>
+                          <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#ef4444' }}>{item.youtube}</span>
+                          <p style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-muted)', margin: 0 }}>YouTube</p>
                         </div>
 
-                        <div style={{ padding: '4px 8px', borderRadius: '6px', background: 'rgba(236,72,153,0.08)', border: '1px solid rgba(236,72,153,0.2)', textAlign: 'center', minWidth: '55px' }}>
-                          <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#ec4899' }}>{item.shooting}</span>
-                          <p style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', margin: 0 }}>Shoots</p>
+                        <div style={{ padding: '4px 10px', borderRadius: '8px', background: 'rgba(236,72,153,0.08)', border: '1px solid rgba(236,72,153,0.2)', textAlign: 'center', minWidth: '65px' }}>
+                          <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#ec4899' }}>{item.shooting}</span>
+                          <p style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-muted)', margin: 0 }}>Shooting</p>
                         </div>
 
-                        <div style={{ padding: '4px 8px', borderRadius: '6px', background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', textAlign: 'center', minWidth: '55px' }}>
-                          <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#8b5cf6' }}>{item.staticPosts + item.carousels}</span>
-                          <p style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', margin: 0 }}>Posts</p>
+                        <div style={{ padding: '4px 10px', borderRadius: '8px', background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', textAlign: 'center', minWidth: '65px' }}>
+                          <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#8b5cf6' }}>{item.staticPosts}</span>
+                          <p style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-muted)', margin: 0 }}>Static Posts</p>
                         </div>
 
-                        <div style={{ padding: '4px 8px', borderRadius: '6px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', textAlign: 'center', minWidth: '55px' }}>
-                          <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#10b981' }}>{item.published}</span>
-                          <p style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', margin: 0 }}>Published</p>
+                        <div style={{ padding: '4px 12px', borderRadius: '8px', background: 'rgba(16,185,129,0.12)', border: '1.5px solid rgba(16,185,129,0.35)', textAlign: 'center', minWidth: '75px' }}>
+                          <span style={{ fontSize: '1.05rem', fontWeight: 900, color: '#10b981' }}>{item.totalDeliverables}</span>
+                          <p style={{ fontSize: '0.62rem', fontWeight: 800, color: '#10b981', margin: 0 }}>Total Output</p>
                         </div>
 
-                        <div style={{ padding: '4px 10px', borderRadius: '8px', background: 'rgba(16,185,129,0.14)', border: '1.5px solid rgba(16,185,129,0.35)', textAlign: 'center', minWidth: '70px' }}>
-                          <span style={{ fontSize: '1rem', fontWeight: 900, color: '#10b981' }}>{item.totalDeliverables}</span>
-                          <p style={{ fontSize: '0.6rem', fontWeight: 800, color: '#10b981', margin: 0 }}>Total Output</p>
-                        </div>
-
-                        <div style={{ color: 'var(--text-muted)', marginLeft: '4px' }}>
-                          {isExp ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        <div style={{ color: 'var(--text-muted)', marginLeft: '6px' }}>
+                          {isExp ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                         </div>
                       </div>
                     </div>
@@ -454,52 +408,60 @@ export default function PerformanceSection({ profile }: { profile: Profile }) {
                     {/* Expanded Detail Panel */}
                     {isExp && (
                       <div style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-elevated)', padding: '1.25rem' }}>
-                        {/* Internal Brands Breakdown */}
-                        {item.internalBreakdown.length > 0 && (
-                          <div style={{ marginBottom: '1.25rem' }}>
-                            <h4 style={{ fontSize: '0.78rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#10b981', marginBottom: '0.75rem' }}>
-                              🏢 Internal Brand Work ({item.internalTotal} items)
-                            </h4>
+                        {/* Client Breakdown Section */}
+                        <div style={{ marginBottom: '1.25rem' }}>
+                          <h4 style={{ fontSize: '0.78rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                            Client-Wise Contribution in {currentMonthLabel}
+                          </h4>
+                          {item.clientBreakdown.length === 0 ? (
+                            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>No client breakdown logged yet for this month</p>
+                          ) : (
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem' }}>
-                              {item.internalBreakdown.map(ib => (
-                                <div key={ib.brandName} style={{ background: 'var(--bg-card)', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.2)' }}>
-                                  <p style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)', margin: '0 0 4px 0' }}>{ib.brandName}</p>
-                                  <div style={{ display: 'flex', gap: '6px', fontSize: '0.72rem', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
-                                    {ib.reels > 0 && <span>🎬 {ib.reels} Reels</span>}
-                                    {ib.youtube > 0 && <span>🎥 {ib.youtube} YT</span>}
-                                    {ib.shooting > 0 && <span>📸 {ib.shooting} Shoots</span>}
-                                    {ib.staticPosts > 0 && <span>🖼️ {ib.staticPosts} Static</span>}
-                                    {ib.carousels > 0 && <span>📑 {ib.carousels} Carousels</span>}
-                                    {ib.published > 0 && <span>🚀 {ib.published} Live</span>}
-                                    <span style={{ fontWeight: 800, color: '#10b981', marginLeft: 'auto' }}>Total: {ib.total}</span>
+                              {item.clientBreakdown.map(cb => (
+                                <div key={cb.clientName} style={{ background: 'var(--bg-card)', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid var(--border-default)' }}>
+                                  <p style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)', margin: '0 0 6px 0' }}>{cb.clientName}</p>
+                                  <div style={{ display: 'flex', gap: '8px', fontSize: '0.72rem', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
+                                    {cb.reels > 0 && <span style={{ color: '#6366f1', fontWeight: 700 }}>🎬 {cb.reels} Reels</span>}
+                                    {cb.youtube > 0 && <span style={{ color: '#ef4444', fontWeight: 700 }}>🎥 {cb.youtube} YT</span>}
+                                    {cb.shooting > 0 && <span style={{ color: '#ec4899', fontWeight: 700 }}>📸 {cb.shooting} Shoots</span>}
+                                    {cb.staticPosts > 0 && <span style={{ color: '#8b5cf6', fontWeight: 700 }}>🖼️ {cb.staticPosts} Static</span>}
+                                    <span style={{ fontWeight: 800, color: '#10b981', marginLeft: 'auto' }}>Total: {cb.total}</span>
                                   </div>
                                 </div>
                               ))}
                             </div>
-                          </div>
-                        )}
+                          )}
+                        </div>
 
-                        {/* External Clients Breakdown */}
-                        {item.externalBreakdown.length > 0 && (
-                          <div style={{ marginBottom: '1.25rem' }}>
-                            <h4 style={{ fontSize: '0.78rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#818cf8', marginBottom: '0.75rem' }}>
-                              🤝 External Client Deliverables ({item.externalTotal} items)
+                        {/* Recent Production Activity Log */}
+                        {item.recentLogs.length > 0 && (
+                          <div>
+                            <h4 style={{ fontSize: '0.78rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                              Recent Production Logs
                             </h4>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem' }}>
-                              {item.externalBreakdown.map(eb => (
-                                <div key={eb.brandName} style={{ background: 'var(--bg-card)', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid rgba(99,102,241,0.2)' }}>
-                                  <p style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)', margin: '0 0 4px 0' }}>{eb.brandName}</p>
-                                  <div style={{ display: 'flex', gap: '6px', fontSize: '0.72rem', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
-                                    {eb.reels > 0 && <span>🎬 {eb.reels} Reels</span>}
-                                    {eb.youtube > 0 && <span>🎥 {eb.youtube} YT</span>}
-                                    {eb.shooting > 0 && <span>📸 {eb.shooting} Shoots</span>}
-                                    {eb.staticPosts > 0 && <span>🖼️ {eb.staticPosts} Static</span>}
-                                    {eb.carousels > 0 && <span>📑 {eb.carousels} Carousels</span>}
-                                    {eb.published > 0 && <span>🚀 {eb.published} Live</span>}
-                                    <span style={{ fontWeight: 800, color: '#818cf8', marginLeft: 'auto' }}>Total: {eb.total}</span>
-                                  </div>
-                                </div>
-                              ))}
+                            <div style={{ background: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border-default)', overflow: 'hidden' }}>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                <thead>
+                                  <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border-subtle)' }}>
+                                    <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)' }}>Date</th>
+                                    <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)' }}>Client</th>
+                                    <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)' }}>Deliverable</th>
+                                    <th style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 700, color: 'var(--text-muted)', width: '60px' }}>Count</th>
+                                    <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)' }}>Notes / Task</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {item.recentLogs.map((log, idx) => (
+                                    <tr key={log.id || idx} style={{ borderBottom: idx === item.recentLogs.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
+                                      <td style={{ padding: '6px 12px', color: 'var(--text-secondary)', fontWeight: 600 }}>{log.log_date}</td>
+                                      <td style={{ padding: '6px 12px', fontWeight: 700, color: 'var(--text-primary)' }}>{log.client_name || 'General Client'}</td>
+                                      <td style={{ padding: '6px 12px', color: '#6366f1', fontWeight: 700 }}>{log.content_type || 'Media Work'}</td>
+                                      <td style={{ padding: '6px 12px', textAlign: 'center', fontWeight: 800, color: '#10b981' }}>{log.count}</td>
+                                      <td style={{ padding: '6px 12px', color: 'var(--text-secondary)' }}>{log.notes || '—'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
                             </div>
                           </div>
                         )}
@@ -508,171 +470,6 @@ export default function PerformanceSection({ profile }: { profile: Profile }) {
                   </div>
                 )
               })}
-            </div>
-          )}
-
-          {/* SUB-VIEW 2 & 3: INTERNAL BRANDS OR EXTERNAL CLIENTS BREAKDOWN */}
-          {(mediaSubTab === 'internal' || mediaSubTab === 'external') && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
-              {(() => {
-                const isInt = mediaSubTab === 'internal'
-                const brandMap: Record<string, { reels: number; youtube: number; shooting: number; staticPosts: number; carousels: number; published: number; total: number; creators: Set<string> }> = {}
-
-                for (const emp of mediaProduction) {
-                  const targetBreakdown = isInt ? emp.internalBreakdown : emp.externalBreakdown
-                  for (const b of targetBreakdown) {
-                    if (!brandMap[b.brandName]) {
-                      brandMap[b.brandName] = { reels: 0, youtube: 0, shooting: 0, staticPosts: 0, carousels: 0, published: 0, total: 0, creators: new Set() }
-                    }
-                    brandMap[b.brandName].reels += b.reels
-                    brandMap[b.brandName].youtube += b.youtube
-                    brandMap[b.brandName].shooting += b.shooting
-                    brandMap[b.brandName].staticPosts += b.staticPosts
-                    brandMap[b.brandName].carousels += b.carousels
-                    brandMap[b.brandName].published += b.published
-                    brandMap[b.brandName].total += b.total
-                    if (b.total > 0) brandMap[b.brandName].creators.add(emp.employee.full_name)
-                  }
-                }
-
-                const entries = Object.entries(brandMap)
-                if (entries.length === 0) {
-                  return (
-                    <div className="glass-card empty-state" style={{ gridColumn: '1 / -1' }}>
-                      <p style={{ color: 'var(--text-muted)' }}>No production data logged yet for {isInt ? 'Internal Brands' : 'External Clients'} in {currentMonthLabel}</p>
-                    </div>
-                  )
-                }
-
-                return entries.map(([bName, data]) => (
-                  <div key={bName} className="glass-card" style={{ padding: '1.25rem', borderTop: `4px solid ${isInt ? '#10b981' : '#6366f1'}` }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                      <div>
-                        <h3 style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)', margin: 0 }}>{bName}</h3>
-                        <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: isInt ? 'rgba(16,185,129,0.12)' : 'rgba(99,102,241,0.12)', color: isInt ? '#10b981' : '#818cf8' }}>
-                          {isInt ? '🏢 Internal Property' : '🤝 Client Account'}
-                        </span>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '1.3rem', fontWeight: 900, color: isInt ? '#10b981' : '#6366f1' }}>{data.total}</div>
-                        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>Total Items</div>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '0.75rem', fontSize: '0.72rem' }}>
-                      <div style={{ background: 'var(--bg-elevated)', padding: '6px', borderRadius: '6px', textAlign: 'center' }}>
-                        <strong style={{ color: '#6366f1', display: 'block', fontSize: '0.85rem' }}>{data.reels}</strong> Reels
-                      </div>
-                      <div style={{ background: 'var(--bg-elevated)', padding: '6px', borderRadius: '6px', textAlign: 'center' }}>
-                        <strong style={{ color: '#ec4899', display: 'block', fontSize: '0.85rem' }}>{data.shooting}</strong> Shoots
-                      </div>
-                      <div style={{ background: 'var(--bg-elevated)', padding: '6px', borderRadius: '6px', textAlign: 'center' }}>
-                        <strong style={{ color: '#8b5cf6', display: 'block', fontSize: '0.85rem' }}>{data.staticPosts + data.carousels}</strong> Posts
-                      </div>
-                    </div>
-
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                      <strong>Active Contributors:</strong> {Array.from(data.creators).join(', ') || 'None'}
-                    </div>
-                  </div>
-                ))
-              })()}
-            </div>
-          )}
-
-          {/* SUB-VIEW 4: ITEMIZED CONTENT CATALOG */}
-          {mediaSubTab === 'inventory' && (
-            <div className="glass-card" style={{ padding: '1.25rem' }}>
-              {/* Search and Filters */}
-              <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                <input
-                  type="text"
-                  placeholder="Search by post title, brand, or creator..."
-                  value={inventorySearch}
-                  onChange={e => setInventorySearch(e.target.value)}
-                  className="form-input"
-                  style={{ flex: 1, minWidth: '220px', height: '34px', fontSize: '0.78rem' }}
-                />
-
-                <select
-                  value={inventoryFilterBrand}
-                  onChange={e => setInventoryFilterBrand(e.target.value)}
-                  className="form-input"
-                  style={{ width: 'auto', height: '34px', fontSize: '0.78rem' }}
-                >
-                  <option value="all">All Brands & Clients</option>
-                  <option value="internal">🏢 Internal Brands Only</option>
-                  <option value="external">🤝 External Clients Only</option>
-                </select>
-
-                <select
-                  value={inventoryFilterPhase}
-                  onChange={e => setInventoryFilterPhase(e.target.value)}
-                  className="form-input"
-                  style={{ width: 'auto', height: '34px', fontSize: '0.78rem' }}
-                >
-                  <option value="all">All Phases</option>
-                  <option value="shooting">🎬 Shooting</option>
-                  <option value="editing">✂️ Video Editing</option>
-                  <option value="post_creation">🎨 Post Creation</option>
-                  <option value="posting">🚀 Posting / Live</option>
-                </select>
-              </div>
-
-              {filteredInventory.length === 0 ? (
-                <div className="empty-state">
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No content items found matching your filters.</p>
-                </div>
-              ) : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                    <thead>
-                      <tr style={{ background: 'var(--bg-elevated)', borderBottom: '2px solid var(--border-default)' }}>
-                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)' }}>Date</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)' }}>Brand / Property</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)' }}>Post / Content Title</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)' }}>Phase</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)' }}>Creator</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, color: 'var(--text-muted)' }}>Count</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)' }}>Live Link</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredInventory.map((item, idx) => (
-                        <tr key={item.id || idx} style={{ borderBottom: '1px solid var(--border-subtle)', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)' }}>
-                          <td style={{ padding: '8px 12px', color: 'var(--text-secondary)', fontWeight: 600, whiteSpace: 'nowrap' }}>{item.logDate}</td>
-                          <td style={{ padding: '8px 12px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: item.brandColor || '#6366f1' }} />
-                              <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{item.brandName}</span>
-                              <span style={{ fontSize: '0.58rem', fontWeight: 700, padding: '1px 5px', borderRadius: '3px', background: item.clientType === 'internal' ? 'rgba(16,185,129,0.12)' : 'rgba(99,102,241,0.12)', color: item.clientType === 'internal' ? '#10b981' : '#818cf8' }}>
-                                {item.clientType === 'internal' ? 'Internal' : 'Client'}
-                              </span>
-                            </div>
-                          </td>
-                          <td style={{ padding: '8px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>{item.title}</td>
-                          <td style={{ padding: '8px 12px' }}>
-                            <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
-                              {item.taskPhase}
-                            </span>
-                          </td>
-                          <td style={{ padding: '8px 12px', color: 'var(--text-primary)', fontWeight: 600 }}>{item.creatorName}</td>
-                          <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 800, color: '#10b981' }}>{item.count}</td>
-                          <td style={{ padding: '8px 12px' }}>
-                            {item.liveUrl ? (
-                              <a href={item.liveUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#10b981', fontWeight: 700, textDecoration: 'underline' }}>
-                                🔗 Open
-                              </a>
-                            ) : (
-                              <span style={{ color: 'var(--text-muted)' }}>—</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
             </div>
           )}
         </div>

@@ -35,19 +35,14 @@ export async function GET(req: NextRequest) {
       query<any>(`SELECT id, assigned_to, status, category FROM leads`),
       query<any>(`SELECT employee_id, report_date, entries, note FROM daily_reports WHERE report_date >= $1 AND report_date < $2`, [dateFrom, dateTo]),
       query<any>(`
-        SELECT 
-          l.id, l.client_id, l.deliverable_id, l.employee_id, TO_CHAR(l.log_date, 'YYYY-MM-DD') AS log_date,
-          l.count, l.notes, l.task_phase, l.title, l.live_url, l.platform, l.status,
-          COALESCE(c.client_type, 'external') AS client_type,
-          c.name AS client_name, c.color AS client_color,
-          cd.content_type,
-          p.full_name AS employee_name, p.avatar_url AS employee_avatar, p.designation AS employee_designation
+        SELECT l.id, l.employee_id, l.client_id, l.deliverable_id, TO_CHAR(l.log_date, 'YYYY-MM-DD') AS log_date, l.count, l.notes,
+               c.name as client_name, cd.content_type, p.full_name as employee_name
         FROM client_progress_log l
         LEFT JOIN clients c ON l.client_id = c.id
         LEFT JOIN client_deliverables cd ON l.deliverable_id = cd.id
         LEFT JOIN profiles p ON l.employee_id = p.id
         WHERE l.log_date >= $1 AND l.log_date < $2
-        ORDER BY l.log_date DESC, l.id DESC
+        ORDER BY l.log_date DESC
       `, [dateFrom, dateTo]),
     ])
 
@@ -94,14 +89,14 @@ export async function GET(req: NextRequest) {
           total_this_month: empReports.length,
           details: empReports.map(r => ({
             date: r.report_date,
-            entries: (typeof r.entries === 'string' ? JSON.parse(r.entries) : (r.entries || [])) as { description: string; notes?: string; count: number; clientId?: string; clientName?: string }[],
+            entries: (typeof r.entries === 'string' ? JSON.parse(r.entries) : (r.entries || [])) as { description: string; notes?: string; count: number }[],
             note: r.note || ''
           }))
         }
       }
     })
 
-    // ── Granular Media & Video Production Analytics (Internal & External) ──
+    // ── Media & Video Production Analytics (Suyog, Kedar, Rohan & Creators) ──
     const mediaProfiles = allProfiles.filter(p => {
       const name = (p.full_name || '').toLowerCase()
       const dept = (p.department || '').toLowerCase()
@@ -110,8 +105,6 @@ export async function GET(req: NextRequest) {
         name.includes('suyog') ||
         name.includes('kedar') ||
         name.includes('rohan') ||
-        name.includes('pooja') ||
-        name.includes('shreya') ||
         dept.includes('media') ||
         dept.includes('client_management') ||
         dept.includes('strategy') ||
@@ -119,29 +112,9 @@ export async function GET(req: NextRequest) {
         desig.includes('editor') ||
         desig.includes('shoot') ||
         desig.includes('graphic') ||
-        desig.includes('post') ||
         clientLogs.some((l: any) => l.employee_id === p.id)
       )
     })
-
-    // Full Content Inventory
-    const contentInventory = (clientLogs || []).map((l: any) => ({
-      id: l.id,
-      brandName: l.client_name || 'Unassigned',
-      brandColor: l.client_color || '#6366f1',
-      clientType: l.client_type || 'external',
-      contentType: l.content_type || 'General Media',
-      taskPhase: l.task_phase || (l.content_type?.toLowerCase().includes('shoot') ? 'shooting' : 'production'),
-      title: l.title || l.notes || l.content_type || 'Media Task',
-      liveUrl: l.live_url || null,
-      platform: l.platform || null,
-      status: l.status || 'completed',
-      count: Number(l.count) || 1,
-      logDate: l.log_date,
-      creatorName: l.employee_name || 'Team Member',
-      creatorAvatar: l.employee_avatar || null,
-      creatorDesignation: l.employee_designation || null
-    }))
 
     const mediaProduction = mediaProfiles.map(emp => {
       const empClientLogs = clientLogs.filter((l: any) => l.employee_id === emp.id)
@@ -151,58 +124,39 @@ export async function GET(req: NextRequest) {
       let youtube = 0
       let shooting = 0
       let staticPosts = 0
-      let carousels = 0
-      let published = 0
-      let lnsTasks = 0
       let other = 0
 
-      let internalTotal = 0
-      let externalTotal = 0
-
-      const internalBrandMap: Record<string, { reels: number; youtube: number; shooting: number; staticPosts: number; carousels: number; published: number; total: number }> = {}
-      const externalClientMap: Record<string, { reels: number; youtube: number; shooting: number; staticPosts: number; carousels: number; published: number; total: number }> = {}
+      const clientMap: Record<string, { reels: number; youtube: number; shooting: number; staticPosts: number; total: number }> = {}
 
       // 1. Process client_progress_log
       for (const log of empClientLogs) {
         const type = (log.content_type || log.notes || '').toLowerCase()
-        const phase = (log.task_phase || '').toLowerCase()
         const count = Number(log.count) || 0
-        const brandName = log.client_name || 'General Media Work'
-        const isInternal = log.client_type === 'internal'
+        const clientName = log.client_name || 'General Client Work'
 
-        const targetMap = isInternal ? internalBrandMap : externalClientMap
-        if (!targetMap[brandName]) {
-          targetMap[brandName] = { reels: 0, youtube: 0, shooting: 0, staticPosts: 0, carousels: 0, published: 0, total: 0 }
+        if (!clientMap[clientName]) {
+          clientMap[clientName] = { reels: 0, youtube: 0, shooting: 0, staticPosts: 0, total: 0 }
         }
 
-        if (isInternal) internalTotal += count
-        else externalTotal += count
-
-        if (phase === 'shooting' || type.includes('shoot')) {
-          shooting += count
-          targetMap[brandName].shooting += count
-        } else if (phase === 'posting' || phase === 'published' || log.status === 'published') {
-          published += count
-          targetMap[brandName].published += count
-        } else if (type.includes('carousel') || phase === 'carousel') {
-          carousels += count
-          targetMap[brandName].carousels += count
-        } else if (type.includes('reel') || type.includes('short')) {
+        if (type.includes('reel')) {
           reels += count
-          targetMap[brandName].reels += count
+          clientMap[clientName].reels += count
         } else if (type.includes('youtube') || type.includes('yt') || type.includes('video edit')) {
           youtube += count
-          targetMap[brandName].youtube += count
+          clientMap[clientName].youtube += count
+        } else if (type.includes('shoot') || type.includes('shooting')) {
+          shooting += count
+          clientMap[clientName].shooting += count
         } else if (type.includes('static') || type.includes('post') || type.includes('banner') || type.includes('thumbnail')) {
           staticPosts += count
-          targetMap[brandName].staticPosts += count
+          clientMap[clientName].staticPosts += count
         } else {
           other += count
         }
-        targetMap[brandName].total += count
+        clientMap[clientName].total += count
       }
 
-      // 2. Scan daily reports entries for additional media work
+      // 2. Also check daily reports entries for media work not already logged in client_progress_log
       for (const rep of empDailyReports) {
         const entries = (typeof rep.entries === 'string' ? JSON.parse(rep.entries) : (rep.entries || [])) as { description: string; notes?: string; count: number }[]
         for (const entry of entries) {
@@ -211,37 +165,25 @@ export async function GET(req: NextRequest) {
           const combined = `${desc} ${noteText}`
           const count = Number(entry.count) || 0
 
+          // If count > 0 and not tagged with client_id (standalone daily report entry)
           if (count > 0 && empClientLogs.length === 0) {
-            if (combined.includes('shoot')) {
-              shooting += count
-            } else if (combined.includes('carousel')) {
-              carousels += count
-            } else if (combined.includes('reel') || combined.includes('short')) {
+            if (combined.includes('reel') && !combined.includes('shoot')) {
               reels += count
-            } else if (combined.includes('youtube') || combined.includes('video edit')) {
+            } else if (combined.includes('youtube') || combined.includes('yt edit') || combined.includes('video edit')) {
               youtube += count
-            } else if (combined.includes('post') || combined.includes('static') || combined.includes('graphic')) {
+            } else if (combined.includes('shoot')) {
+              shooting += count
+            } else if (combined.includes('static') || combined.includes('poster') || combined.includes('banner') || combined.includes('thumbnail')) {
               staticPosts += count
-            } else if (combined.includes('posting') || combined.includes('published')) {
-              published += count
-            } else if (combined.includes('lns') || combined.includes('lead')) {
-              lnsTasks += count
             }
           }
         }
       }
 
-      const totalDeliverables = reels + youtube + shooting + staticPosts + carousels + published + lnsTasks + other
+      const totalDeliverables = reels + youtube + shooting + staticPosts + other
 
-      const internalBreakdown = Object.entries(internalBrandMap).map(([brandName, counts]) => ({
-        brandName,
-        type: 'internal' as const,
-        ...counts
-      }))
-
-      const externalBreakdown = Object.entries(externalClientMap).map(([brandName, counts]) => ({
-        brandName,
-        type: 'external' as const,
+      const clientBreakdown = Object.entries(clientMap).map(([clientName, counts]) => ({
+        clientName,
         ...counts
       }))
 
@@ -251,36 +193,22 @@ export async function GET(req: NextRequest) {
         youtube,
         shooting,
         staticPosts,
-        carousels,
-        published,
-        lnsTasks,
         other,
-        internalTotal,
-        externalTotal,
         totalDeliverables,
-        internalBreakdown,
-        externalBreakdown,
-        clientBreakdown: [...internalBreakdown, ...externalBreakdown],
+        clientBreakdown,
         logsCount: empClientLogs.length,
-        recentLogs: empClientLogs.slice(0, 15)
+        recentLogs: empClientLogs.slice(0, 10)
       }
     })
 
-    // Sort order: Suyog, Kedar, Rohan, Pooja, Shreya, then by output
+    // Sort so Suyog, Kedar, and Rohan are prominently at the top
     mediaProduction.sort((a, b) => {
       const aName = (a.employee.full_name || '').toLowerCase()
       const bName = (b.employee.full_name || '').toLowerCase()
-      const getRank = (name: string) => {
-        if (name.includes('suyog')) return 1
-        if (name.includes('kedar')) return 2
-        if (name.includes('rohan')) return 3
-        if (name.includes('pooja')) return 4
-        if (name.includes('shreya')) return 5
-        return 99
-      }
-      const rankA = getRank(aName)
-      const rankB = getRank(bName)
-      if (rankA !== rankB) return rankA - rankB
+      const isPriorityA = aName.includes('suyog') || aName.includes('kedar') || aName.includes('rohan')
+      const isPriorityB = bName.includes('suyog') || bName.includes('kedar') || bName.includes('rohan')
+      if (isPriorityA && !isPriorityB) return -1
+      if (!isPriorityA && isPriorityB) return 1
       return b.totalDeliverables - a.totalDeliverables
     })
 
@@ -289,10 +217,6 @@ export async function GET(req: NextRequest) {
       totalYoutube: mediaProduction.reduce((sum, p) => sum + p.youtube, 0),
       totalShooting: mediaProduction.reduce((sum, p) => sum + p.shooting, 0),
       totalStaticPosts: mediaProduction.reduce((sum, p) => sum + p.staticPosts, 0),
-      totalCarousels: mediaProduction.reduce((sum, p) => sum + p.carousels, 0),
-      totalPublished: mediaProduction.reduce((sum, p) => sum + p.published, 0),
-      totalInternal: mediaProduction.reduce((sum, p) => sum + p.internalTotal, 0),
-      totalExternal: mediaProduction.reduce((sum, p) => sum + p.externalTotal, 0),
       grandTotal: mediaProduction.reduce((sum, p) => sum + p.totalDeliverables, 0)
     }
 
@@ -316,7 +240,6 @@ export async function GET(req: NextRequest) {
       performance,
       mediaProduction,
       mediaTotals,
-      contentInventory,
       month: currentMonthPrefix,
       globalStats
     })

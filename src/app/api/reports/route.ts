@@ -253,19 +253,7 @@ export async function POST(req: NextRequest) {
 function runClientSync(
   employee_id: string,
   report_date: string,
-  entries: {
-    description: string
-    count: number
-    notes?: string
-    clientId?: string
-    client_id?: string
-    clientName?: string
-    clientType?: string
-    taskPhase?: string
-    itemTitle?: string
-    liveUrl?: string
-    platform?: string
-  }[]
+  entries: { description: string; count: number; notes?: string; clientId?: string; client_id?: string }[]
 ): void {
   if (!entries || entries.length === 0) return
 
@@ -358,8 +346,6 @@ function runClientSync(
       let contentType: string | null = null
       if (combinedText.includes('youtube') || combinedText.includes('yt ') || combinedText.includes('yt video') || combinedText.includes('long video')) {
         contentType = 'YouTube'
-      } else if (combinedText.includes('carousel') || combinedText.includes('carousal')) {
-        contentType = 'Carousel'
       } else if (combinedText.includes('reel') || combinedText.includes('shorts') || combinedText.includes('short video')) {
         contentType = 'Reel'
       } else if (combinedText.includes('shoot') || combinedText.includes('shooting')) {
@@ -372,8 +358,7 @@ function runClientSync(
          combinedText.includes('banner') ||
          combinedText.includes('thumbnail') ||
          combinedText.includes('graphic design') ||
-         combinedText.includes('creative post') ||
-         combinedText.includes('post creation'))
+         combinedText.includes('creative post'))
       ) {
         contentType = 'Static Post'
       } else if (combinedText.includes('story') || combinedText.includes('stories')) {
@@ -402,47 +387,17 @@ function runClientSync(
         continue
       }
 
-      // Find deliverable with matching content type (or create one for internal brand if missing)
-      let matchedDel = deliverables.find((d: any) => d.content_type.toLowerCase() === contentType!.toLowerCase())
+      // Find deliverable with matching content type
+      const matchedDel = deliverables.find((d: any) => d.content_type.toLowerCase() === contentType!.toLowerCase())
       if (!matchedDel) {
-        // If it's an internal brand, automatically add the deliverable format bucket
-        if (matchedClient.client_type === 'internal') {
-          matchedDel = await queryOne<any>(
-            `INSERT INTO client_deliverables (client_id, content_type, monthly_target)
-             VALUES ($1, $2, 0) RETURNING *`,
-            [matchedClient.id, contentType]
-          )
-        } else {
-          continue
-        }
+        // Do not insert into progress log if client does not have this deliverable
+        continue
       }
 
-      if (!matchedDel) continue
-
-      const taskPhase = entry.taskPhase || (
-        contentType === 'Shooting' ? 'shooting' :
-        contentType === 'Reel' || contentType === 'YouTube' ? 'editing' :
-        contentType === 'Static Post' || contentType === 'Carousel' ? 'post_creation' :
-        'production'
-      )
-      const postTitle = entry.itemTitle || entry.notes || entry.description || null
-
       await execute(
-        `INSERT INTO client_progress_log (client_id, deliverable_id, employee_id, log_date, count, notes, task_phase, title, live_url, platform, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-        [
-          matchedClient.id,
-          matchedDel.id,
-          employee_id,
-          report_date,
-          entryCount,
-          entry.notes || entry.description || null,
-          taskPhase,
-          postTitle,
-          entry.liveUrl || null,
-          entry.platform || null,
-          'published'
-        ]
+        `INSERT INTO client_progress_log (client_id, deliverable_id, employee_id, log_date, count, notes)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [matchedClient.id, matchedDel.id, employee_id, report_date, entryCount, entry.notes || entry.description || null]
       )
     }
   }
