@@ -245,12 +245,12 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
               </span>
               . Every one of you has the opportunity to{' '}
               <span style={{
-                color: '#ffffff',
+                color: isLight ? '#064e3b' : '#ffffff',
                 fontWeight: 800,
-                background: isLight ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.25)',
+                background: isLight ? 'rgba(16, 185, 129, 0.18)' : 'rgba(16, 185, 129, 0.25)',
                 padding: '2px 8px',
                 borderRadius: '6px',
-                border: '1px solid rgba(16, 185, 129, 0.45)',
+                border: isLight ? '1.5px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(16, 185, 129, 0.45)',
                 display: 'inline-block'
               }}>
                 grow into a leader as we scale together.
@@ -265,13 +265,15 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
           display: 'flex',
           gap: '0.75rem',
           flexWrap: 'wrap',
-          borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+          borderTop: isLight ? '1px solid rgba(14, 61, 53, 0.12)' : '1px solid rgba(255, 255, 255, 0.08)',
           paddingTop: '0.75rem'
         }}>
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: '6px',
             fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '8px',
-            background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)'
+            background: isLight ? 'rgba(2, 132, 199, 0.12)' : 'rgba(56, 189, 248, 0.12)',
+            color: isLight ? '#0369a1' : '#38bdf8',
+            border: isLight ? '1px solid rgba(2, 132, 199, 0.3)' : '1px solid rgba(56, 189, 248, 0.3)'
           }}>
             🤖 AI &amp; Business Transformation
           </div>
@@ -279,7 +281,9 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: '6px',
             fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '8px',
-            background: 'rgba(245, 158, 11, 0.12)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.3)'
+            background: isLight ? 'rgba(217, 119, 6, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+            color: isLight ? '#b45309' : '#fbbf24',
+            border: isLight ? '1px solid rgba(217, 119, 6, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)'
           }}>
             📈 Stock &amp; Wealth Advisory
           </div>
@@ -287,7 +291,9 @@ export default function OverviewSection({ profile, onNavigate }: Props) {
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: '6px',
             fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '8px',
-            background: 'rgba(16, 185, 129, 0.12)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)'
+            background: isLight ? 'rgba(14, 61, 53, 0.1)' : 'rgba(16, 185, 129, 0.12)',
+            color: isLight ? '#065f46' : '#34d399',
+            border: isLight ? '1px solid rgba(14, 61, 53, 0.3)' : '1px solid rgba(16, 185, 129, 0.3)'
           }}>
             🚀 Digital Growth &amp; Media Production
           </div>

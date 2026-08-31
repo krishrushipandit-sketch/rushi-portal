@@ -312,21 +312,58 @@ async function handleLeadWebhook(req: NextRequest) {
       }
     }
 
-    // 5.3 Check if Pabbly passed a router number (e.g. 1 -> Navin, 2 -> Poonam)
+    // 5.3 Check if Pabbly passed a number field (1 -> Navin, 2 -> Poonam)
     const routingNumInput =
-      body.routing_number ||
+      body.number ||
+      body.salesperson_number ||
+      body.sales_number ||
+      body.assigned_number ||
+      body.route_number ||
       body.router_number ||
       body.route ||
       body.router ||
-      body.routing_no ||
-      body.round_robin_no ||
-      body.round_robin_number ||
-      body.routingNumber ||
-      body.routerNumber
+      body.routing_number ||
+      body.agent_number ||
+      body.salesperson_id ||
+      body.assigned_to_number ||
+      body.user_number ||
+      body.rep_number ||
+      body.counselor_number ||
+      body.Number ||
+      body.Route ||
+      body.Router ||
+      body.SalespersonNumber ||
+      body.RoutingNumber
 
-    if (!assignedToId && routingNumInput !== undefined && routingNumInput !== null && routingNumInput !== '') {
-      const num = parseInt(String(routingNumInput), 10)
-      if (!isNaN(num) && num > 0 && eligibleRepIds.length > 0) {
+    if (!assignedToId && routingNumInput !== undefined && routingNumInput !== null && String(routingNumInput).trim() !== '') {
+      const numStr = String(routingNumInput).trim()
+      const num = parseInt(numStr, 10)
+      
+      let targetNameQuery = ''
+      if (num === 1 || numStr === '1' || numStr === '01') {
+        targetNameQuery = 'Navin'
+      } else if (num === 2 || numStr === '2' || numStr === '02') {
+        targetNameQuery = 'Poonam'
+      }
+
+      if (targetNameQuery) {
+        const matchedProfile = await queryOne<{ id: string; full_name: string; email: string }>(
+          `SELECT id, full_name, email
+           FROM profiles
+           WHERE LOWER(full_name) ILIKE '%' || LOWER($1) || '%'
+             AND is_active = true
+           LIMIT 1`,
+          [targetNameQuery]
+        )
+        if (matchedProfile) {
+          assignedToId = matchedProfile.id
+          assignedToName = matchedProfile.full_name
+          assignedToEmail = matchedProfile.email
+        }
+      }
+
+      // Dynamic fallback for any other number (e.g. 3, 4, etc.)
+      if (!assignedToId && !isNaN(num) && num > 0 && eligibleRepIds.length > 0) {
         const targetIdx = (num - 1) % eligibleRepIds.length
         assignedToId = eligibleRepIds[targetIdx].id
         assignedToName = eligibleRepIds[targetIdx].name
