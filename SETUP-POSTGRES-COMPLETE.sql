@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS profiles (
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS bio TEXT;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS whatsapp_number TEXT;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS registered_device_id TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS device_registered_at TIMESTAMPTZ;
 
 -- ATTENDANCE & EMPLOYEE_ATTENDANCE
 CREATE TABLE IF NOT EXISTS attendance (
@@ -47,12 +49,19 @@ CREATE TABLE IF NOT EXISTS employee_attendance (
   date          DATE NOT NULL,
   check_in      TIMESTAMPTZ,
   check_out     TIMESTAMPTZ,
+  check_in_time TIME,
+  check_out_time TIME,
+  attendance_mode VARCHAR(20) DEFAULT 'qr',
   status        TEXT DEFAULT 'present',
   notes         TEXT,
   updated_at    TIMESTAMPTZ DEFAULT NOW(),
   created_at    TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(employee_id, date)
 );
+
+ALTER TABLE employee_attendance ADD COLUMN IF NOT EXISTS check_in_time TIME;
+ALTER TABLE employee_attendance ADD COLUMN IF NOT EXISTS check_out_time TIME;
+ALTER TABLE employee_attendance ADD COLUMN IF NOT EXISTS attendance_mode VARCHAR(20) DEFAULT 'qr';
 
 -- TASKS
 CREATE TABLE IF NOT EXISTS tasks (
