@@ -22,6 +22,7 @@ import RealtimeLeadAlert from '@/components/RealtimeLeadAlert'
 export type ActiveSection =
   | 'overview'
   | 'tasks'
+  | 'my-tasks'
   | 'leads'
   | 'sales'
   | 'reports'
@@ -246,7 +247,8 @@ export default function DashboardPage() {
     const props = { profile }
     switch (activeSection) {
       case 'overview': return <OverviewSection {...props} onNavigate={setActiveSection} />
-      case 'tasks': return <TasksSection {...props} />
+      case 'tasks': return <TasksSection {...props} initialTab="all" />
+      case 'my-tasks': return <TasksSection {...props} initialTab="my-tasks" />
       case 'reports': return <ReportsSection {...props} />
       case 'leads': return canAccessLeads
         ? <LeadsSection {...props} />

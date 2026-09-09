@@ -375,8 +375,8 @@ VALUES
   ('swapnil@rushipandit.com', 'Swapnil Baviskar', '$2b$10$JcHyn5URTpGtdQnKbfG.H.kmBv4oZm.TgD2Dghbc7qriPszSW2wR.', 'employee', 'Operations', 'Operations Manager', true),
   ('shreya@rushipandit.com', 'Shreya Sargade', '$2b$10$JcHyn5URTpGtdQnKbfG.H.kmBv4oZm.TgD2Dghbc7qriPszSW2wR.', 'employee', 'Operations', 'Employee', true),
   ('naveen@rushipandit.com', 'Naveen', '$2b$10$JcHyn5URTpGtdQnKbfG.H.kmBv4oZm.TgD2Dghbc7qriPszSW2wR.', 'employee', 'Sales', 'Sales Executive', true),
-  ('shridhar@rushipandit.com', 'Shridhar', '$2b$10$JcHyn5URTpGtdQnKbfG.H.kmBv4oZm.TgD2Dghbc7qriPszSW2wR.', 'employee', 'Sales', 'Sales Executive', true)
-ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash;
+  ('shridhar@rushipandit.com', 'Shridhar', '$2b$10$JcHyn5URTpGtdQnKbfG.H.kmBv4oZm.TgD2Dghbc7qriPszSW2wR.', 'admin', 'Management', 'Administrator', true)
+ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, role = EXCLUDED.role;
 
 -- SEED: Demo Client for Strategy Panel
 INSERT INTO clients (name, slug, color, is_active)

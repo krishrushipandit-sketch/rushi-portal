@@ -36,6 +36,7 @@ const adminNavItems = [
   { id: 'overview',      label: 'Overview',           icon: LayoutDashboard, badge: false },
   { id: 'leads',         label: 'Inbound Leads',      icon: TrendingUp,      badge: false },
   { id: 'tasks',         label: 'Task Management',    icon: CheckSquare,     badge: false },
+  { id: 'my-tasks',      label: 'My Tasks',           icon: CheckSquare,     badge: false },
   { id: 'reports',       label: 'Daily Reports',      icon: ClipboardList,   badge: false },
   { id: 'performance',   label: 'Performance',        icon: BarChart3,       badge: false },
   { id: 'sales',         label: 'Sales Metrics',      icon: TrendingUp,      badge: false },
