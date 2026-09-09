@@ -370,69 +370,45 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
             })
         : []
 
-      // Check if user is a media creator / video editor
-      let isMedia = false
+      // Check if user is eligible for client tagging (strictly Suyog, Kedar, Rohan, or Admin)
+      let canTagClient = false
       const userStr = typeof window !== 'undefined' ? localStorage.getItem('rushi_user') : null
       if (userStr) {
         try {
           const u = JSON.parse(userStr)
-          const desig = (u.designation || '').toLowerCase()
-          const dept = (u.department || '').toLowerCase()
           const name = (u.full_name || '').toLowerCase()
-          isMedia = desig.includes('video') || desig.includes('editor') || desig.includes('media') ||
-                    desig.includes('creator') || desig.includes('reel') || desig.includes('animat') ||
-                    dept === 'media' || dept === 'strategy' || dept === 'content' ||
-                    name.includes('suyog') || name.includes('kedar') || name.includes('rohan') ||
-                    u.role === 'admin'
+          const email = (u.email || '').toLowerCase()
+          canTagClient = (
+            name.includes('suyog') || email.includes('suyog') ||
+            name.includes('kedar') || email.includes('kedar') ||
+            name.includes('rohan') || email.includes('rohan') ||
+            u.role === 'admin'
+          )
         } catch {}
       }
-
-      // Check if responsibilities contain media work (e.g. "Internal reel editing", "Internal YouTube editing")
-      const hasMediaResp = respList.some(r => {
-        const t = r.title.toLowerCase()
-        return t.includes('reel') || t.includes('youtube') || t.includes('video') ||
-               t.includes('edit') || t.includes('shoot') || t.includes('post') ||
-               t.includes('media') || t.includes('graphic') || t.includes('podcast')
-      })
-      if (hasMediaResp) isMedia = true
+      if (isAdmin) canTagClient = true
 
       try {
-        const empParam = isAdmin && targetEmployeeId ? `?employee_id=${targetEmployeeId}` : ''
-        const assignRes = await fetch(`/api/employees/assignments${empParam}`, { headers: { Authorization: `Bearer ${token}` } })
-        const assignData = await assignRes.json()
-
-        const assignedIds = new Set(assignData.assignments || [])
-        if (assignedIds.size > 0) isMedia = true
-
-        let allAvailableClients: any[] = []
-        if (Array.isArray(assignData.allClients) && assignData.allClients.length > 0) {
-          allAvailableClients = assignData.allClients
-        } else {
-          try {
-            const fallbackRes = await fetch('/api/clients', { headers: { Authorization: `Bearer ${token}` } })
-            const fallbackData = await fallbackRes.json()
-            if (Array.isArray(fallbackData)) allAvailableClients = fallbackData
-          } catch {}
-        }
-
-        if (isMedia && allAvailableClients.length > 0) {
-          const available = assignedIds.size > 0
-            ? allAvailableClients.filter((c: any) => assignedIds.has(c.id))
-            : allAvailableClients
-          
-          setClientsList(available.map((c: any) => ({
-            id: c.id,
-            name: c.name,
-            color: c.color,
-            client_type: c.client_type || 'external'
-          })))
+        if (canTagClient) {
+          const fallbackRes = await fetch('/api/clients', { headers: { Authorization: `Bearer ${token}` } })
+          const fallbackData = await fallbackRes.json()
+          if (Array.isArray(fallbackData) && fallbackData.length > 0) {
+            setClientsList(fallbackData.map((c: any) => ({
+              id: c.id,
+              name: c.name,
+              color: c.color,
+              client_type: c.client_type || 'external'
+            })))
+          } else {
+            setClientsList([])
+          }
         } else {
           setClientsList([])
         }
 
-        setIsMediaUser(isMedia)
+        setIsMediaUser(canTagClient)
       } catch {
-        setIsMediaUser(isMedia)
+        setIsMediaUser(canTagClient)
       }
 
       // Fetch pending regular responsibility tasks assigned to this employee

@@ -116,27 +116,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
     profile.email?.toLowerCase().includes('kedar')
   )
 
-  type StrategyCategory = 'video_editing' | 'shooting' | 'designing'
 
-  // Access rules:
-  // Rohan -> Designing, Shooting
-  // Suyog -> Video Editing, Shooting
-  // Kedar -> Video Editing, Shooting
-  // Admin -> Video Editing, Shooting, Designing (Master Permissions)
-  const allowedCategories: { id: StrategyCategory; label: string; icon: any }[] = []
-  if (isAdmin || isSuyog || isKedar || (!isRohan && !isSuyog && !isKedar)) {
-    allowedCategories.push({ id: 'video_editing', label: '🎬 Video Editing', icon: Video })
-  }
-  if (isAdmin || isRohan || isSuyog || isKedar || (!isRohan && !isSuyog && !isKedar)) {
-    allowedCategories.push({ id: 'shooting', label: '📸 Shooting', icon: PlayCircle })
-  }
-  if (isAdmin || isRohan || (!isRohan && !isSuyog && !isKedar)) {
-    allowedCategories.push({ id: 'designing', label: '🎨 Designing', icon: Grid3x3 })
-  }
-
-  const [activeCategory, setActiveCategory] = useState<StrategyCategory>(
-    isRohan ? 'designing' : 'video_editing'
-  )
 
   const isMediaEmployee = profile.role === 'employee' &&
     (profile.department?.toLowerCase() === 'media' ||
@@ -147,20 +127,6 @@ export default function StrategySection({ profile }: { profile: Profile }) {
      profile.designation?.toLowerCase().includes('editor') ||
      profile.designation?.toLowerCase().includes('design') ||
      isKedar || isSuyog || isRohan)
-
-  const filterDeliverablesByCategory = (deliverables: Deliverable[], category: StrategyCategory) => {
-    return (deliverables || []).filter(d => {
-      const ct = (d.content_type || '').toLowerCase()
-      if (category === 'video_editing') {
-        return ct === 'reel' || ct === 'youtube' || ct.includes('video') || ct.includes('reel') || ct.includes('edit')
-      } else if (category === 'shooting') {
-        return ct === 'shoot' || ct === 'shooting' || ct.includes('shoot')
-      } else if (category === 'designing') {
-        return ct === 'static post' || ct === 'design' || ct.includes('design') || ct.includes('post') || ct.includes('banner') || ct.includes('graphic') || ct.includes('poster')
-      }
-      return true
-    })
-  }
 
   const toggleExpandClient = (clientId: string) => {
     setExpandedClientIds(prev =>
@@ -425,38 +391,7 @@ export default function StrategySection({ profile }: { profile: Profile }) {
         </div>
       </div>
 
-      {/* ── 3 Primary Strategy Panels Selector (Video Editing / Shooting / Designing) ── */}
-      <div style={{ display: 'flex', gap: '0.625rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.875rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        {allowedCategories.map(cat => {
-          const Icon = cat.icon
-          const isActive = activeCategory === cat.id
-          return (
-            <button
-              key={cat.id}
-              type="button"
-              onClick={() => setActiveCategory(cat.id)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '9px 18px',
-                borderRadius: '12px',
-                border: isActive ? '2px solid #10b981' : '1px solid var(--border-default)',
-                background: isActive ? 'rgba(16,185,129,0.15)' : 'var(--bg-card)',
-                color: isActive ? '#10b981' : 'var(--text-secondary)',
-                fontWeight: 800,
-                fontSize: '0.88rem',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                boxShadow: isActive ? '0 3px 12px rgba(16,185,129,0.2)' : 'none'
-              }}
-            >
-              <Icon size={16} />
-              {cat.label}
-            </button>
-          )
-        })}
-      </div>
+
 
       {/* ── Sub Navigation Tabs: External Clients vs Internal Brands ── */}
       <div style={{ display: 'flex', gap: '0.625rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.75rem', flexWrap: 'wrap' }}>
@@ -531,51 +466,10 @@ export default function StrategySection({ profile }: { profile: Profile }) {
           ))}
         </div>
       ) : (() => {
-        const displayedClients = clients
-          .filter(c => {
-            if (activeTab === 'internal') return c.client_type === 'internal'
-            return (c.client_type || 'external') === 'external'
-          })
-          .map(c => {
-            let categoryDelivs = filterDeliverablesByCategory(c.deliverables, activeCategory)
-            if (categoryDelivs.length === 0) {
-              if (activeCategory === 'shooting') {
-                categoryDelivs = [{
-                  id: `template-shoot-${c.id}`,
-                  content_type: 'Shoot',
-                  monthly_target: 0,
-                  completed: 0,
-                  remaining: 0,
-                  percent: 0,
-                  dailyBreakdown: {},
-                  logs: []
-                }]
-              } else if (activeCategory === 'designing') {
-                categoryDelivs = [{
-                  id: `template-design-${c.id}`,
-                  content_type: 'Static Post',
-                  monthly_target: 0,
-                  completed: 0,
-                  remaining: 0,
-                  percent: 0,
-                  dailyBreakdown: {},
-                  logs: []
-                }]
-              } else if (activeCategory === 'video_editing') {
-                categoryDelivs = [{
-                  id: `template-reel-${c.id}`,
-                  content_type: 'Reel',
-                  monthly_target: 0,
-                  completed: 0,
-                  remaining: 0,
-                  percent: 0,
-                  dailyBreakdown: {},
-                  logs: []
-                }]
-              }
-            }
-            return { ...c, deliverables: categoryDelivs }
-          })
+        const displayedClients = clients.filter(c => {
+          if (activeTab === 'internal') return c.client_type === 'internal'
+          return (c.client_type || 'external') === 'external'
+        })
 
         if (displayedClients.length === 0) {
           return (

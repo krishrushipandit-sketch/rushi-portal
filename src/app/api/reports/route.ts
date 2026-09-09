@@ -206,10 +206,15 @@ export async function POST(req: NextRequest) {
     const empName = (empProfile?.full_name || '').toLowerCase()
     const empDept = (empProfile?.department || '').toLowerCase()
 
-    const isSalesDept = empDept === 'sales'
-    const isShreya = empEmail.includes('shreya') || empName.includes('shreya')
+    // Only Suyog, Kedar, Rohan (and Admin) sync deliverables into the Strategy Panel
+    const isEligibleToSync = (
+      user.role === 'admin' ||
+      empName.includes('suyog') || empEmail.includes('suyog') ||
+      empName.includes('kedar') || empEmail.includes('kedar') ||
+      empName.includes('rohan') || empEmail.includes('rohan')
+    )
 
-    if (!isSalesDept && !isShreya) {
+    if (isEligibleToSync) {
       runClientSync(targetEmployeeId, report_date, entries)
     }
 
@@ -400,38 +405,57 @@ function runClientSync(
         combinedText.includes('strategy session') ||
         combinedText.includes('onboarding')
 
-      // Determine content type (Reel, YouTube, Static Post, Shoot, etc.)
+      // Determine content type (YouTube, Shoot, Design/Static Post, Reel)
       let contentType: string | null = null
-      if (combinedText.includes('youtube') || combinedText.includes('yt ') || combinedText.includes('yt video') || combinedText.includes('long video')) {
+      if (
+        combinedText.includes('youtube') ||
+        combinedText.includes('yt ') ||
+        combinedText.includes('yt video') ||
+        combinedText.includes('u2f') ||
+        combinedText.includes('long video')
+      ) {
         contentType = 'YouTube'
-      } else if (combinedText.includes('shoot') || combinedText.includes('shooting')) {
+      } else if (
+        combinedText.includes('shoot') ||
+        combinedText.includes('shooting')
+      ) {
         contentType = 'Shoot'
-      } else if (combinedText.includes('reel') || combinedText.includes('shorts') || combinedText.includes('short video') || combinedText.includes('editing') || combinedText.includes('edit')) {
-        contentType = 'Reel'
       } else if (
         !isMeetingOrCall &&
-        (combinedText.includes('static post') ||
+        (combinedText.includes('design') ||
+         combinedText.includes('static post') ||
          combinedText.includes('static') ||
          combinedText.includes('poster') ||
          combinedText.includes('banner') ||
          combinedText.includes('thumbnail') ||
-         combinedText.includes('graphic design') ||
+         combinedText.includes('graphic') ||
          combinedText.includes('creative post') ||
-         combinedText.includes('design'))
+         combinedText.includes('post'))
       ) {
         contentType = 'Static Post'
+      } else if (
+        combinedText.includes('reel') ||
+        combinedText.includes('real') ||
+        combinedText.includes('shorts') ||
+        combinedText.includes('short video') ||
+        combinedText.includes('editing') ||
+        combinedText.includes('edit') ||
+        combinedText.includes('video')
+      ) {
+        contentType = 'Reel'
       } else if (combinedText.includes('story') || combinedText.includes('stories')) {
         contentType = 'Stories'
       } else if (combinedText.includes('podcast')) {
         contentType = 'Podcast'
       } else {
-        // Default based on responsibility title
         if (responsibilityTitle.includes('shoot')) {
           contentType = 'Shoot'
-        } else if (responsibilityTitle.includes('video') || responsibilityTitle.includes('reel') || responsibilityTitle.includes('edit')) {
-          contentType = responsibilityTitle.includes('youtube') ? 'YouTube' : 'Reel'
-        } else {
+        } else if (responsibilityTitle.includes('youtube') || responsibilityTitle.includes('yt')) {
+          contentType = 'YouTube'
+        } else if (responsibilityTitle.includes('design') || responsibilityTitle.includes('post')) {
           contentType = 'Static Post'
+        } else {
+          contentType = 'Reel'
         }
       }
 
@@ -453,11 +477,13 @@ function runClientSync(
 
       // Find deliverable with matching content type or alias
       let matchedDel = deliverables.find((d: any) => {
-        const ct = (d.content_type || '').toLowerCase()
-        const target = contentType!.toLowerCase()
+        const ct = (d.content_type || '').toLowerCase().trim()
+        const target = contentType!.toLowerCase().trim()
         if (ct === target) return true
         if (target === 'shoot' && (ct === 'shoot' || ct === 'shooting')) return true
-        if (target === 'static post' && (ct === 'static post' || ct === 'design' || ct === 'creative')) return true
+        if ((target === 'static post' || target === 'design') && (ct === 'static post' || ct === 'design' || ct === 'creative' || ct === 'post')) return true
+        if (target === 'youtube' && (ct === 'youtube' || ct === 'yt' || ct === 'u2f')) return true
+        if (target === 'reel' && (ct === 'reel' || ct === 'reels' || ct === 'real')) return true
         return false
       })
       if (!matchedDel) {
