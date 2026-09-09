@@ -400,14 +400,14 @@ function runClientSync(
         combinedText.includes('strategy session') ||
         combinedText.includes('onboarding')
 
-      // Determine content type (Reel, YouTube, Static Post, Shooting, etc.)
+      // Determine content type (Reel, YouTube, Static Post, Shoot, etc.)
       let contentType: string | null = null
       if (combinedText.includes('youtube') || combinedText.includes('yt ') || combinedText.includes('yt video') || combinedText.includes('long video')) {
         contentType = 'YouTube'
-      } else if (combinedText.includes('reel') || combinedText.includes('shorts') || combinedText.includes('short video')) {
-        contentType = 'Reel'
       } else if (combinedText.includes('shoot') || combinedText.includes('shooting')) {
-        contentType = 'Shooting'
+        contentType = 'Shoot'
+      } else if (combinedText.includes('reel') || combinedText.includes('shorts') || combinedText.includes('short video') || combinedText.includes('editing') || combinedText.includes('edit')) {
+        contentType = 'Reel'
       } else if (
         !isMeetingOrCall &&
         (combinedText.includes('static post') ||
@@ -416,7 +416,8 @@ function runClientSync(
          combinedText.includes('banner') ||
          combinedText.includes('thumbnail') ||
          combinedText.includes('graphic design') ||
-         combinedText.includes('creative post'))
+         combinedText.includes('creative post') ||
+         combinedText.includes('design'))
       ) {
         contentType = 'Static Post'
       } else if (combinedText.includes('story') || combinedText.includes('stories')) {
@@ -424,8 +425,10 @@ function runClientSync(
       } else if (combinedText.includes('podcast')) {
         contentType = 'Podcast'
       } else {
-        // Default to Reel if video editing responsibility, or Static Post
-        if (responsibilityTitle.includes('video') || responsibilityTitle.includes('reel') || responsibilityTitle.includes('edit')) {
+        // Default based on responsibility title
+        if (responsibilityTitle.includes('shoot')) {
+          contentType = 'Shoot'
+        } else if (responsibilityTitle.includes('video') || responsibilityTitle.includes('reel') || responsibilityTitle.includes('edit')) {
           contentType = responsibilityTitle.includes('youtube') ? 'YouTube' : 'Reel'
         } else {
           contentType = 'Static Post'
@@ -448,8 +451,15 @@ function runClientSync(
 
       if (!contentType) continue
 
-      // Find deliverable with matching content type or auto-create if missing
-      let matchedDel = deliverables.find((d: any) => d.content_type.toLowerCase() === contentType!.toLowerCase())
+      // Find deliverable with matching content type or alias
+      let matchedDel = deliverables.find((d: any) => {
+        const ct = (d.content_type || '').toLowerCase()
+        const target = contentType!.toLowerCase()
+        if (ct === target) return true
+        if (target === 'shoot' && (ct === 'shoot' || ct === 'shooting')) return true
+        if (target === 'static post' && (ct === 'static post' || ct === 'design' || ct === 'creative')) return true
+        return false
+      })
       if (!matchedDel) {
         try {
           const targetMonth = String(report_date).slice(0, 7)

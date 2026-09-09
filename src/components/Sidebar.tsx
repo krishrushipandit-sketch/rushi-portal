@@ -27,7 +27,6 @@ const baseEmployeeNavItems = [
   { id: 'reports', label: 'Daily Report', icon: ClipboardList, salesOnly: false, mediaOnly: false },
   { id: 'attendance', label: 'Attendance', icon: Calendar, salesOnly: false, mediaOnly: false },
   { id: 'strategy', label: 'Strategy Panel', icon: Clapperboard, salesOnly: false, mediaOnly: true },
-  { id: 'performance', label: 'Performance', icon: BarChart3, salesOnly: false, mediaOnly: true },
   { id: 'notifications', label: 'Notifications', icon: Bell, badge: true, salesOnly: false, mediaOnly: false },
   { id: 'settings', label: 'Settings', icon: Settings, badge: false, salesOnly: false, mediaOnly: false },
 ]
@@ -44,7 +43,7 @@ const adminNavItems = [
   { id: 'attendance',    label: 'Attendance',         icon: Calendar,        badge: false },
   { id: 'leaderboard',   label: 'Leaderboard',        icon: Trophy,          badge: false },
   { id: 'employees',     label: 'Employees',          icon: Users,           badge: false },
-  { id: 'notifications', label: 'Notifications',      icon: Bell,            badge: true  },
+  { id: 'notifications', label: 'Notifications',      icon: Bell,            badge: true },
   { id: 'settings',      label: 'Settings',           icon: Settings,        badge: false },
 ]
 
@@ -60,23 +59,36 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
     profile.email?.toLowerCase().includes('kedar')
   )
 
+  const isSuyog = (
+    profile.full_name?.toLowerCase().includes('suyog') ||
+    profile.email?.toLowerCase().includes('suyog')
+  )
+
+  const isRohan = (
+    profile.full_name?.toLowerCase().includes('rohan') ||
+    profile.email?.toLowerCase().includes('rohan') ||
+    profile.department?.toLowerCase() === 'design'
+  )
+
+  // Media team members who work with Strategy Panel (Editing, Shooting, Designing)
   const isMediaEmployee = (
     profile.department?.toLowerCase() === 'media' ||
     profile.department?.toLowerCase() === 'client_management' ||
     profile.department?.toLowerCase() === 'strategy' ||
+    profile.department?.toLowerCase() === 'design' ||
     profile.designation?.toLowerCase().includes('video') ||
     profile.designation?.toLowerCase().includes('editor') ||
     profile.designation?.toLowerCase().includes('client') ||
-    profile.designation?.toLowerCase().includes('strategy')
-  ) && !profile.full_name?.toLowerCase().includes('suyog')
+    profile.designation?.toLowerCase().includes('strategy') ||
+    profile.designation?.toLowerCase().includes('design') ||
+    isKedar || isSuyog || isRohan
+  )
 
   const navItems = profile.role === 'admin'
     ? adminNavItems
     : baseEmployeeNavItems.filter(item =>
         (!item.salesOnly || isSalesEmployee(profile)) &&
-        (!item.mediaOnly || isMediaEmployee) &&
-        // Kedar cannot see Performance
-        !(isKedar && item.id === 'performance')
+        (!item.mediaOnly || isMediaEmployee)
       )
 
   const handleLogout = async () => {

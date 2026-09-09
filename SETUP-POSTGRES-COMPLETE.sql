@@ -433,10 +433,10 @@ WHERE p.email = 'naveen@rushipandit.com';
 INSERT INTO employee_responsibilities (employee_id, title, daily_target, sort_order)
 SELECT id, title, target, ord FROM profiles p,
 (VALUES
-  ('Client management',      0, 1),
-  ('Client reporting',       0, 2),
-  ('Client reel editing',    4, 3),
-  ('Client YouTube editing', 1, 4)
+  ('External shoot',   0, 1),
+  ('External editing', 4, 2),
+  ('Internal shoot',   0, 3),
+  ('Internal editing', 4, 4)
 ) AS r(title, target, ord)
 WHERE p.email = 'kedar@rushipandit.com';
 
@@ -444,8 +444,10 @@ WHERE p.email = 'kedar@rushipandit.com';
 INSERT INTO employee_responsibilities (employee_id, title, daily_target, sort_order)
 SELECT id, title, target, ord FROM profiles p,
 (VALUES
-  ('Internal reel editing',    4, 1),
-  ('Internal YouTube editing', 1, 2)
+  ('External shoot',   0, 1),
+  ('External editing', 4, 2),
+  ('Internal shoot',   0, 3),
+  ('Internal editing', 4, 4)
 ) AS r(title, target, ord)
 WHERE p.email = 'suyog@rushipandit.com';
 

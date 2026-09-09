@@ -18,6 +18,7 @@ import SettingsSection from '@/components/sections/SettingsSection'
 import LeaderboardSection from '@/components/sections/LeaderboardSection'
 import AttendanceSection from '@/components/sections/AttendanceSection'
 import RealtimeLeadAlert from '@/components/RealtimeLeadAlert'
+import PWAInstallPrompt from '@/components/PWAInstallPrompt'
 
 export type ActiveSection =
   | 'overview'
@@ -303,6 +304,9 @@ export default function DashboardPage() {
         onViewLead={() => setActiveSection('leads')}
         userRole={profile.role}
       />
+
+      {/* PWA Mobile App Download & Install Prompt */}
+      <PWAInstallPrompt />
     </div>
   )
 }

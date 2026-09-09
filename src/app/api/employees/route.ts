@@ -11,7 +11,8 @@ export async function GET(req: NextRequest) {
 
     const employees = await query(
       `SELECT id, email, full_name, role, department, designation, phone,
-              whatsapp_number, avatar_url, is_active, created_at
+              whatsapp_number, avatar_url, is_active, created_at,
+              registered_device_id, device_registered_at
        FROM profiles ORDER BY created_at ASC`
     )
 

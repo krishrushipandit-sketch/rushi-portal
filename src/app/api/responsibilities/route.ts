@@ -24,6 +24,54 @@ export async function GET(req: NextRequest) {
       [targetId]
     )
 
+    // Auto-ensure required tasks for Suyog and Kedar
+    const targetUser = await queryOne<{ email: string; full_name: string }>(
+      'SELECT email, full_name FROM profiles WHERE id = $1',
+      [targetId]
+    ).catch(() => null)
+
+    if (targetUser) {
+      const email = (targetUser.email || '').toLowerCase()
+      const isMediaEditor = email.includes('suyog') || email.includes('kedar')
+
+      if (isMediaEditor) {
+        const requiredTasks = [
+          { title: 'External shoot', target: 0, ord: 1 },
+          { title: 'External editing', target: 4, ord: 2 },
+          { title: 'Internal shoot', target: 0, ord: 3 },
+          { title: 'Internal editing', target: 4, ord: 4 }
+        ]
+
+        let needsReload = false
+        for (const t of requiredTasks) {
+          const exists = (data || []).some(
+            (d: any) => d.title.toLowerCase().trim() === t.title.toLowerCase().trim()
+          )
+          if (!exists) {
+            await execute(
+              `INSERT INTO employee_responsibilities (employee_id, title, daily_target, sort_order)
+               VALUES ($1, $2, $3, $4)`,
+              [targetId, t.title, t.target, t.ord]
+            ).catch(() => {})
+            needsReload = true
+          }
+        }
+
+        if (needsReload) {
+          const reloaded = await query(
+            `SELECT id, title, daily_target, sort_order
+             FROM employee_responsibilities
+             WHERE employee_id = $1
+               AND title NOT ILIKE '%enrollment%'
+               AND title NOT ILIKE '%admission%'
+             ORDER BY sort_order ASC`,
+            [targetId]
+          )
+          return NextResponse.json(reloaded || [])
+        }
+      }
+    }
+
     return NextResponse.json(data || [])
   } catch {
     return NextResponse.json([])

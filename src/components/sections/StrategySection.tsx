@@ -41,13 +41,15 @@ interface Client {
 
 const contentTypeIcon = (type: string) => {
   if (type === 'YouTube') return <PlayCircle size={14} />
-  if (type === 'Static Post') return <Grid3x3 size={14} />
+  if (type === 'Static Post' || type === 'Design') return <Grid3x3 size={14} />
+  if (type === 'Shoot' || type === 'Shooting') return <PlayCircle size={14} />
   return <Video size={14} />
 }
 
 const contentTypeColor = (type: string) => {
   if (type === 'YouTube') return '#ef4444'
-  if (type === 'Static Post') return '#8b5cf6'
+  if (type === 'Static Post' || type === 'Design') return '#8b5cf6'
+  if (type === 'Shoot' || type === 'Shooting') return '#f59e0b'
   return '#3b82f6'
 }
 
@@ -98,19 +100,67 @@ export default function StrategySection({ profile }: { profile: Profile }) {
   const [expandedClientIds, setExpandedClientIds] = useState<string[]>([])
 
   const isAdmin = profile.role === 'admin'
-  const canManageClients = isAdmin ||
+  const canManageClients = isAdmin // Master permissions reserved for Admin
+
+  const isRohan = (
+    profile.full_name?.toLowerCase().includes('rohan') ||
+    profile.email?.toLowerCase().includes('rohan') ||
+    profile.department?.toLowerCase() === 'design'
+  )
+  const isSuyog = (
+    profile.full_name?.toLowerCase().includes('suyog') ||
+    profile.email?.toLowerCase().includes('suyog')
+  )
+  const isKedar = (
     profile.full_name?.toLowerCase().includes('kedar') ||
-    profile.email?.toLowerCase().includes('kedar') ||
-    profile.department?.toLowerCase() === 'client_management' ||
-    profile.department?.toLowerCase() === 'strategy'
+    profile.email?.toLowerCase().includes('kedar')
+  )
+
+  type StrategyCategory = 'video_editing' | 'shooting' | 'designing'
+
+  // Access rules:
+  // Rohan -> Designing, Shooting
+  // Suyog -> Video Editing, Shooting
+  // Kedar -> Video Editing, Shooting
+  // Admin -> Video Editing, Shooting, Designing (Master Permissions)
+  const allowedCategories: { id: StrategyCategory; label: string; icon: any }[] = []
+  if (isAdmin || isSuyog || isKedar || (!isRohan && !isSuyog && !isKedar)) {
+    allowedCategories.push({ id: 'video_editing', label: '🎬 Video Editing', icon: Video })
+  }
+  if (isAdmin || isRohan || isSuyog || isKedar || (!isRohan && !isSuyog && !isKedar)) {
+    allowedCategories.push({ id: 'shooting', label: '📸 Shooting', icon: PlayCircle })
+  }
+  if (isAdmin || isRohan || (!isRohan && !isSuyog && !isKedar)) {
+    allowedCategories.push({ id: 'designing', label: '🎨 Designing', icon: Grid3x3 })
+  }
+
+  const [activeCategory, setActiveCategory] = useState<StrategyCategory>(
+    isRohan ? 'designing' : 'video_editing'
+  )
+
   const isMediaEmployee = profile.role === 'employee' &&
     (profile.department?.toLowerCase() === 'media' ||
      profile.department?.toLowerCase() === 'client_management' ||
      profile.department?.toLowerCase() === 'strategy' ||
+     profile.department?.toLowerCase() === 'design' ||
      profile.designation?.toLowerCase().includes('video') ||
      profile.designation?.toLowerCase().includes('editor') ||
-     profile.full_name?.toLowerCase().includes('kedar') ||
-     profile.email?.toLowerCase().includes('kedar'))
+     profile.designation?.toLowerCase().includes('design') ||
+     isKedar || isSuyog || isRohan)
+
+  const filterDeliverablesByCategory = (deliverables: Deliverable[], category: StrategyCategory) => {
+    return (deliverables || []).filter(d => {
+      const ct = (d.content_type || '').toLowerCase()
+      if (category === 'video_editing') {
+        return ct === 'reel' || ct === 'youtube' || ct.includes('video') || ct.includes('reel') || ct.includes('edit')
+      } else if (category === 'shooting') {
+        return ct === 'shoot' || ct === 'shooting' || ct.includes('shoot')
+      } else if (category === 'designing') {
+        return ct === 'static post' || ct === 'design' || ct.includes('design') || ct.includes('post') || ct.includes('banner') || ct.includes('graphic') || ct.includes('poster')
+      }
+      return true
+    })
+  }
 
   const toggleExpandClient = (clientId: string) => {
     setExpandedClientIds(prev =>
@@ -375,54 +425,85 @@ export default function StrategySection({ profile }: { profile: Profile }) {
         </div>
       </div>
 
-      {/* ── Sub Navigation Tabs: External Clients vs Internal Brands ── */}
-      {canManageClients && (
-        <div style={{ display: 'flex', gap: '0.625rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.75rem', flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => setActiveTab('external')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 18px',
-              borderRadius: '99px',
-              border: activeTab === 'external' ? '1.5px solid #10b981' : '1px solid var(--border-default)',
-              background: activeTab === 'external' ? 'rgba(16,185,129,0.15)' : 'var(--bg-card)',
-              color: activeTab === 'external' ? '#10b981' : 'var(--text-secondary)',
-              fontWeight: 800,
-              fontSize: '0.875rem',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-              boxShadow: activeTab === 'external' ? '0 2px 10px rgba(16,185,129,0.2)' : 'none'
-            }}
-          >
-            <Globe size={16} /> 🌐 External Clients ({clients.filter(c => (c.client_type || 'external') === 'external').length})
-          </button>
+      {/* ── 3 Primary Strategy Panels Selector (Video Editing / Shooting / Designing) ── */}
+      <div style={{ display: 'flex', gap: '0.625rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.875rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        {allowedCategories.map(cat => {
+          const Icon = cat.icon
+          const isActive = activeCategory === cat.id
+          return (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setActiveCategory(cat.id)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '9px 18px',
+                borderRadius: '12px',
+                border: isActive ? '2px solid #10b981' : '1px solid var(--border-default)',
+                background: isActive ? 'rgba(16,185,129,0.15)' : 'var(--bg-card)',
+                color: isActive ? '#10b981' : 'var(--text-secondary)',
+                fontWeight: 800,
+                fontSize: '0.88rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                boxShadow: isActive ? '0 3px 12px rgba(16,185,129,0.2)' : 'none'
+              }}
+            >
+              <Icon size={16} />
+              {cat.label}
+            </button>
+          )
+        })}
+      </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('internal')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 18px',
-              borderRadius: '99px',
-              border: activeTab === 'internal' ? '1.5px solid #ffffff' : '1px solid var(--border-default)',
-              background: activeTab === 'internal' ? 'rgba(255, 255, 255, 0.12)' : 'var(--bg-card)',
-              color: activeTab === 'internal' ? '#ffffff' : 'var(--text-secondary)',
-              fontWeight: 800,
-              fontSize: '0.875rem',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-              boxShadow: activeTab === 'internal' ? '0 2px 10px rgba(255, 255, 255, 0.1)' : 'none'
-            }}
-          >
-            <Sparkles size={16} /> 🌟 Internal Brands &amp; Media ({clients.filter(c => c.client_type === 'internal').length})
-          </button>
-        </div>
-      )}
+      {/* ── Sub Navigation Tabs: External Clients vs Internal Brands ── */}
+      <div style={{ display: 'flex', gap: '0.625rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.75rem', flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={() => setActiveTab('external')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 18px',
+            borderRadius: '99px',
+            border: activeTab === 'external' ? '1.5px solid #10b981' : '1px solid var(--border-default)',
+            background: activeTab === 'external' ? 'rgba(16,185,129,0.15)' : 'var(--bg-card)',
+            color: activeTab === 'external' ? '#10b981' : 'var(--text-secondary)',
+            fontWeight: 800,
+            fontSize: '0.875rem',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            boxShadow: activeTab === 'external' ? '0 2px 10px rgba(16,185,129,0.2)' : 'none'
+          }}
+        >
+          <Globe size={16} /> 🌐 External Clients ({clients.filter(c => (c.client_type || 'external') === 'external').length})
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('internal')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 18px',
+            borderRadius: '99px',
+            border: activeTab === 'internal' ? '1.5px solid #ffffff' : '1px solid var(--border-default)',
+            background: activeTab === 'internal' ? 'rgba(255, 255, 255, 0.12)' : 'var(--bg-card)',
+            color: activeTab === 'internal' ? '#ffffff' : 'var(--text-secondary)',
+            fontWeight: 800,
+            fontSize: '0.875rem',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            boxShadow: activeTab === 'internal' ? '0 2px 10px rgba(255, 255, 255, 0.1)' : 'none'
+          }}
+        >
+          <Sparkles size={16} /> 🌟 Internal Brands &amp; Media ({clients.filter(c => c.client_type === 'internal').length})
+        </button>
+      </div>
 
       {/* ── Month Pace Banner ── */}
       <div className="glass-card" style={{ padding: '1rem 1.25rem' }}>
@@ -450,11 +531,51 @@ export default function StrategySection({ profile }: { profile: Profile }) {
           ))}
         </div>
       ) : (() => {
-        const displayedClients = clients.filter(c => {
-          if (!canManageClients) return true
-          if (activeTab === 'internal') return c.client_type === 'internal'
-          return (c.client_type || 'external') === 'external'
-        })
+        const displayedClients = clients
+          .filter(c => {
+            if (activeTab === 'internal') return c.client_type === 'internal'
+            return (c.client_type || 'external') === 'external'
+          })
+          .map(c => {
+            let categoryDelivs = filterDeliverablesByCategory(c.deliverables, activeCategory)
+            if (categoryDelivs.length === 0) {
+              if (activeCategory === 'shooting') {
+                categoryDelivs = [{
+                  id: `template-shoot-${c.id}`,
+                  content_type: 'Shoot',
+                  monthly_target: 0,
+                  completed: 0,
+                  remaining: 0,
+                  percent: 0,
+                  dailyBreakdown: {},
+                  logs: []
+                }]
+              } else if (activeCategory === 'designing') {
+                categoryDelivs = [{
+                  id: `template-design-${c.id}`,
+                  content_type: 'Static Post',
+                  monthly_target: 0,
+                  completed: 0,
+                  remaining: 0,
+                  percent: 0,
+                  dailyBreakdown: {},
+                  logs: []
+                }]
+              } else if (activeCategory === 'video_editing') {
+                categoryDelivs = [{
+                  id: `template-reel-${c.id}`,
+                  content_type: 'Reel',
+                  monthly_target: 0,
+                  completed: 0,
+                  remaining: 0,
+                  percent: 0,
+                  dailyBreakdown: {},
+                  logs: []
+                }]
+              }
+            }
+            return { ...c, deliverables: categoryDelivs }
+          })
 
         if (displayedClients.length === 0) {
           return (
@@ -464,8 +585,8 @@ export default function StrategySection({ profile }: { profile: Profile }) {
               </div>
               <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
                 {activeTab === 'internal' 
-                  ? 'No internal brands found. Click "Add Client" to register internal properties.'
-                  : 'No external clients found. Click "Add Client" to set monthly targets.'}
+                  ? 'No internal brands found in this panel. Click "Add Client" to register internal properties.'
+                  : 'No external clients found in this panel. Click "Add Client" to set monthly targets.'}
               </p>
             </div>
           )
