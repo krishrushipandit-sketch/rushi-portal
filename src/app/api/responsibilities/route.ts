@@ -30,21 +30,28 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/responsibilities — admin adds a responsibility
+// POST /api/responsibilities — add a daily report task
 export async function POST(req: NextRequest) {
   const user = await getUserFromRequest(req)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (user.role !== 'admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 })
+
+  const isAdmin = user.role === 'admin'
 
   try {
     const body = await req.json()
     const { employee_id, title, daily_target, sort_order } = body
 
+    if (!title || !title.trim()) {
+      return NextResponse.json({ error: 'Title is required' }, { status: 400 })
+    }
+
+    const targetEmpId = isAdmin && employee_id ? employee_id : user.userId
+
     const data = await queryOne(
       `INSERT INTO employee_responsibilities (employee_id, title, daily_target, sort_order)
        VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [employee_id, title, daily_target || null, sort_order || 0]
+      [targetEmpId, title.trim(), daily_target !== undefined && daily_target !== '' ? Number(daily_target) : null, sort_order || 0]
     )
 
     return NextResponse.json(data, { status: 201 })
@@ -53,18 +60,66 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// DELETE /api/responsibilities?id=xxx
+// PATCH /api/responsibilities — edit an existing daily report task
+export async function PATCH(req: NextRequest) {
+  const user = await getUserFromRequest(req)
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const isAdmin = user.role === 'admin'
+
+  try {
+    const body = await req.json()
+    const { id, title, daily_target } = body
+
+    if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 })
+
+    let updated: any
+    if (isAdmin) {
+      updated = await queryOne(
+        `UPDATE employee_responsibilities
+         SET title = COALESCE($1, title),
+             daily_target = $2
+         WHERE id = $3
+         RETURNING *`,
+        [title?.trim() || null, daily_target !== undefined && daily_target !== '' ? Number(daily_target) : null, id]
+      )
+    } else {
+      updated = await queryOne(
+        `UPDATE employee_responsibilities
+         SET title = COALESCE($1, title),
+             daily_target = $2
+         WHERE id = $3 AND employee_id = $4
+         RETURNING *`,
+        [title?.trim() || null, daily_target !== undefined && daily_target !== '' ? Number(daily_target) : null, id, user.userId]
+      )
+    }
+
+    if (!updated) {
+      return NextResponse.json({ error: 'Task not found or not permitted' }, { status: 404 })
+    }
+
+    return NextResponse.json(updated)
+  } catch (err: unknown) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 })
+  }
+}
+
+// DELETE /api/responsibilities?id=xxx — delete a daily report task
 export async function DELETE(req: NextRequest) {
   const user = await getUserFromRequest(req)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (user.role !== 'admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 })
 
+  const isAdmin = user.role === 'admin'
   const { searchParams } = new URL(req.url)
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
 
   try {
-    await execute('DELETE FROM employee_responsibilities WHERE id = $1', [id])
+    if (isAdmin) {
+      await execute('DELETE FROM employee_responsibilities WHERE id = $1', [id])
+    } else {
+      await execute('DELETE FROM employee_responsibilities WHERE id = $1 AND employee_id = $2', [id, user.userId])
+    }
     return NextResponse.json({ success: true })
   } catch (err: unknown) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })

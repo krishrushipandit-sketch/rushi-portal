@@ -874,11 +874,25 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
                     </td>
                     {!isLocked && (
                       <td style={{ padding: '0.35rem 0.5rem', textAlign: 'center', verticalAlign: 'middle' }}>
-                        {row.isCustom && (
-                          <button onClick={() => removeRow(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}>
-                            <Trash2 size={12} />
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeRow(i)}
+                          title="Remove this task row from today's report"
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: 'var(--text-muted)',
+                            padding: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            transition: 'color 0.15s'
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
+                          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </td>
                     )}
                   </tr>

@@ -196,13 +196,20 @@ export async function POST(req: NextRequest) {
       [targetEmployeeId, report_date, isHalfDay ? 'half_day' : 'present', new Date().toISOString()]
     ).catch(() => {})
 
-    // ── Auto-sync client production progress (non-blocking, skip for sales dept) ──
-    const empProfile = await queryOne<{ department: string | null }>(
-      'SELECT department FROM profiles WHERE id = $1',
+    // ── Auto-sync client production progress (non-blocking, skip for sales dept and Shreya) ──
+    const empProfile = await queryOne<{ department: string | null; email: string | null; full_name: string | null }>(
+      'SELECT department, email, full_name FROM profiles WHERE id = $1',
       [targetEmployeeId]
     ).catch(() => null)
-    const isSalesDept = (empProfile?.department || '').toLowerCase() === 'sales'
-    if (!isSalesDept) {
+
+    const empEmail = (empProfile?.email || '').toLowerCase()
+    const empName = (empProfile?.full_name || '').toLowerCase()
+    const empDept = (empProfile?.department || '').toLowerCase()
+
+    const isSalesDept = empDept === 'sales'
+    const isShreya = empEmail.includes('shreya') || empName.includes('shreya')
+
+    if (!isSalesDept && !isShreya) {
       runClientSync(targetEmployeeId, report_date, entries)
     }
 
@@ -251,6 +258,59 @@ export async function POST(req: NextRequest) {
     })().catch(() => {})
 
     return NextResponse.json(savedReport, { status: existing ? 200 : 201 })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
+}
+
+// DELETE /api/reports?id=xxx — delete a daily report
+// Employees can only delete their OWN report for TODAY
+// Admins can delete any report
+export async function DELETE(req: NextRequest) {
+  const user = await getUserFromRequest(req)
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { searchParams } = new URL(req.url)
+  const reportId = searchParams.get('id')
+  if (!reportId) return NextResponse.json({ error: 'Report ID required' }, { status: 400 })
+
+  const isAdmin = user.role === 'admin'
+
+  try {
+    // Fetch the report to verify ownership and get employee_id + date
+    const report = await queryOne<{ id: string; employee_id: string; report_date: string }>(
+      `SELECT id, employee_id, TO_CHAR(report_date, 'YYYY-MM-DD') AS report_date FROM daily_reports WHERE id = $1`,
+      [reportId]
+    )
+    if (!report) return NextResponse.json({ error: 'Report not found' }, { status: 404 })
+
+    // Non-admins can only delete their own report and only for today
+    if (!isAdmin) {
+      if (report.employee_id !== user.userId) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      const todayIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      if (report.report_date !== todayIST) {
+        return NextResponse.json({ error: 'You can only delete today\'s report' }, { status: 403 })
+      }
+    }
+
+    // Delete report (cascade will handle report entries if any FK exists)
+    await execute('DELETE FROM daily_reports WHERE id = $1', [reportId])
+
+    // Also clean up client_progress_log for this employee+date (so strategy panel is accurate)
+    await execute(
+      'DELETE FROM client_progress_log WHERE employee_id = $1 AND log_date = $2',
+      [report.employee_id, report.report_date]
+    ).catch(() => {})
+
+    // Also remove the auto-attendance that was set when report was submitted
+    await execute(
+      `DELETE FROM employee_attendance WHERE employee_id = $1 AND date = $2 AND status IN ('present', 'half_day')`,
+      [report.employee_id, report.report_date]
+    ).catch(() => {})
+
+    return NextResponse.json({ success: true })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }

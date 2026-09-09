@@ -69,6 +69,8 @@ export async function GET(req: NextRequest) {
        LEFT JOIN profiles p ON l.employee_id = p.id
        LEFT JOIN client_deliverables cd ON l.deliverable_id = cd.id
        WHERE l.log_date >= $1 AND l.log_date < $2
+         AND (p.email IS NULL OR p.email NOT ILIKE '%shreya%')
+         AND (p.full_name IS NULL OR p.full_name NOT ILIKE '%shreya%')
        ORDER BY l.log_date DESC`,
       [dateFrom, dateTo]
     )

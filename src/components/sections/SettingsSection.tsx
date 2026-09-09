@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { getInitials } from '@/lib/utils'
-import { Lock, Eye, EyeOff, CheckCircle, AlertCircle, User, Phone, Mail, Camera, Loader2, Plus, Trash2, ClipboardList } from 'lucide-react'
+import { Lock, Eye, EyeOff, CheckCircle, AlertCircle, User, Phone, Mail, Camera, Loader2, Plus, Trash2, ClipboardList, Pencil, Check, X } from 'lucide-react'
 
 interface SettingsSectionProps {
   profile: Profile
@@ -32,22 +32,35 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
   const [profileError, setProfileError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // ── Fixed Daily Tasks state ────────────────────────────────────────────────
-  const [fixedTasks, setFixedTasks] = useState<{ id: string; title: string }[]>([])
+  // ── Fixed Daily Reporting Tasks state ────────────────────────────────────────────────
+  const [fixedTasks, setFixedTasks] = useState<{ id: string; title: string; daily_target?: number | null }[]>([])
   const [newFixedTask, setNewFixedTask] = useState('')
+  const [newFixedTarget, setNewFixedTarget] = useState('')
   const [fixedTasksLoading, setFixedTasksLoading] = useState(true)
   const [fixedTaskAdding, setFixedTaskAdding] = useState(false)
   const [fixedTaskError, setFixedTaskError] = useState('')
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState('')
+  const [editingTarget, setEditingTarget] = useState('')
+  const [editingSaving, setEditingSaving] = useState(false)
 
-  useEffect(() => {
+  const loadFixedTasks = useCallback(async () => {
     const token = localStorage.getItem('rushi_token')
     if (!token) return
-    fetch('/api/fixed-tasks', { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setFixedTasks(d) })
-      .catch(() => {})
-      .finally(() => setFixedTasksLoading(false))
+    try {
+      const res = await fetch('/api/responsibilities', { headers: { Authorization: `Bearer ${token}` } })
+      const d = await res.json()
+      if (Array.isArray(d)) {
+        setFixedTasks(d)
+      }
+    } catch {} finally {
+      setFixedTasksLoading(false)
+    }
   }, [])
+
+  useEffect(() => {
+    loadFixedTasks()
+  }, [loadFixedTasks])
 
   const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -195,17 +208,21 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
     const token = localStorage.getItem('rushi_token')
     if (!token) return
     try {
-      const res = await fetch('/api/fixed-tasks', {
+      const res = await fetch('/api/responsibilities', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title })
+        body: JSON.stringify({
+          title,
+          daily_target: newFixedTarget ? Number(newFixedTarget) : null
+        })
       })
       const data = await res.json()
       if (!res.ok) {
-        setFixedTaskError(data.error === 'Task already exists' ? 'This task already exists.' : (data.error || 'Failed to add task'))
+        setFixedTaskError(data.error || 'Failed to add task')
       } else {
         setFixedTasks(prev => [...prev, data])
         setNewFixedTask('')
+        setNewFixedTarget('')
       }
     } catch {
       setFixedTaskError('Network error. Please try again.')
@@ -214,14 +231,51 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
     }
   }
 
+  const handleStartEdit = (task: { id: string; title: string; daily_target?: number | null }) => {
+    setEditingTaskId(task.id)
+    setEditingTitle(task.title)
+    setEditingTarget(task.daily_target ? String(task.daily_target) : '')
+    setFixedTaskError('')
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingTaskId || !editingTitle.trim()) return
+    setEditingSaving(true)
+    const token = localStorage.getItem('rushi_token')
+    if (!token) return
+    try {
+      const res = await fetch('/api/responsibilities', {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingTaskId,
+          title: editingTitle.trim(),
+          daily_target: editingTarget ? Number(editingTarget) : null
+        })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setFixedTasks(prev => prev.map(t => t.id === editingTaskId ? { ...t, title: data.title, daily_target: data.daily_target } : t))
+        setEditingTaskId(null)
+      } else {
+        setFixedTaskError(data.error || 'Failed to update task')
+      }
+    } catch {
+      setFixedTaskError('Failed to save update')
+    } finally {
+      setEditingSaving(false)
+    }
+  }
+
   const handleDeleteFixedTask = async (id: string) => {
     const token = localStorage.getItem('rushi_token')
     if (!token) return
     try {
-      await fetch(`/api/fixed-tasks?id=${id}`, {
+      await fetch(`/api/responsibilities?id=${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       })
+      fetch(`/api/fixed-tasks?id=${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).catch(() => {})
       setFixedTasks(prev => prev.filter(t => t.id !== id))
     } catch {}
   }
@@ -565,31 +619,41 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
         </form>
       </div>
 
-      {/* ── Fixed Daily Tasks card ──────────────────────────────────────────── */}
+      {/* ── Daily Report Format & Tasks card ──────────────────────────────────────────── */}
       <div className="card" style={{ marginBottom: '1.5rem', padding: '1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '1rem' }}>
           <ClipboardList size={18} style={{ color: '#10b981', flexShrink: 0 }} />
           <div>
             <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-              My Fixed Daily Tasks
+              My Daily Report Format (Fixed Tasks)
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginTop: '2px' }}>
-              These tasks auto-populate in your daily report form every day — no need to retype them!
+              These tasks appear in your daily report form every day. You can add new tasks, edit existing tasks, or delete tasks you don't need.
             </p>
           </div>
         </div>
 
-        {/* Add new task */}
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+        {/* Add new task form */}
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
           <input
             type="text"
             className="form-input"
-            placeholder="e.g. Reply to student queries, Post on Instagram..."
+            placeholder="New task name (e.g. Daily Client Follow-up, Reels Editing...)"
             value={newFixedTask}
             onChange={e => { setNewFixedTask(e.target.value); setFixedTaskError('') }}
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddFixedTask() } }}
-            style={{ flex: 1, fontSize: '0.875rem' }}
+            style={{ flex: '1 1 240px', fontSize: '0.85rem' }}
             maxLength={120}
+          />
+          <input
+            type="number"
+            min="0"
+            className="form-input"
+            placeholder="Target/day (opt)"
+            value={newFixedTarget}
+            onChange={e => setNewFixedTarget(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddFixedTask() } }}
+            style={{ width: '110px', fontSize: '0.85rem', textAlign: 'center' }}
           />
           <button
             type="button"
@@ -599,7 +663,7 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
             style={{ padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, whiteSpace: 'nowrap' }}
           >
             {fixedTaskAdding ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Plus size={14} />}
-            Add
+            Add Task
           </button>
         </div>
 
@@ -609,11 +673,11 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
           </p>
         )}
 
-        {/* List of fixed tasks */}
+        {/* List of daily reporting tasks */}
         {fixedTasksLoading ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {[1, 2, 3].map(i => (
-              <div key={i} className="skeleton" style={{ height: '40px', borderRadius: '8px' }} />
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="skeleton" style={{ height: '44px', borderRadius: '8px' }} />
             ))}
           </div>
         ) : fixedTasks.length === 0 ? (
@@ -623,49 +687,136 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
             color: 'var(--text-muted)', fontSize: '0.85rem'
           }}>
             <ClipboardList size={28} style={{ opacity: 0.3, marginBottom: '8px' }} />
-            <p style={{ margin: 0 }}>No fixed tasks yet.</p>
-            <p style={{ margin: '4px 0 0', fontSize: '0.78rem', opacity: 0.7 }}>Add tasks above to pre-fill your daily report automatically.</p>
+            <p style={{ margin: 0, fontWeight: 600 }}>No daily tasks configured</p>
+            <p style={{ margin: '4px 0 0', fontSize: '0.78rem', opacity: 0.7 }}>Add tasks above to define your daily report structure.</p>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {fixedTasks.map((task, idx) => (
-              <div
-                key={task.id}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '0.625rem',
-                  padding: '0.625rem 0.875rem',
-                  background: 'var(--bg-card)', border: '1px solid var(--border-default)',
-                  borderRadius: '8px'
-                }}
-              >
-                <span style={{
-                  width: '22px', height: '22px', borderRadius: '50%', flexShrink: 0,
-                  background: 'rgba(16,185,129,0.15)', color: '#10b981',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '0.72rem', fontWeight: 700
-                }}>
-                  {idx + 1}
-                </span>
-                <span style={{ flex: 1, fontSize: '0.875rem', color: 'var(--text-primary)' }}>
-                  {task.title}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteFixedTask(task.id)}
-                  title="Remove this fixed task"
+            {fixedTasks.map((task, idx) => {
+              const isEditing = editingTaskId === task.id
+
+              return (
+                <div
+                  key={task.id}
                   style={{
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    color: 'var(--text-muted)', padding: '4px', borderRadius: '4px',
-                    display: 'flex', alignItems: 'center',
-                    transition: 'color 0.15s'
+                    display: 'flex', alignItems: 'center', gap: '0.625rem',
+                    padding: '0.625rem 0.875rem',
+                    background: 'var(--bg-card)', border: '1px solid var(--border-default)',
+                    borderRadius: '8px', flexWrap: 'wrap'
                   }}
-                  onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
-                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
                 >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
+                  <span style={{
+                    width: '22px', height: '22px', borderRadius: '50%', flexShrink: 0,
+                    background: 'rgba(16,185,129,0.15)', color: '#10b981',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.72rem', fontWeight: 700
+                  }}>
+                    {idx + 1}
+                  </span>
+
+                  {isEditing ? (
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px', minWidth: '220px' }}>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={editingTitle}
+                        onChange={e => setEditingTitle(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit() }}
+                        style={{ flex: 1, fontSize: '0.85rem', padding: '4px 8px' }}
+                        autoFocus
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        className="form-input"
+                        placeholder="Target"
+                        value={editingTarget}
+                        onChange={e => setEditingTarget(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit() }}
+                        style={{ width: '80px', fontSize: '0.85rem', padding: '4px 8px', textAlign: 'center' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSaveEdit}
+                        disabled={editingSaving || !editingTitle.trim()}
+                        style={{
+                          background: '#10b981', color: 'white', border: 'none',
+                          borderRadius: '5px', padding: '5px 8px', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: '3px', fontSize: '0.75rem', fontWeight: 600
+                        }}
+                        title="Save Changes"
+                      >
+                        {editingSaving ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Check size={13} />}
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingTaskId(null)}
+                        style={{
+                          background: 'none', border: '1px solid var(--border-default)',
+                          borderRadius: '5px', padding: '5px 8px', cursor: 'pointer',
+                          color: 'var(--text-muted)', display: 'flex', alignItems: 'center', fontSize: '0.75rem'
+                        }}
+                        title="Cancel"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <span style={{ flex: 1, fontSize: '0.875rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+                        {task.title}
+                      </span>
+
+                      {task.daily_target ? (
+                        <span style={{
+                          fontSize: '0.7rem', fontWeight: 600,
+                          padding: '2px 8px', borderRadius: '99px',
+                          background: 'rgba(99,102,241,0.12)', color: '#818cf8',
+                          marginRight: '4px'
+                        }}>
+                          Target: {task.daily_target}/day
+                        </span>
+                      ) : null}
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleStartEdit(task)}
+                          title="Edit task name or target"
+                          style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            color: 'var(--text-muted)', padding: '5px', borderRadius: '4px',
+                            display: 'flex', alignItems: 'center',
+                            transition: 'color 0.15s'
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.color = '#3b82f6')}
+                          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
+                        >
+                          <Pencil size={13} />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteFixedTask(task.id)}
+                          title="Delete this task from your daily report structure"
+                          style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            color: 'var(--text-muted)', padding: '5px', borderRadius: '4px',
+                            display: 'flex', alignItems: 'center',
+                            transition: 'color 0.15s'
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
+                          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
