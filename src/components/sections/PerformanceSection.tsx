@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
@@ -41,8 +41,7 @@ export default function PerformanceSection({ profile }: { profile: Profile }) {
   const [expandedEmpId, setExpandedEmpId] = useState<string | null>(null)
   const [activeDate, setActiveDate] = useState<string | null>(null)
 
-  const isKedar = profile.email?.toLowerCase().includes('kedar') || profile.full_name?.toLowerCase().includes('kedar')
-  const canAccess = profile.role === 'admin' || isKedar
+  const canAccess = profile.role === 'admin'
 
   const fetchData = useCallback(async () => {
     setLoading(true)

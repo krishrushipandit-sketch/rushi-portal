@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, queryOne, execute } from '@/lib/db'
 import { getUserFromRequest } from '@/lib/auth'
+import { getAiSensyApiKey } from '@/lib/aisensy'
 
 // GET /api/reports                        → employee: own reports | admin: all
 // GET /api/reports?employee_id=xxx        → admin: specific employee reports
@@ -183,25 +184,31 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({ employee_id: targetEmployeeId, report_date, entries })
     }).catch(() => { /* non-critical */ })
 
-    // ── Auto-mark Attendance based on checkout (non-blocking) ──
-    if (check_out_time) {
-      const isHalfDay = check_out_time < '17:00'
-      execute(
-        `INSERT INTO employee_attendance (employee_id, date, status, updated_at)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (employee_id, date) DO UPDATE SET
-           status = EXCLUDED.status,
-           updated_at = EXCLUDED.updated_at`,
-        [targetEmployeeId, report_date, isHalfDay ? 'half_day' : 'present', new Date().toISOString()]
-      ).catch(() => {})
-    }
+    // ── Auto-mark Attendance as Present when report is submitted ──
+    // Always mark present; if checkout is before 17:00, mark half_day instead
+    const isHalfDay = check_out_time && check_out_time < '17:00'
+    execute(
+      `INSERT INTO employee_attendance (employee_id, date, status, updated_at)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (employee_id, date) DO UPDATE SET
+         status = EXCLUDED.status,
+         updated_at = EXCLUDED.updated_at`,
+      [targetEmployeeId, report_date, isHalfDay ? 'half_day' : 'present', new Date().toISOString()]
+    ).catch(() => {})
 
-    // ── Auto-sync client production progress (non-blocking) ──
-    runClientSync(targetEmployeeId, report_date, entries)
+    // ── Auto-sync client production progress (non-blocking, skip for sales dept) ──
+    const empProfile = await queryOne<{ department: string | null }>(
+      'SELECT department FROM profiles WHERE id = $1',
+      [targetEmployeeId]
+    ).catch(() => null)
+    const isSalesDept = (empProfile?.department || '').toLowerCase() === 'sales'
+    if (!isSalesDept) {
+      runClientSync(targetEmployeeId, report_date, entries)
+    }
 
     // ── WhatsApp Notification to Admin (non-blocking) ──
     ;(async () => {
-      const AISENSY_KEY = process.env.AISENSY_API_KEY || ''
+      const AISENSY_KEY = getAiSensyApiKey()
       if (!AISENSY_KEY || AISENSY_KEY === 'your-aisensy-api-key-here') return
 
       const emp = await queryOne<{ full_name: string }>('SELECT full_name FROM profiles WHERE id = $1', [targetEmployeeId])

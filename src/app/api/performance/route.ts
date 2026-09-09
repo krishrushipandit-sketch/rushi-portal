@@ -15,9 +15,8 @@ export async function GET(req: NextRequest) {
       [user.userId]
     )
     const isAdmin = callerProfile?.role === 'admin'
-    const isKedar = callerProfile?.email?.toLowerCase().includes('kedar') || callerProfile?.full_name?.toLowerCase().includes('kedar')
 
-    if (!isAdmin && !isKedar) {
+    if (!isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

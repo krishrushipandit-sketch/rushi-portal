@@ -469,11 +469,31 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
         const respRows = respList.length
           ? respList.map(r => ({ responsibility: r.title, daily_target: r.daily_target, description: '', count: '' }))
           : [{ responsibility: '', daily_target: null, description: '', count: '', isCustom: true }]
+
+        // Fetch and inject fixed daily tasks
+        let fixedRows: Row[] = []
+        try {
+          const fixedRes = await fetch('/api/fixed-tasks', { headers: { Authorization: `Bearer ${token}` } })
+          const fixedData = await fixedRes.json()
+          if (Array.isArray(fixedData)) {
+            fixedRows = fixedData
+              .filter((ft: any) => !respRows.some(r => r.responsibility.toLowerCase() === (ft.title || '').toLowerCase()))
+              .map((ft: any) => ({
+                responsibility: ft.title,
+                daily_target: null,
+                description: '',
+                count: '',
+                isCustom: true,
+              }))
+          }
+        } catch {}
+
         // Inject pending tasks as extra rows (avoid duplicates)
         const taskRows = pendingTasks.filter(pt =>
-          !respRows.some(r => r.responsibility === pt.responsibility)
+          !respRows.some(r => r.responsibility === pt.responsibility) &&
+          !fixedRows.some(r => r.responsibility === pt.responsibility)
         )
-        setRows([...respRows, ...taskRows])
+        setRows([...respRows, ...fixedRows, ...taskRows])
       }
       setLoading(false)
     })()

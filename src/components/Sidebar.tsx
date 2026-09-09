@@ -55,12 +55,15 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
   const { theme } = useTheme()
   const isLight = theme === 'light'
 
+  const isKedar = (
+    profile.full_name?.toLowerCase().includes('kedar') ||
+    profile.email?.toLowerCase().includes('kedar')
+  )
+
   const isMediaEmployee = (
     profile.department?.toLowerCase() === 'media' ||
     profile.department?.toLowerCase() === 'client_management' ||
     profile.department?.toLowerCase() === 'strategy' ||
-    profile.full_name?.toLowerCase().includes('kedar') ||
-    profile.email?.toLowerCase().includes('kedar') ||
     profile.designation?.toLowerCase().includes('video') ||
     profile.designation?.toLowerCase().includes('editor') ||
     profile.designation?.toLowerCase().includes('client') ||
@@ -71,7 +74,9 @@ export default function Sidebar({ profile, activeSection, onNavigate, isOpen, co
     ? adminNavItems
     : baseEmployeeNavItems.filter(item =>
         (!item.salesOnly || isSalesEmployee(profile)) &&
-        (!item.mediaOnly || isMediaEmployee)
+        (!item.mediaOnly || isMediaEmployee) &&
+        // Kedar cannot see Performance
+        !(isKedar && item.id === 'performance')
       )
 
   const handleLogout = async () => {
