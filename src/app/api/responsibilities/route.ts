@@ -36,10 +36,13 @@ export async function GET(req: NextRequest) {
 
       if (isMediaEditor) {
         const requiredTasks = [
-          { title: 'External shoot', target: 0, ord: 1 },
-          { title: 'External editing', target: 4, ord: 2 },
-          { title: 'Internal shoot', target: 0, ord: 3 },
-          { title: 'Internal editing', target: 4, ord: 4 }
+          { title: 'YouTube', target: 1, ord: 1 },
+          { title: 'Reel', target: 4, ord: 2 },
+          { title: 'Shoot', target: 0, ord: 3 },
+          { title: 'External shoot', target: 0, ord: 4 },
+          { title: 'External editing', target: 4, ord: 5 },
+          { title: 'Internal shoot', target: 0, ord: 6 },
+          { title: 'Internal editing', target: 4, ord: 7 }
         ]
 
         let needsReload = false

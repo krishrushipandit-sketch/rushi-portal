@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useTheme } from '@/lib/ThemeContext'
 import { Mic, MicOff, Loader2, Plus, Trash2, X, SendHorizonal, Search, Building2, ChevronDown } from 'lucide-react'
 
-interface Row { responsibility: string; daily_target: number | null; description: string; count: string; isCustom?: boolean; clientId?: string }
+interface Row { responsibility: string; daily_target: number | null; description: string; count: string; isCustom?: boolean; clientId?: string; contentType?: string }
 
 interface ClientItem {
   id: string
@@ -343,6 +343,29 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
 
   const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
 
+  const isRohan = useMemo(() => {
+    const userStr = typeof window !== 'undefined' ? localStorage.getItem('rushi_user') : null
+    if (!userStr) return false
+    try {
+      const u = JSON.parse(userStr)
+      return (
+        (u.full_name || '').toLowerCase().includes('rohan') ||
+        (u.email || '').toLowerCase().includes('rohan') ||
+        (u.department || '').toLowerCase() === 'design'
+      )
+    } catch { return false }
+  }, [])
+
+  const getRowContentType = (title: string): string => {
+    const t = (title || '').toLowerCase()
+    if (t.includes('design') || isRohan) return 'Static Post'
+    if (t.includes('youtube') || t.includes('u2f') || t.includes('yt')) return 'YouTube'
+    if (t.includes('reel') || t.includes('real')) return 'Reel'
+    if (t.includes('shoot') || t.includes('shooting')) return 'Shoot'
+    if (t.includes('edit')) return 'Reel'
+    return 'Reel'
+  }
+
   // Load responsibilities + clients + today's assigned tasks
   useEffect(() => {
     (async () => {
@@ -486,7 +509,8 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
       description: '',
       count: '1',
       isCustom: true,
-      clientId: ''
+      clientId: '',
+      contentType: base.contentType || getRowContentType(base.responsibility)
     }
     setRows(p => {
       const copy = [...p]
@@ -684,12 +708,15 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
     if (!token) return
     const entries = valid.map(r => {
       const matchedClient = clientsList.find(c => c.id === r.clientId)
+      const determinedContentType = r.contentType || getRowContentType(r.responsibility)
       return {
         description: r.responsibility.trim(),
+        responsibility: r.responsibility.trim(),
         notes: r.description.trim(),
         count: r.count.trim() ? Number(r.count) : 1,
         clientId: r.clientId || undefined,
         clientName: matchedClient ? matchedClient.name : undefined,
+        contentType: determinedContentType || undefined,
       }
     })
     await fetch('/api/reports', {
@@ -777,7 +804,7 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
 
 
         {/* Sheet */}
-        <div style={{ flex: 1, overflowY: 'auto' }}>
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           {loading ? <div className="skeleton" style={{ height: '200px', borderRadius: 0 }} /> : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
@@ -805,15 +832,64 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
                         </span>
                       )}
 
-                      {/* Client Tag Dropdown & Add Client Row Button — strictly for video editors & assigned media workers */}
+                      {/* Client Tag Dropdown & Add Client Row Button — strictly for Suyog, Kedar, Rohan, and Admin */}
                       {clientsList.length > 0 && (
-                        <div style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                        <div style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
                           <SearchableClientDropdown
                             clients={clientsList}
                             selectedId={row.clientId || ''}
                             disabled={isLocked}
                             onSelect={id => update(i, 'clientId', id)}
                           />
+
+                          {/* Row Type Indicator / Selector */}
+                          {row.clientId && isRohan && (
+                            <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', background: 'rgba(139,92,246,0.18)', color: '#8b5cf6', border: '1px solid rgba(139,92,246,0.35)' }}>
+                              🎨 Design
+                            </span>
+                          )}
+
+                          {row.clientId && !isRohan && (
+                            row.responsibility.toLowerCase().includes('shoot') ? (
+                              <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', background: 'rgba(245,158,11,0.18)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.35)' }}>
+                                📸 Shoot
+                              </span>
+                            ) : (
+                              <div style={{ display: 'inline-flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-default)', fontSize: '0.65rem' }}>
+                                <button
+                                  type="button"
+                                  disabled={isLocked}
+                                  onClick={() => update(i, 'contentType', 'Reel')}
+                                  style={{
+                                    padding: '2px 6px',
+                                    background: (row.contentType || getRowContentType(row.responsibility)) === 'Reel' ? '#3b82f6' : 'var(--bg-surface)',
+                                    color: (row.contentType || getRowContentType(row.responsibility)) === 'Reel' ? '#fff' : 'var(--text-muted)',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    fontWeight: 700
+                                  }}
+                                >
+                                  🎬 Reel
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isLocked}
+                                  onClick={() => update(i, 'contentType', 'YouTube')}
+                                  style={{
+                                    padding: '2px 6px',
+                                    background: (row.contentType || getRowContentType(row.responsibility)) === 'YouTube' ? '#ef4444' : 'var(--bg-surface)',
+                                    color: (row.contentType || getRowContentType(row.responsibility)) === 'YouTube' ? '#fff' : 'var(--text-muted)',
+                                    border: 'none',
+                                    borderLeft: '1px solid var(--border-default)',
+                                    cursor: 'pointer',
+                                    fontWeight: 700
+                                  }}
+                                >
+                                  ▶️ YouTube
+                                </button>
+                              </div>
+                            )
+                          )}
 
                           {!isLocked && (
                             <button
@@ -824,7 +900,7 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
                                 background: 'rgba(16,185,129,0.1)', color: '#047857', border: '1px solid rgba(16,185,129,0.25)',
                                 cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '2px'
                               }}
-                              title="Add another row for another client"
+                              title="Add another row for another brand"
                             >
                               <Plus size={10} /> Client
                             </button>

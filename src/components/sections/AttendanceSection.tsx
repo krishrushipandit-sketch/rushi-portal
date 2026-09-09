@@ -3,8 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
-import { Calendar as CalendarIcon, CheckCircle2, ChevronLeft, ChevronRight, Home, Briefcase, CalendarOff, Palmtree, User, QrCode } from 'lucide-react'
-import AttendanceScannerModal from '@/components/AttendanceScannerModal'
+import { Calendar as CalendarIcon, CheckCircle2, ChevronLeft, ChevronRight, Home, Briefcase, CalendarOff, Palmtree, User } from 'lucide-react'
 
 // Hardcoded 2026/2027 Indian National Holidays (can be expanded)
 const NATIONAL_HOLIDAYS: Record<string, string> = {
@@ -36,7 +35,6 @@ export default function AttendanceSection({ profile }: { profile: Profile }) {
   const [loading, setLoading] = useState(true)
   const [markingDate, setMarkingDate] = useState<string | null>(null)
   const [markingAdmin, setMarkingAdmin] = useState<{ empId: string, empName: string, date: string } | null>(null)
-  const [scannerOpen, setScannerOpen] = useState(false)
   
   const isAdmin = profile.role === 'admin'
   const todayIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10)
@@ -125,15 +123,6 @@ export default function AttendanceSection({ profile }: { profile: Profile }) {
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => setScannerOpen(true)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', fontSize: '0.82rem' }}
-            >
-              <QrCode size={15} />
-              QR Scanner &amp; Office Code
-            </button>
             <input
               type="month" className="form-input" value={month}
               onChange={e => setMonth(e.target.value)}
@@ -271,13 +260,6 @@ export default function AttendanceSection({ profile }: { profile: Profile }) {
           </div>
         </div>
       )}
-
-      <AttendanceScannerModal
-        isOpen={scannerOpen}
-        onClose={() => setScannerOpen(false)}
-        onSuccess={loadData}
-        isAdmin={isAdmin}
-      />
       </div>
     )
   }
@@ -293,15 +275,6 @@ export default function AttendanceSection({ profile }: { profile: Profile }) {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => setScannerOpen(true)}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', fontSize: '0.82rem' }}
-          >
-            <QrCode size={15} />
-            Scan Attendance (In / Out)
-          </button>
           <button className="btn btn-secondary" onClick={() => {
             const d = new Date(y, m - 1, 1)
             setMonth(`${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`)
@@ -444,14 +417,6 @@ export default function AttendanceSection({ profile }: { profile: Profile }) {
           </div>
         </div>
       )}
-
-      {/* Attendance Scanner Modal (Camera QR + Work From Home) */}
-      <AttendanceScannerModal
-        isOpen={scannerOpen}
-        onClose={() => setScannerOpen(false)}
-        onSuccess={loadData}
-        isAdmin={isAdmin}
-      />
     </div>
   )
 }

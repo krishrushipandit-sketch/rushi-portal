@@ -184,16 +184,24 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({ employee_id: targetEmployeeId, report_date, entries })
     }).catch(() => { /* non-critical */ })
 
-    // ── Auto-mark Attendance as Present when report is submitted ──
-    // Always mark present; if checkout is before 17:00, mark half_day instead
+    // ── Auto-mark Attendance as Present when report is submitted or updated ──
     const isHalfDay = check_out_time && check_out_time < '17:00'
+    const markStatus = isHalfDay ? 'half_day' : 'present'
     execute(
       `INSERT INTO employee_attendance (employee_id, date, status, updated_at)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (employee_id, date) DO UPDATE SET
          status = EXCLUDED.status,
          updated_at = EXCLUDED.updated_at`,
-      [targetEmployeeId, report_date, isHalfDay ? 'half_day' : 'present', new Date().toISOString()]
+      [targetEmployeeId, report_date, markStatus, new Date().toISOString()]
+    ).catch(() => {})
+    execute(
+      `INSERT INTO attendance (employee_id, date, status, updated_at)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (employee_id, date) DO UPDATE SET
+         status = EXCLUDED.status,
+         updated_at = EXCLUDED.updated_at`,
+      [targetEmployeeId, report_date, markStatus, new Date().toISOString()]
     ).catch(() => {})
 
     // ── Auto-sync client production progress (non-blocking, skip for sales dept and Shreya) ──
@@ -325,7 +333,7 @@ export async function DELETE(req: NextRequest) {
 function runClientSync(
   employee_id: string,
   report_date: string,
-  entries: { description: string; count: number; notes?: string; clientId?: string; client_id?: string }[]
+  entries: { description: string; count: number; notes?: string; clientId?: string; client_id?: string; responsibility?: string; contentType?: string }[]
 ): void {
   if (!entries || entries.length === 0) return
 
@@ -405,55 +413,23 @@ function runClientSync(
         combinedText.includes('strategy session') ||
         combinedText.includes('onboarding')
 
-      // Determine content type (YouTube, Shoot, Design/Static Post, Reel)
+      // 1. Determine content type STRICTLY from the row (NO KEYWORD SCANNING FROM NOTES!)
       let contentType: string | null = null
-      if (
-        combinedText.includes('youtube') ||
-        combinedText.includes('yt ') ||
-        combinedText.includes('yt video') ||
-        combinedText.includes('u2f') ||
-        combinedText.includes('long video')
-      ) {
-        contentType = 'YouTube'
-      } else if (
-        combinedText.includes('shoot') ||
-        combinedText.includes('shooting')
-      ) {
-        contentType = 'Shoot'
-      } else if (
-        !isMeetingOrCall &&
-        (combinedText.includes('design') ||
-         combinedText.includes('static post') ||
-         combinedText.includes('static') ||
-         combinedText.includes('poster') ||
-         combinedText.includes('banner') ||
-         combinedText.includes('thumbnail') ||
-         combinedText.includes('graphic') ||
-         combinedText.includes('creative post') ||
-         combinedText.includes('post'))
-      ) {
-        contentType = 'Static Post'
-      } else if (
-        combinedText.includes('reel') ||
-        combinedText.includes('real') ||
-        combinedText.includes('shorts') ||
-        combinedText.includes('short video') ||
-        combinedText.includes('editing') ||
-        combinedText.includes('edit') ||
-        combinedText.includes('video')
-      ) {
-        contentType = 'Reel'
-      } else if (combinedText.includes('story') || combinedText.includes('stories')) {
-        contentType = 'Stories'
-      } else if (combinedText.includes('podcast')) {
-        contentType = 'Podcast'
+
+      if (entry.contentType) {
+        contentType = entry.contentType
       } else {
-        if (responsibilityTitle.includes('shoot')) {
-          contentType = 'Shoot'
-        } else if (responsibilityTitle.includes('youtube') || responsibilityTitle.includes('yt')) {
+        const rowTitle = (entry.responsibility || entry.description || '').toLowerCase()
+        if (rowTitle.includes('youtube') || rowTitle.includes('u2f') || rowTitle.includes('yt')) {
           contentType = 'YouTube'
-        } else if (responsibilityTitle.includes('design') || responsibilityTitle.includes('post')) {
+        } else if (rowTitle.includes('reel') || rowTitle.includes('real')) {
+          contentType = 'Reel'
+        } else if (rowTitle.includes('design') || rowTitle.includes('post') || rowTitle.includes('banner') || rowTitle.includes('graphic')) {
           contentType = 'Static Post'
+        } else if (rowTitle.includes('shoot') || rowTitle.includes('shooting')) {
+          contentType = 'Shoot'
+        } else if (rowTitle.includes('edit')) {
+          contentType = 'Reel'
         } else {
           contentType = 'Reel'
         }

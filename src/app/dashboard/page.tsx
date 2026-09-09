@@ -19,6 +19,7 @@ import LeaderboardSection from '@/components/sections/LeaderboardSection'
 import AttendanceSection from '@/components/sections/AttendanceSection'
 import RealtimeLeadAlert from '@/components/RealtimeLeadAlert'
 import PWAInstallPrompt from '@/components/PWAInstallPrompt'
+import MobileBottomNav from '@/components/MobileBottomNav'
 
 export type ActiveSection =
   | 'overview'
@@ -307,6 +308,15 @@ export default function DashboardPage() {
 
       {/* PWA Mobile App Download & Install Prompt */}
       <PWAInstallPrompt />
+
+      {/* Mobile App Bottom Navigation Bar */}
+      <MobileBottomNav
+        profile={profile}
+        activeSection={activeSection}
+        onNavigate={section => setActiveSection(section)}
+        onToggleMenu={() => setSidebarOpen(prev => !prev)}
+        unreadCount={unreadCount}
+      />
     </div>
   )
 }
