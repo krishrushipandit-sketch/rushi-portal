@@ -138,13 +138,11 @@ export default function AttendanceScannerModal({ isOpen, onClose, onSuccess, isA
     scanningRef.current = false
 
     const token = localStorage.getItem('rushi_token')
-    const deviceId = localStorage.getItem('rp_device_id') || ''
-
     try {
       const res = await fetch('/api/attendance/scan', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ qr_data: qrData, device_id: deviceId })
+        body: JSON.stringify({ qr_data: qrData })
       })
       const data = await res.json()
 

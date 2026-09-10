@@ -44,16 +44,10 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      let deviceId = typeof window !== 'undefined' ? localStorage.getItem('rp_device_id') : null
-      if (!deviceId && typeof window !== 'undefined') {
-        deviceId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'dev-' + Math.random().toString(36).slice(2) + Date.now().toString(36)
-        localStorage.setItem('rp_device_id', deviceId)
-      }
-
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password, device_id: deviceId }),
+        body: JSON.stringify({ email: email.trim(), password }),
       })
 
       const data = await res.json()

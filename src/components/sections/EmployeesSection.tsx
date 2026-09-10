@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { getInitials, formatDate } from '@/lib/utils'
-import { Plus, Trash2, X, Loader2, Users, Phone, Mail, Edit2, ToggleLeft, ToggleRight, Upload, Tag, Building2, Globe, Sparkles, Check, Smartphone, RotateCcw } from 'lucide-react'
+import { Plus, Trash2, X, Loader2, Users, Phone, Mail, Edit2, ToggleLeft, ToggleRight, Upload, Tag, Building2, Globe, Sparkles, Check } from 'lucide-react'
 
 interface Props { profile: Profile }
 
@@ -236,26 +236,6 @@ export default function EmployeesSection({ profile }: Props) {
     fetchEmployees()
   }
 
-  const handleResetDevice = async (emp: Employee) => {
-    if (!confirm(`Reset registered phone lock for "${emp.full_name}"?\n\nThey will be able to register a new phone on their next login.`)) return
-    const token = getToken()
-    if (!token) return
-    try {
-      const res = await fetch(`/api/employees/${emp.id}/reset-device`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      const data = await res.json()
-      if (res.ok) {
-        alert(data.message || 'Device registration reset successfully')
-        fetchEmployees()
-      } else {
-        alert(data.error || 'Failed to reset device')
-      }
-    } catch {
-      alert('Network error while resetting device')
-    }
-  }
 
   if (profile.role !== 'admin') return null
 
@@ -404,23 +384,6 @@ export default function EmployeesSection({ profile }: Props) {
                             data-tooltip="Manage Lead Industries (Round-Robin)"
                           >
                             <Tag size={13} />
-                          </button>
-                        )}
-                        {/* Single Device Lock & Reset — for non-admins */}
-                        {emp.role !== 'admin' && (
-                          <button
-                            className="btn btn-sm"
-                            style={{
-                              background: emp.registered_device_id ? 'rgba(16,185,129,0.12)' : 'rgba(148,163,184,0.1)',
-                              color: emp.registered_device_id ? '#10b981' : 'var(--text-muted)',
-                              border: `1px solid ${emp.registered_device_id ? 'rgba(16,185,129,0.25)' : 'var(--border-default)'}`
-                            }}
-                            onClick={() => handleResetDevice(emp)}
-                            data-tooltip={emp.registered_device_id ? 'Phone Locked (Click to Reset)' : 'No phone bound yet'}
-                            title={emp.registered_device_id ? 'Phone Locked (Click to Reset)' : 'No phone bound yet'}
-                          >
-                            <Smartphone size={13} />
-                            {emp.registered_device_id && <RotateCcw size={10} style={{ marginLeft: '2px' }} />}
                           </button>
                         )}
                         {emp.id !== profile.id && (

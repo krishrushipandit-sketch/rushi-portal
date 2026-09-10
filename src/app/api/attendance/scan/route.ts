@@ -27,19 +27,6 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // ── Device Integrity Verification ──
-    if (user.role !== 'admin' && device_id) {
-      const profile = await queryOne<{ registered_device_id: string | null }>(
-        'SELECT registered_device_id FROM profiles WHERE id = $1',
-        [user.userId]
-      )
-      if (profile?.registered_device_id && profile.registered_device_id !== String(device_id).trim()) {
-        return NextResponse.json(
-          { error: 'Proxy attendance blocked. You can only scan attendance from your registered mobile device.' },
-          { status: 403 }
-        )
-      }
-    }
 
     // Ensure columns exist
     await execute('ALTER TABLE employee_attendance ADD COLUMN IF NOT EXISTS check_in_time TIME').catch(() => {})
