@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { queryOne, execute } from '@/lib/db'
+import { query, queryOne, execute } from '@/lib/db'
 import { getUserFromRequest } from '@/lib/auth'
 
 async function getAdminAuth(req: NextRequest) {
@@ -21,6 +21,38 @@ async function getAdminAuth(req: NextRequest) {
   }
 
   return null
+}
+
+// GET /api/clients — get all active clients / brands
+export async function GET(req: NextRequest) {
+  try {
+    const user = await getUserFromRequest(req)
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    // Ensure columns exist
+    await execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS client_type VARCHAR(20) DEFAULT 'external'").catch(() => {})
+
+    const clients = await query<any>(
+      `SELECT DISTINCT ON (LOWER(TRIM(name))) 
+              id, name, slug, color, logo_url, 
+              COALESCE(client_type, 'external') AS client_type,
+              is_active
+       FROM clients 
+       WHERE is_active = true AND (status IS NULL OR status != 'inactive')
+       ORDER BY LOWER(TRIM(name)), id ASC`
+    )
+
+    // Sort: Internal brands first, then external brands alphabetically
+    const sorted = (clients || []).sort((a: any, b: any) => {
+      if (a.client_type === 'internal' && b.client_type !== 'internal') return -1
+      if (a.client_type !== 'internal' && b.client_type === 'internal') return 1
+      return (a.name || '').localeCompare(b.name || '')
+    })
+
+    return NextResponse.json(sorted)
+  } catch (err: unknown) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 })
+  }
 }
 
 // POST /api/clients — create a new client with deliverables

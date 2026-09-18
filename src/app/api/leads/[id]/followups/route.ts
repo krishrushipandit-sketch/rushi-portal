@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, queryOne } from '@/lib/db'
 import { getUserFromRequest } from '@/lib/auth'
-import { handleLeadStatusChangeAiSensy } from '@/lib/aisensy'
+import { handleLeadStatusChangeAiSensy, checkAndSendImmediateVisitReminder } from '@/lib/aisensy'
 
 export async function GET(
   req: NextRequest,
@@ -139,6 +139,13 @@ export async function POST(
       handleLeadStatusChangeAiSensy(leadId, call_status, user.userId, lead.status).catch((e) => {
         console.error('AiSensy background trigger error:', e)
       })
+
+      // If a visit is scheduled/rescheduled, trigger immediate 24h or 48h reminder if due
+      if (call_status === 'visit_scheduled' && nextFollowupDate) {
+        checkAndSendImmediateVisitReminder(leadId, nextFollowupDate).catch((e) => {
+          console.error('AiSensy immediate visit reminder error:', e)
+        })
+      }
     }
 
     return NextResponse.json({

@@ -413,10 +413,27 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
 
       try {
         if (canTagClient) {
-          const fallbackRes = await fetch('/api/clients', { headers: { Authorization: `Bearer ${token}` } })
-          const fallbackData = await fallbackRes.json()
-          if (Array.isArray(fallbackData) && fallbackData.length > 0) {
-            setClientsList(fallbackData.map((c: any) => ({
+          let clientItems: any[] = []
+          try {
+            const fallbackRes = await fetch('/api/clients', { headers: { Authorization: `Bearer ${token}` } })
+            const fallbackData = await fallbackRes.json()
+            if (Array.isArray(fallbackData) && fallbackData.length > 0) {
+              clientItems = fallbackData
+            }
+          } catch {}
+
+          if (clientItems.length === 0) {
+            try {
+              const progRes = await fetch('/api/client-progress', { headers: { Authorization: `Bearer ${token}` } })
+              const progData = await progRes.json()
+              if (Array.isArray(progData?.clients) && progData.clients.length > 0) {
+                clientItems = progData.clients
+              }
+            } catch {}
+          }
+
+          if (clientItems.length > 0) {
+            setClientsList(clientItems.map((c: any) => ({
               id: c.id,
               name: c.name,
               color: c.color,

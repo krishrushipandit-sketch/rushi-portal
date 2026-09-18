@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { queryOne, execute } from '@/lib/db'
 import { getUserFromRequest } from '@/lib/auth'
-import { handleLeadStatusChangeAiSensy } from '@/lib/aisensy'
+import { handleLeadStatusChangeAiSensy, checkAndSendImmediateVisitReminder } from '@/lib/aisensy'
 
 export async function PATCH(
   req: NextRequest,
@@ -104,6 +104,15 @@ export async function PATCH(
     if (body.status) {
       handleLeadStatusChangeAiSensy(id, body.status, user.userId, oldStatus).catch((e) => {
         console.error('AiSensy background trigger error:', e)
+      })
+    }
+
+    // Trigger immediate visit reminder if status is visit_scheduled and date is set
+    const currentStatus = body.status || (data as any)?.status
+    const schedDate = body.follow_up_date || body.next_followup_at || (data as any)?.follow_up_date || (data as any)?.next_followup_at
+    if (currentStatus === 'visit_scheduled' && schedDate) {
+      checkAndSendImmediateVisitReminder(id, schedDate).catch((e) => {
+        console.error('AiSensy immediate visit reminder error:', e)
       })
     }
 

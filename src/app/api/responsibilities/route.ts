@@ -32,7 +32,8 @@ export async function GET(req: NextRequest) {
 
     if (targetUser) {
       const email = (targetUser.email || '').toLowerCase()
-      const isMediaEditor = email.includes('suyog') || email.includes('kedar')
+      const name = (targetUser.full_name || '').toLowerCase()
+      const isMediaEditor = email.includes('suyog') || email.includes('kedar') || name.includes('suyog') || name.includes('kedar')
 
       if (isMediaEditor) {
         const requiredTasks = [
