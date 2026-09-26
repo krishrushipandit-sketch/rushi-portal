@@ -52,9 +52,16 @@ async function parseIncomingRequest(req: NextRequest): Promise<Record<string, an
     // Try JSON parse
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
       try {
-        const parsed = JSON.parse(trimmed)
+        let parsed = JSON.parse(trimmed)
+        if (Array.isArray(parsed)) {
+          parsed = parsed[0] || {}
+        }
         if (typeof parsed === 'object' && parsed !== null) {
-          Object.assign(result, parsed)
+          if (parsed['0'] && typeof parsed['0'] === 'object' && !parsed.full_name && !parsed.name && !parsed.phone_number) {
+            Object.assign(result, parsed['0'])
+          } else {
+            Object.assign(result, parsed)
+          }
           return result
         }
       } catch { /* proceed to next format */ }
@@ -98,7 +105,15 @@ export async function POST(req: NextRequest) {
 
 async function handleLeadWebhook(req: NextRequest) {
   try {
-    const body = await parseIncomingRequest(req)
+    const rawBody = await parseIncomingRequest(req)
+    let body: Record<string, any> = { ...rawBody }
+    if (body['0'] && typeof body['0'] === 'object') {
+      body = { ...body['0'], ...body }
+      delete body['0']
+    }
+    if (body.data && typeof body.data === 'object' && !body.full_name && !body.name) {
+      body = { ...body.data, ...body }
+    }
     console.log('[PABBLY WEBHOOK] Received payload keys:', Object.keys(body))
 
     // Security token check (optional secret token parameter)
@@ -128,13 +143,24 @@ async function handleLeadWebhook(req: NextRequest) {
       body.phone_number ||
       body.phone ||
       body.Phone ||
+      body.PhoneNumber ||
+      body.whatsapp_number ||
+      body.WhatsappNumber ||
+      body.WhatsAppNumber ||
+      body.whatsapp ||
+      body.WhatsApp ||
       body.mobile ||
       body.Mobile ||
+      body.mobile_number ||
+      body.MobileNumber ||
       body.contact ||
       body.Contact ||
       body.contact_number ||
-      body.whatsapp ||
-      body.WhatsApp ||
+      body.ContactNumber ||
+      body.phone_no ||
+      body.PhoneNo ||
+      body.contact_no ||
+      body.ContactNo ||
       ''
 
     const rawEmail =
@@ -155,12 +181,12 @@ async function handleLeadWebhook(req: NextRequest) {
 
     // 3. Extract Dynamic Qualification Answers (Dynamic Form Fields from Pabbly)
     const standardKeys = new Set([
-      'full_name', 'name', 'first_name', 'last_name', 'client_name', 'clientname', 'student_name', 'studentname', 'lead_name', 'leadname',
-      'phone_number', 'phone', 'mobile', 'contact', 'contact_number', 'whatsapp',
-      'email', 'email_address', 'emailaddress',
+      'fullname', 'name', 'firstname', 'lastname', 'clientname', 'studentname', 'leadname',
+      'phonenumber', 'phone', 'mobile', 'mobilenumber', 'contact', 'contactnumber', 'whatsapp', 'whatsappnumber', 'phoneno', 'contactno',
+      'email', 'emailaddress',
       'platform', 'source',
-      'industry', 'course', 'category', 'program', 'program_name', 'course_name',
-      'secret'
+      'industry', 'course', 'category', 'program', 'programname', 'coursename',
+      'secret', '0', 'number', 'routernumber', 'routenumber', 'salesperson', 'salesrep', 'counselor', 'assignedto', 'agent', 'caller', 'owner', 'employee'
     ])
 
     const qualificationAnswers: Record<string, any> = {}
