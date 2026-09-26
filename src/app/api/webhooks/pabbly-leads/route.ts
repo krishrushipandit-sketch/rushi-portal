@@ -153,32 +153,13 @@ async function handleLeadWebhook(req: NextRequest) {
 
     const cleanPhone = String(rawPhone).replace(/[^\d+]/g, '') || 'Not provided'
 
-    // 3. Extract & Normalize Industry / Program
-    let rawIndustry = body.industry || body.Industry || body.course || body.Course || body.category || 'Digital Marketing'
-    let industry = 'Digital Marketing'
-    const lowerInd = String(rawIndustry).toLowerCase().trim()
-
-    if (lowerInd.includes('share') || lowerInd.includes('stock') || lowerInd.includes('trading')) {
-      industry = 'Share Market'
-    } else if (lowerInd.includes('digital') || lowerInd.includes('marketing')) {
-      industry = 'Digital Marketing'
-    } else if (lowerInd.includes('ai') || lowerInd.includes('artificial') || lowerInd.includes('intelligence')) {
-      industry = 'AI Course'
-    } else if (lowerInd.includes('amazon')) {
-      industry = 'Amazon'
-    } else if (lowerInd.includes('bba') || lowerInd.includes('mba')) {
-      industry = 'BBA/MBA'
-    } else {
-      industry = rawIndustry.trim()
-    }
-
-    // 4. Extract Dynamic Qualification Answers (Dynamic Form Fields from Pabbly)
+    // 3. Extract Dynamic Qualification Answers (Dynamic Form Fields from Pabbly)
     const standardKeys = new Set([
       'full_name', 'name', 'first_name', 'last_name', 'client_name', 'clientname', 'student_name', 'studentname', 'lead_name', 'leadname',
       'phone_number', 'phone', 'mobile', 'contact', 'contact_number', 'whatsapp',
       'email', 'email_address', 'emailaddress',
       'platform', 'source',
-      'industry', 'course', 'category',
+      'industry', 'course', 'category', 'program', 'program_name', 'course_name',
       'secret'
     ])
 
@@ -219,22 +200,88 @@ async function handleLeadWebhook(req: NextRequest) {
       }
     }
 
+    // 4. Extract & Normalize Industry / Program
+    // Check explicit program fields from Pabbly, Meta Ads, or forms
+    let rawIndustry =
+      body.program ||
+      body.Program ||
+      body.program_name ||
+      body.ProgramName ||
+      body.course ||
+      body.Course ||
+      body.course_name ||
+      body.CourseName ||
+      body.industry ||
+      body.Industry ||
+      body.category ||
+      body.Category ||
+      ''
+
+    // If blank, inspect form_name, campaign_name, or ad_name from Meta / Pabbly
+    if (!rawIndustry) {
+      const metaName = body.form_name || body.formName || body.Form || body.campaign_name || body.campaignName || body.Campaign || body.ad_name || body.adName || ''
+      if (metaName) rawIndustry = String(metaName)
+    }
+
+    // If still blank, inspect qualification answers
+    if (!rawIndustry) {
+      for (const [qKey, qVal] of Object.entries(qualificationAnswers)) {
+        const lowerK = qKey.toLowerCase()
+        if (lowerK.includes('course') || lowerK.includes('program') || lowerK.includes('learn') || lowerK.includes('interested')) {
+          rawIndustry = String(qVal)
+          break
+        }
+      }
+    }
+
+    let industry = 'Digital Marketing'
+    const lowerInd = String(rawIndustry || '').toLowerCase().trim()
+    const allContext = `${rawIndustry} ${body.form_name || ''} ${body.campaign_name || ''} ${body.ad_name || ''} ${JSON.stringify(qualificationAnswers)}`.toLowerCase()
+    // Exclude institute name so "Institute of Business & AI" doesn't falsely match
+    const cleanContext = allContext.replace(/institute of business\s*(&|and)?\s*ai/gi, '')
+
+    if (
+      /\b(ai|artificial intelligence|genai|chatgpt|machine learning|prompt engineering)\b/i.test(lowerInd) ||
+      lowerInd.includes('ai course') ||
+      lowerInd.includes('ai program') ||
+      /\b(ai|artificial intelligence|genai|chatgpt|prompt engineering)\b/i.test(cleanContext) ||
+      cleanContext.includes('ai course') ||
+      cleanContext.includes('ai program')
+    ) {
+      industry = 'AI Course'
+    } else if (lowerInd.includes('share') || lowerInd.includes('stock') || lowerInd.includes('trading') || cleanContext.includes('share market') || cleanContext.includes('stock market')) {
+      industry = 'Share Market'
+    } else if (lowerInd.includes('amazon') || cleanContext.includes('amazon listing') || cleanContext.includes('amazon course')) {
+      industry = 'Amazon'
+    } else if (lowerInd.includes('bba') || lowerInd.includes('mba') || cleanContext.includes('bba') || cleanContext.includes('mba')) {
+      industry = 'BBA/MBA'
+    } else if (lowerInd.includes('digital') || lowerInd.includes('marketing') || cleanContext.includes('digital marketing')) {
+      industry = 'Digital Marketing'
+    } else if (rawIndustry && rawIndustry.trim()) {
+      industry = rawIndustry.trim()
+    }
+
     // 5. Sales Representative Routing (Explicit Rep, Router Number, or Round-Robin)
     let assignedToId: string | null = null
     let assignedToName: string = 'Unassigned'
     let assignedToEmail: string | null = null
 
     // 5.1 Fetch active sales reps for this industry (Ordered: Navin -> Poonam)
+    // Matches exact industry or AI aliases ('AI', 'AI Course', 'Artificial Intelligence')
+    const isAI = ['ai', 'ai course', 'artificial intelligence', 'ai program'].includes(industry.toLowerCase().trim())
     const industryReps = await query<{ employee_id: string; full_name: string; email: string }>(
       `SELECT DISTINCT s.employee_id, p.full_name, p.email
        FROM sales_industry_skills s
        INNER JOIN profiles p ON s.employee_id = p.id
-       WHERE LOWER(TRIM(s.industry)) = LOWER(TRIM($1))
+       WHERE (
+         LOWER(TRIM(s.industry)) = LOWER(TRIM($1))
+         OR ($2 = true AND LOWER(TRIM(s.industry)) IN ('ai', 'ai course', 'artificial intelligence', 'ai program'))
+       )
          AND p.is_active = true
          AND p.role = 'employee'
          AND LOWER(p.department) = 'sales'
        ORDER BY p.full_name ASC`,
-      [industry]
+      [industry, isAI]
     )
 
     let eligibleRepIds: { id: string; name: string; email: string }[] = []

@@ -50,8 +50,8 @@ export async function POST(req: NextRequest) {
     const assignedToVal = user.role === 'admin' ? (assigned_to || user.userId) : user.userId
 
     const data = await queryOne(
-      `INSERT INTO leads (name, client_name, phone, email, category, status, source, notes, follow_up_date, assigned_to)
-       VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO leads (name, client_name, phone, email, category, industry, status, source, notes, follow_up_date, assigned_to)
+       VALUES ($1, $1, $2, $3, $4, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
       [
         client_name,

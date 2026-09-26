@@ -41,9 +41,35 @@ Configure the JSON Payload in Pabbly to map Facebook form fields:
 
 ---
 
-## 3. Industry Round-Robin Auto Assignment
+## 3. Industry & Program Round-Robin Auto Assignment
 
-The system automatically detects the `industry` parameter (`Digital Marketing`, `Share Market`, `AI Course`, etc.) and assigns the lead to the next active sales representative in line for that specific industry.
+The system automatically detects the `program`, `course`, `industry`, or `form_name` parameter and assigns the lead to the next active sales representative in line for that specific industry via round-robin:
+
+### Supported Programs & Industry Names:
+| Program Name | Aliases & Keywords Auto-Detected |
+|---|---|
+| **AI Course** | `"program": "AI"`, `"AI Course"`, `"Artificial Intelligence"`, `"GenAI"`, `"ChatGPT"`, or if `form_name` / `campaign_name` contains `"AI"` |
+| **Digital Marketing** | `"Digital Marketing"`, `"marketing"`, etc. |
+| **Share Market** | `"Share Market"`, `"stock market"`, `"trading"`, etc. |
+| **Amazon** | `"Amazon"`, `"Amazon Listing"`, etc. |
+| **BBA/MBA** | `"BBA/MBA"`, `"MBA"`, `"BBA"`, etc. |
+
+### Example Payload for AI Program:
+```json
+{
+  "full_name": "{{1.full_name}}",
+  "phone_number": "{{1.phone_number}}",
+  "email": "{{1.email}}",
+  "platform": "Facebook",
+  "program": "AI Course",
+  "qualification_answers": {
+    "Background": "{{1.background}}",
+    "Preferred Timing": "{{1.timing}}"
+  }
+}
+```
+
+> 🎯 **Distribution Management**: Go to **Employees** in the portal, click the 🏷️ **Tag (Sales Lead Industries)** button next to any sales rep (e.g. Naveen, Poonam), and toggle **AI Course** on or off. Leads will automatically distribute round-robin only among representatives tagged with that course.
 
 ---
 

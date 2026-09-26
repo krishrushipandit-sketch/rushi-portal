@@ -550,3 +550,7 @@ ON CONFLICT DO NOTHING;
 INSERT INTO sales_industry_skills (employee_id, industry)
 SELECT id, 'Amazon' FROM profiles WHERE department = 'Sales'
 ON CONFLICT DO NOTHING;
+
+INSERT INTO sales_industry_skills (employee_id, industry)
+SELECT id, 'AI Course' FROM profiles WHERE department = 'Sales'
+ON CONFLICT DO NOTHING;

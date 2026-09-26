@@ -1016,7 +1016,10 @@ export default function LeadsSection({ profile }: Props) {
       const nameToMatch = (l.client_name || l.name || '').toLowerCase()
       const matchSearch = nameToMatch.includes(search.toLowerCase()) || l.phone.includes(search) || (l.email || '').toLowerCase().includes(search.toLowerCase())
       const matchStatus = filterStatus === 'all' || l.status === filterStatus
-      const matchIndustry = filterIndustry === 'all' || (l.industry || l.category) === filterIndustry
+      const leadInd = (l.industry || l.category || '').toLowerCase().trim()
+      const matchIndustry = filterIndustry === 'all' ||
+        (l.industry || l.category) === filterIndustry ||
+        (filterIndustry === 'AI Course' && ['ai', 'ai course', 'artificial intelligence', 'ai program'].includes(leadInd))
       
       const p = (l.platform || l.source || '').toLowerCase()
       let matchPlatform = true
