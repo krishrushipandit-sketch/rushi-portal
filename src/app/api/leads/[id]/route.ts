@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { queryOne, execute } from '@/lib/db'
 import { getUserFromRequest } from '@/lib/auth'
-import { handleLeadStatusChangeAiSensy, checkAndSendImmediateVisitReminder } from '@/lib/aisensy'
+import { handleLeadStatusChangeAiSensy, checkAndSendImmediateVisitReminder, checkAndSendImmediateWorkshopReminder } from '@/lib/aisensy'
 
 export async function PATCH(
   req: NextRequest,
@@ -113,6 +113,13 @@ export async function PATCH(
     if (currentStatus === 'visit_scheduled' && schedDate) {
       checkAndSendImmediateVisitReminder(id, schedDate).catch((e) => {
         console.error('AiSensy immediate visit reminder error:', e)
+      })
+    }
+
+    // Trigger immediate workshop reminder if status is ai_workshop_saturday
+    if (currentStatus === 'ai_workshop_saturday') {
+      checkAndSendImmediateWorkshopReminder(id).catch((e) => {
+        console.error('AiSensy immediate workshop reminder error:', e)
       })
     }
 

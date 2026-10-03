@@ -58,16 +58,17 @@ const STATUS_CONFIG: {
   icon: React.ReactNode; group: 'active' | 'hot' | 'closed'
   requiresDate?: boolean   // prompts for a follow-up / visit datetime
 }[] = [
-  { id: 'new',            label: 'New Lead',       color: '#4f46e5', bg: 'rgba(79,70,229,0.1)',   icon: <CircleDot size={12} />,   group: 'active' },
-  { id: 'ringing',        label: 'Ringing',        color: '#d97706', bg: 'rgba(217,119,6,0.1)',   icon: <Phone size={12} />,       group: 'active' },
-  { id: 'connected',      label: 'Connected',      color: '#0891b2', bg: 'rgba(8,145,178,0.1)',   icon: <PhoneCall size={12} />,   group: 'active' },
-  { id: 'callback',       label: 'Call Back',      color: '#7c3aed', bg: 'rgba(124,58,237,0.1)',  icon: <Voicemail size={12} />,   group: 'active', requiresDate: true },
-  { id: 'follow_up',      label: 'Follow Up',      color: '#f59e0b', bg: 'rgba(245,158,11,0.1)',  icon: <CalendarClock size={12} />, group: 'active', requiresDate: true },
-  { id: 'interested',     label: 'Interested',     color: '#0284c7', bg: 'rgba(2,132,199,0.1)',   icon: <Zap size={12} />,         group: 'hot'    },
-  { id: 'switched_off',   label: 'Switch Off',     color: '#475569', bg: 'rgba(71,85,105,0.1)',   icon: <PhoneMissed size={12} />, group: 'active' },
-  { id: 'not_interested', label: 'Not Interested', color: '#b91c1c', bg: 'rgba(185,28,28,0.1)',   icon: <XCircle size={12} />,     group: 'closed' },
-  { id: 'visit_scheduled',label: 'Visit Schedule', color: '#db2777', bg: 'rgba(219,39,119,0.1)',  icon: <CalendarCheck size={12} />, group: 'hot', requiresDate: true },
-  { id: 'closed_won',     label: 'Enrolled',       color: '#16a34a', bg: 'rgba(22,163,74,0.1)',   icon: <CheckCircle size={12} />, group: 'closed' },
+  { id: 'new',                    label: 'New Lead',            color: '#4f46e5', bg: 'rgba(79,70,229,0.1)',   icon: <CircleDot size={12} />,   group: 'active' },
+  { id: 'ringing',                label: 'Ringing',             color: '#d97706', bg: 'rgba(217,119,6,0.1)',   icon: <Phone size={12} />,       group: 'active' },
+  { id: 'connected',              label: 'Connected',           color: '#0891b2', bg: 'rgba(8,145,178,0.1)',   icon: <PhoneCall size={12} />,   group: 'active' },
+  { id: 'callback',               label: 'Call Back',           color: '#7c3aed', bg: 'rgba(124,58,237,0.1)',  icon: <Voicemail size={12} />,   group: 'active', requiresDate: true },
+  { id: 'follow_up',              label: 'Follow Up',           color: '#f59e0b', bg: 'rgba(245,158,11,0.1)',  icon: <CalendarClock size={12} />, group: 'active', requiresDate: true },
+  { id: 'interested',             label: 'Interested',          color: '#0284c7', bg: 'rgba(2,132,199,0.1)',   icon: <Zap size={12} />,         group: 'hot'    },
+  { id: 'switched_off',           label: 'Switch Off',          color: '#475569', bg: 'rgba(71,85,105,0.1)',   icon: <PhoneMissed size={12} />, group: 'active' },
+  { id: 'not_interested',         label: 'Not Interested',      color: '#b91c1c', bg: 'rgba(185,28,28,0.1)',   icon: <XCircle size={12} />,     group: 'closed' },
+  { id: 'visit_scheduled',        label: 'Visit Schedule',      color: '#db2777', bg: 'rgba(219,39,119,0.1)',  icon: <CalendarCheck size={12} />, group: 'hot', requiresDate: true },
+  { id: 'ai_workshop_saturday',   label: 'AI Workshop Saturday',color: '#7c3aed', bg: 'rgba(124,58,237,0.12)', icon: <BellRing size={12} />,    group: 'hot'    },
+  { id: 'closed_won',             label: 'Enrolled',            color: '#16a34a', bg: 'rgba(22,163,74,0.1)',   icon: <CheckCircle size={12} />, group: 'closed' },
 ]
 
 const statusMap = STATUS_CONFIG.reduce((a, s) => ({ ...a, [s.id]: s }), {} as Record<string, typeof STATUS_CONFIG[0]>)

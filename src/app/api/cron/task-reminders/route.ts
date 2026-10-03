@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, queryOne, execute } from '@/lib/db'
+import { getAiSensyApiKey } from '@/lib/aisensy'
+import { getUserFromRequest } from '@/lib/auth'
 
-const CRON_SECRET       = process.env.CRON_SECRET || 'rushipandit-cron-2026'
-const AISENSY_KEY       = process.env.AISENSY_API_KEY || ''
-const AISENSY_URL       = 'https://backend.aisensy.com/campaign/t1/api/v2'
+const CRON_SECRET = process.env.CRON_SECRET || 'rushipandit-cron-2026'
+const AISENSY_URL = 'https://backend.aisensy.com/campaign/t1/api/v2'
 
 // ── Default test numbers (used when no phone is saved on the profile) ────────
 const DEFAULT_EMPLOYEE_PHONE = '9768726006'
@@ -17,7 +18,8 @@ async function sendWhatsApp(
   params: string[],
   campaignName: string
 ): Promise<{ sent: boolean; to: string }> {
-  if (!AISENSY_KEY || AISENSY_KEY === 'your-aisensy-api-key-here') {
+  const activeKey = getAiSensyApiKey()
+  if (!activeKey) {
     return { sent: false, to: '' }
   }
 
@@ -26,28 +28,40 @@ async function sendWhatsApp(
   const cleaned = raw.replace(/\D/g, '')
   const e164 = cleaned.startsWith('91') ? cleaned : `91${cleaned}`
 
-  try {
-    const res = await fetch(AISENSY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        apiKey: AISENSY_KEY,
-        campaignName,
-        destination: e164,
-        userName: name,
-        templateParams: params,
-        source: 'rushipandit-portal',
-        media: {},
-        buttons: []
+  // Try campaignName first, fallback to AISENSY_CAMPAIGN_NAME or 'task_reminder'
+  const campaignsToTry = Array.from(new Set([
+    campaignName,
+    process.env.AISENSY_CAMPAIGN_NAME,
+    'task_reminder'
+  ].filter(Boolean))) as string[]
+
+  for (const cName of campaignsToTry) {
+    try {
+      const res = await fetch(AISENSY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey: activeKey,
+          campaignName: cName,
+          destination: e164,
+          userName: name,
+          templateParams: params,
+          source: 'rushipandit-portal',
+          media: {},
+          buttons: []
+        })
       })
-    })
-    const body = await res.text()
-    console.log(`[WA] ${campaignName} → ${e164} | status: ${res.status} | ${body}`)
-    return { sent: res.ok, to: e164 }
-  } catch (err: any) {
-    console.error('[WA] Error:', err.message)
-    return { sent: false, to: e164 }
+      const body = await res.text()
+      console.log(`[WA Task] ${cName} → ${e164} | status: ${res.status} | ${body}`)
+      if (res.ok) {
+        return { sent: true, to: e164 }
+      }
+    } catch (err: any) {
+      console.error(`[WA Task] Error for ${cName}:`, err.message)
+    }
   }
+
+  return { sent: false, to: e164 }
 }
 
 // ── In-App notification ───────────────────────────────────────────────────────
@@ -74,28 +88,49 @@ async function alreadySent(taskId: string, recipientId: string, reminderType: st
 }
 
 async function markSent(taskId: string, recipientId: string, reminderType: string, channel: string) {
+  // Ensure table and columns exist (safe to run every time - idempotent)
+  await execute(
+    `CREATE TABLE IF NOT EXISTS task_reminder_log (
+      id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      task_id       UUID,
+      recipient_id  UUID,
+      reminder_type TEXT DEFAULT 'deadline',
+      channel       TEXT DEFAULT 'in_app',
+      sent_at       TIMESTAMPTZ DEFAULT NOW()
+    )`
+  ).catch(() => {})
+  await execute(`ALTER TABLE task_reminder_log ADD COLUMN IF NOT EXISTS recipient_id UUID`).catch(() => {})
+  await execute(`ALTER TABLE task_reminder_log ADD COLUMN IF NOT EXISTS channel TEXT DEFAULT 'in_app'`).catch(() => {})
+  // Create unique constraint if not exists
+  await execute(
+    `DO $$ BEGIN
+      ALTER TABLE task_reminder_log ADD CONSTRAINT uq_task_reminder UNIQUE (task_id, recipient_id, reminder_type, channel);
+     EXCEPTION WHEN duplicate_table THEN NULL; WHEN others THEN NULL;
+     END $$`
+  ).catch(() => {})
+
   await execute(
     `INSERT INTO task_reminder_log (task_id, recipient_id, reminder_type, channel)
      VALUES ($1, $2, $3, $4)
-     ON CONFLICT (task_id, recipient_id, reminder_type, channel) DO NOTHING`,
+     ON CONFLICT DO NOTHING`,
     [taskId, recipientId, reminderType, channel]
   )
 }
 
-// ── Reminder windows ──────────────────────────────────────────────────
-interface ReminderWindow { type: '2d' | '1d' | '1h' | 'deadline_hit'; label: string; minH: number; maxH: number }
-const WINDOWS: ReminderWindow[] = [
-  // maxH is strictly .01 (starts ~36 seconds before exact time). minH gives a 5-6 min buffer for late crons.
-  { type: '2d',           label: '2 days',  minH: 47.90, maxH: 48.01 },
-  { type: '1d',           label: '1 day',   minH: 23.90, maxH: 24.01 },
-  { type: '1h',           label: '1 hour',  minH: 0.90,  maxH: 1.01  },
-  { type: 'deadline_hit', label: '0 minutes', minH: -2,    maxH: 0.01 },
-]
+async function checkAuth(req: NextRequest) {
+  const secret = req.headers.get('x-cron-secret') || new URL(req.url).searchParams.get('secret')
+  if (secret === CRON_SECRET) return true
+
+  const user = await getUserFromRequest(req).catch(() => null)
+  if (user?.role === 'admin') return true
+
+  return false
+}
 
 // ── POST /api/cron/task-reminders ─────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  const secret = req.headers.get('x-cron-secret') || new URL(req.url).searchParams.get('secret')
-  if (secret !== CRON_SECRET) {
+  const authorized = await checkAuth(req)
+  if (!authorized) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -103,35 +138,20 @@ export async function POST(req: NextRequest) {
   const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000)  // IST — used only for display strings
 
   try {
-    // ── Query 1: Upcoming tasks (deadline in the future, not completed) ──────────
+    // ── Fetch active pending/in_progress tasks with a deadline ──────────
+    // Include upcoming tasks (up to 50h in future) and overdue tasks (up to 48h in past)
+    const windowStart = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString()
     const windowEnd = new Date(now.getTime() + 50 * 60 * 60 * 1000).toISOString()
-    const upcomingTasks = await query<any>(
+
+    const tasks = await query<any>(
       `SELECT id, title, deadline, priority, assigned_to, assigned_by
        FROM tasks
        WHERE status IN ('pending', 'in_progress')
          AND deadline IS NOT NULL
          AND deadline <= $1
-         AND deadline > $2`,
-      [windowEnd, now.toISOString()]
-    )
-
-    // ── Combine: upcoming + tasks that just passed deadline (for deadline_hit) ─
-    // We fetch ALL pending tasks with passed deadlines — deduplication ensures
-    // we only send once. No OVERDUE concept — just one "deadline reached" alert.
-    const passedTasks = await query<any>(
-      `SELECT id, title, deadline, priority, assigned_to, assigned_by
-       FROM tasks
-       WHERE status IN ('pending', 'in_progress')
-         AND deadline IS NOT NULL
-         AND deadline < $1
          AND deadline >= $2`,
-      [now.toISOString(), new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString()]
+      [windowEnd, windowStart]
     )
-
-    const tasks = [
-      ...(upcomingTasks || []).map((t: any) => ({ ...t, _windowType: 'upcoming' as const })),
-      ...(passedTasks   || []).map((t: any) => ({ ...t, _windowType: 'passed'   as const })),
-    ]
 
     // Fetch all profiles (for assignee + admin lookup)
     const allProfiles = await query<any>(
@@ -141,19 +161,9 @@ export async function POST(req: NextRequest) {
     const admins = (allProfiles || []).filter((p: any) => p.role === 'admin')
     const results: any[] = []
 
-    for (const task of tasks) {
+    for (const task of (tasks || [])) {
       const deadline = new Date(task.deadline)
       const hoursLeft = (deadline.getTime() - now.getTime()) / (1000 * 60 * 60) // negative if passed
-
-      // All tasks past the deadline use 'deadline_hit' window
-      // Upcoming tasks match against the WINDOWS array
-      let win: ReminderWindow | undefined
-      if (task._windowType === 'passed') {
-        win = { type: 'deadline_hit', label: 'deadline reached', minH: -2, maxH: 0.5 }
-      } else {
-        win = WINDOWS.find(w => hoursLeft >= w.minH && hoursLeft < w.maxH)
-      }
-      if (!win) continue
 
       const assignee = (allProfiles || []).find((p: any) => p.id === task.assigned_to)
 
@@ -162,75 +172,90 @@ export async function POST(req: NextRequest) {
         hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata'
       })
 
+      // Determine the applicable reminder stage
+      let reminderType: 'deadline_hit' | '1h' | '1d' | '2d' | null = null
+      let reminderLabel = ''
+
+      if (hoursLeft <= 0) {
+        reminderType = 'deadline_hit'
+        reminderLabel = 'deadline reached'
+      } else if (hoursLeft <= 1) {
+        reminderType = '1h'
+        reminderLabel = '1 hour'
+      } else if (hoursLeft <= 24) {
+        reminderType = '1d'
+        reminderLabel = '1 day'
+      } else if (hoursLeft <= 48) {
+        reminderType = '2d'
+        reminderLabel = '2 days'
+      }
+
+      if (!reminderType) continue
+
+      const isDeadlineHit = reminderType === 'deadline_hit'
+      const dbReminderType = isDeadlineHit ? 'overdue' : reminderType
+
       // ── Build message text ──────────────────────────────────────────────
-      const isDeadlineHit = win.type === 'deadline_hit'
       const empTitle = isDeadlineHit
         ? `🔔 Task Deadline Reached!`
-        : `⏰ Task Due in ${win.label}`
+        : `⏰ Task Due in ${reminderLabel}`
       const empMsg = isDeadlineHit
         ? `Your task "${task.title}" deadline was ${deadlineStr}. Please complete and submit it now.`
         : `"${task.title}" is due on ${deadlineStr}. Please complete it on time.`
       const adminTitle = isDeadlineHit
         ? `🔔 Deadline Reached — ${task.title}`
-        : `📋 Task Alert — ${win.label} left`
+        : `📋 Task Alert — ${reminderLabel} left`
       const adminMsg = isDeadlineHit
         ? `"${task.title}" (assigned to ${assignee?.full_name || 'someone'}) hit its deadline at ${deadlineStr}. Check if it is completed.`
-        : `"${task.title}" (assigned to ${assignee?.full_name || 'someone'}) is due in ${win.label} on ${deadlineStr}.`
+        : `"${task.title}" (assigned to ${assignee?.full_name || 'someone'}) is due in ${reminderLabel} on ${deadlineStr}.`
 
       // ── Employee notification ────────────────────────────────────────────
       if (assignee?.id) {
-
-        // Use 'overdue' for DB logging because of the database CHECK constraint
-        const dbReminderType = win.type === 'deadline_hit' ? 'overdue' : win.type
-
         // In-app
         if (!await alreadySent(task.id, assignee.id, dbReminderType, 'in_app')) {
           await sendInApp(assignee.id, empTitle, empMsg, task.id)
           await markSent(task.id, assignee.id, dbReminderType, 'in_app')
-          results.push({ task: task.title, to: assignee.full_name, channel: 'in_app', type: win.type })
+          results.push({ task: task.title, to: assignee.full_name, channel: 'in_app', type: reminderType })
         }
 
         // WhatsApp (uses default employee number if no phone saved)
         if (!await alreadySent(task.id, assignee.id, dbReminderType, 'whatsapp')) {
           const { sent, to } = await sendWhatsApp(
             assignee.phone, DEFAULT_EMPLOYEE_PHONE, assignee.full_name,
-            [assignee.full_name, task.title, deadlineStr, win.label],
+            [assignee.full_name, task.title, deadlineStr, reminderLabel],
             'task_reminder_employee'
           )
           if (sent) {
             await markSent(task.id, assignee.id, dbReminderType, 'whatsapp')
-            results.push({ task: task.title, to: `${assignee.full_name} (${to})`, channel: 'whatsapp', type: win.type })
+            results.push({ task: task.title, to: `${assignee.full_name} (${to})`, channel: 'whatsapp', type: reminderType })
           }
         }
       }
 
       // ── Admin (assigner) notification ────────────────────────────────────
-      // Find the admin who assigned this specific task
       const assigningAdmin = (allProfiles || []).find((p: any) => p.id === task.assigned_by)
       const notifyAdmins = assigningAdmin
-        ? [assigningAdmin]   // notify only the assigning admin
-        : admins             // fallback: notify all admins if assigned_by is missing
+        ? [assigningAdmin]
+        : admins
 
       for (const admin of notifyAdmins) {
-        const dbReminderType = win.type === 'deadline_hit' ? 'overdue' : win.type
-
         // In-app
         if (!await alreadySent(task.id, admin.id, dbReminderType, 'in_app')) {
           await sendInApp(admin.id, adminTitle, adminMsg, task.id)
           await markSent(task.id, admin.id, dbReminderType, 'in_app')
-          results.push({ task: task.title, to: admin.full_name, channel: 'in_app (admin)', type: win.type })
+          results.push({ task: task.title, to: admin.full_name, channel: 'in_app (admin)', type: reminderType })
         }
 
-        // WhatsApp — use the admin's real phone or fallback
+        // WhatsApp
         if (!await alreadySent(task.id, admin.id, dbReminderType, 'whatsapp')) {
           const { sent, to } = await sendWhatsApp(
             admin.phone, DEFAULT_ADMIN_PHONE, admin.full_name,
-            [admin.full_name, task.title, assignee?.full_name || '-', deadlineStr, win.label],
+            [admin.full_name, task.title, assignee?.full_name || '-', deadlineStr, reminderLabel],
             'task_reminder_admin'
           )
           if (sent) {
             await markSent(task.id, admin.id, dbReminderType, 'whatsapp')
-            results.push({ task: task.title, to: `${admin.full_name} (${to})`, channel: 'whatsapp (admin)', type: win.type })
+            results.push({ task: task.title, to: `${admin.full_name} (${to})`, channel: 'whatsapp (admin)', type: reminderType })
           }
         }
       }

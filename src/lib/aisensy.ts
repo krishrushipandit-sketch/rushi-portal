@@ -631,5 +631,250 @@ export async function checkAndSendImmediateVisitReminder(
     console.error('[AiSensy] checkAndSendImmediateVisitReminder error:', err)
   }
 }
+// ─── AI Workshop Saturday Reminders ─────────────────────────────────────────
+// Templates:
+//   48hr before:   reminder_aiworkshop48hrs  (1 param: timing "5 PM")
+//   24hr before:   reminder_aiworkshop24hrs  (1 param: timing "5 PM")
+//   today 6am:     reminder_aiworkshoptoday  (2 params: name, timing "5 PM")
+//
+// Cron fires daily at 6 AM IST via /api/cron/visit-reminders
+// Only leads with status = 'ai_workshop_saturday' receive these reminders.
+// Next Saturday is automatically computed from the current date.
+// ─────────────────────────────────────────────────────────────────────────────
 
+const AI_WORKSHOP_TIMING = '5 PM'
+
+export function getNextSaturdayIST(): Date {
+  const now = new Date()
+  const istOffset = 5.5 * 60 * 60 * 1000
+  const istNow = new Date(now.getTime() + istOffset)
+  const day = istNow.getUTCDay() // 0=Sun .. 6=Sat
+  const daysUntilSat = day === 6 ? 0 : (6 - day)
+  const sat = new Date(istNow)
+  sat.setUTCDate(istNow.getUTCDate() + daysUntilSat)
+  // Set to 17:00 IST = 11:30 UTC
+  sat.setUTCHours(11, 30, 0, 0)
+  return new Date(sat.getTime() - istOffset) // back to UTC Date
+}
+
+export async function sendAiWorkshopReminder(params: {
+  leadId: string
+  name: string
+  phone: string
+  reminderType: '48hr' | '24hr' | 'today'
+}): Promise<{ success: boolean; error?: string }> {
+  const apiKey = getAiSensyApiKey()
+  const destination = normalizePhoneForWhatsApp(params.phone)
+  if (!destination) return { success: false, error: 'Invalid phone' }
+
+  const fullName = (params.name || 'Friend').trim()
+  const timing = AI_WORKSHOP_TIMING
+
+  let campaignName = ''
+  let templateParams: string[] = []
+
+  if (params.reminderType === '48hr') {
+    campaignName = 'reminder_aiworkshop48hrs'
+    templateParams = [timing]
+  } else if (params.reminderType === '24hr') {
+    campaignName = 'reminder_aiworkshop24hrs'
+    templateParams = [timing]
+  } else {
+    campaignName = 'reminder_aiworkshoptoday'
+    templateParams = [fullName, timing]
+  }
+
+  const payload = {
+    apiKey,
+    campaignName,
+    destination,
+    userName: fullName,
+    templateParams,
+    source: 'rushi_portal',
+    media: {},
+    buttons: [],
+    carouselCards: [],
+    location: {},
+  }
+
+  console.log(`[AiSensy Workshop] Sending '${campaignName}' (${params.reminderType}) to ${destination}`)
+
+  try {
+    const res = await fetch('https://backend.aisensy.com/campaign/t1/api/v2', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const resData = await res.json().catch(() => ({}))
+    console.log(`[AiSensy Workshop] Response ${res.status}:`, resData)
+
+    // Log to DB for deduplication
+    const satDateStr = getVisitDateStrIST(getNextSaturdayIST())
+    await execute(
+      `CREATE TABLE IF NOT EXISTS ai_workshop_reminder_log (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        lead_id UUID NOT NULL,
+        workshop_date DATE NOT NULL,
+        reminder_type VARCHAR(20) NOT NULL,
+        campaign_name VARCHAR(60) NOT NULL,
+        phone VARCHAR(20) NOT NULL,
+        sent_at TIMESTAMPTZ DEFAULT NOW(),
+        status VARCHAR(20) DEFAULT 'sent',
+        CONSTRAINT uq_workshop_reminder UNIQUE (lead_id, workshop_date, reminder_type)
+      )`
+    ).catch(() => {})
+
+    await execute(
+      `INSERT INTO ai_workshop_reminder_log (lead_id, workshop_date, reminder_type, campaign_name, phone, status)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (lead_id, workshop_date, reminder_type) DO UPDATE SET sent_at = NOW(), status = EXCLUDED.status`,
+      [params.leadId, satDateStr, params.reminderType, campaignName, destination, res.ok ? 'sent' : 'failed']
+    ).catch(() => {})
+
+    return { success: res.ok }
+  } catch (err: any) {
+    console.error('[AiSensy Workshop] Exception:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Main function called by the daily 6 AM cron.
+ * Sends workshop reminders to all leads with status='ai_workshop_saturday'.
+ * - Saturday (diffDays=0): sends 'today' reminder
+ * - Friday (diffDays=1): sends '24hr' reminder
+ * - Thursday (diffDays=2): sends '48hr' reminder
+ */
+export async function processAiWorkshopReminders(): Promise<{
+  processed: number; sent: number; skipped: number; details: any[]
+}> {
+  await execute(
+    `CREATE TABLE IF NOT EXISTS ai_workshop_reminder_log (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      lead_id UUID NOT NULL,
+      workshop_date DATE NOT NULL,
+      reminder_type VARCHAR(20) NOT NULL,
+      campaign_name VARCHAR(60) NOT NULL,
+      phone VARCHAR(20) NOT NULL,
+      sent_at TIMESTAMPTZ DEFAULT NOW(),
+      status VARCHAR(20) DEFAULT 'sent',
+      CONSTRAINT uq_workshop_reminder UNIQUE (lead_id, workshop_date, reminder_type)
+    )`
+  ).catch(() => {})
+
+  const todayStr = getTodayStrIST()
+  const nextSat = getNextSaturdayIST()
+  const satDateStr = getVisitDateStrIST(nextSat)
+
+  const todayMidnight = new Date(`${todayStr}T00:00:00+05:30`).getTime()
+  const satMidnight = new Date(`${satDateStr}T00:00:00+05:30`).getTime()
+  const diffDays = Math.round((satMidnight - todayMidnight) / (1000 * 60 * 60 * 24))
+
+  let reminderType: '48hr' | '24hr' | 'today' | null = null
+  if (diffDays === 0) reminderType = 'today'
+  else if (diffDays === 1) reminderType = '24hr'
+  else if (diffDays === 2) reminderType = '48hr'
+
+  if (!reminderType) return { processed: 0, sent: 0, skipped: 0, details: [] }
+
+  const leads = await query<any>(
+    `SELECT id, name, client_name, phone FROM leads WHERE status = 'ai_workshop_saturday' AND phone IS NOT NULL`
+  )
+
+  let processed = 0
+  let sent = 0
+  let skipped = 0
+  const details: any[] = []
+
+  for (const lead of (leads || [])) {
+    processed++
+    // Deduplication check
+    const already = await queryOne(
+      `SELECT id FROM ai_workshop_reminder_log WHERE lead_id = $1 AND workshop_date = $2 AND reminder_type = $3 AND status = 'sent'`,
+      [lead.id, satDateStr, reminderType]
+    )
+    if (already) { skipped++; continue }
+
+    const leadName = lead.client_name || lead.name || 'Friend'
+    const result = await sendAiWorkshopReminder({
+      leadId: lead.id,
+      name: leadName,
+      phone: lead.phone,
+      reminderType,
+    })
+
+    if (result.success) {
+      sent++
+      details.push({ lead: leadName, phone: lead.phone, type: reminderType, status: 'sent' })
+    } else {
+      details.push({ lead: leadName, phone: lead.phone, type: reminderType, status: 'failed', error: result.error })
+    }
+  }
+
+  return { processed, sent, skipped, details }
+}
+
+/**
+ * Checks if a lead marked as 'ai_workshop_saturday' is within 48h or 24h of Saturday 5 PM,
+ * and if so, sends the appropriate reminder immediately (with deduplication).
+ */
+export async function checkAndSendImmediateWorkshopReminder(leadId: string): Promise<void> {
+  try {
+    const todayStr = getTodayStrIST()
+    const nextSat = getNextSaturdayIST()
+    const satDateStr = getVisitDateStrIST(nextSat)
+
+    const todayMidnight = new Date(`${todayStr}T00:00:00+05:30`).getTime()
+    const satMidnight = new Date(`${satDateStr}T00:00:00+05:30`).getTime()
+    const diffDays = Math.round((satMidnight - todayMidnight) / (1000 * 60 * 60 * 24))
+
+    let reminderType: '48hr' | '24hr' | null = null
+    if (diffDays === 1) {
+      reminderType = '24hr'
+    } else if (diffDays === 2) {
+      reminderType = '48hr'
+    }
+
+    if (!reminderType) return
+
+    // Ensure table exists
+    await execute(
+      `CREATE TABLE IF NOT EXISTS ai_workshop_reminder_log (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        lead_id UUID NOT NULL,
+        workshop_date DATE NOT NULL,
+        reminder_type VARCHAR(20) NOT NULL,
+        campaign_name VARCHAR(60) NOT NULL,
+        phone VARCHAR(20) NOT NULL,
+        sent_at TIMESTAMPTZ DEFAULT NOW(),
+        status VARCHAR(20) DEFAULT 'sent',
+        CONSTRAINT uq_workshop_reminder UNIQUE (lead_id, workshop_date, reminder_type)
+      )`
+    ).catch(() => {})
+
+    const already = await queryOne(
+      `SELECT id FROM ai_workshop_reminder_log 
+       WHERE lead_id = $1 AND workshop_date = $2 AND reminder_type = $3 AND status = 'sent'`,
+      [leadId, satDateStr, reminderType]
+    )
+
+    if (already) return
+
+    const lead = await queryOne<LeadForAiSensy>(
+      `SELECT id, name, client_name, phone FROM leads WHERE id = $1`,
+      [leadId]
+    )
+
+    if (!lead?.phone) return
+
+    await sendAiWorkshopReminder({
+      leadId,
+      name: lead.client_name || lead.name || 'Friend',
+      phone: lead.phone,
+      reminderType,
+    })
+  } catch (err) {
+    console.error('[AiSensy Workshop] checkAndSendImmediateWorkshopReminder error:', err)
+  }
+}
 

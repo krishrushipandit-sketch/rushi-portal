@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { processScheduledVisitReminders } from '@/lib/aisensy'
+import { processScheduledVisitReminders, processAiWorkshopReminders } from '@/lib/aisensy'
 import { getUserFromRequest } from '@/lib/auth'
 
 const CRON_SECRET = process.env.CRON_SECRET || 'rushipandit-cron-2026'
@@ -25,11 +25,15 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const result = await processScheduledVisitReminders()
+    const [visitResult, workshopResult] = await Promise.all([
+      processScheduledVisitReminders(),
+      processAiWorkshopReminders(),
+    ])
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
-      ...result,
+      visit_reminders: visitResult,
+      ai_workshop_reminders: workshopResult,
     })
   } catch (err: any) {
     console.error('[Visit Reminders Cron Error]:', err)

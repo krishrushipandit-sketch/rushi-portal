@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, queryOne } from '@/lib/db'
 import { getUserFromRequest } from '@/lib/auth'
-import { handleLeadStatusChangeAiSensy, checkAndSendImmediateVisitReminder } from '@/lib/aisensy'
+import { checkAndSendImmediateVisitReminder } from '@/lib/aisensy'
 
 export async function GET(
   req: NextRequest,
@@ -133,19 +133,15 @@ export async function POST(
       ]
     )
 
-    // 4. Trigger AiSensy ringing_sale template
-    // lead.status was captured BEFORE the DB update above, so it's the correct old status
-    if (call_status) {
-      handleLeadStatusChangeAiSensy(leadId, call_status, user.userId, lead.status).catch((e) => {
-        console.error('AiSensy background trigger error:', e)
-      })
 
-      // If a visit is scheduled/rescheduled, trigger immediate 24h or 48h reminder if due
-      if (call_status === 'visit_scheduled' && nextFollowupDate) {
-        checkAndSendImmediateVisitReminder(leadId, nextFollowupDate).catch((e) => {
-          console.error('AiSensy immediate visit reminder error:', e)
-        })
-      }
+    // NOTE: AiSensy WhatsApp is triggered ONLY from the PATCH /api/leads/[id] route
+    // which is always called after this endpoint. Do NOT trigger it here to avoid duplicate messages.
+
+    // Visit reminder: trigger immediate reminder if visit is scheduled
+    if (call_status === 'visit_scheduled' && nextFollowupDate) {
+      checkAndSendImmediateVisitReminder(leadId, nextFollowupDate).catch((e) => {
+        console.error('AiSensy immediate visit reminder error:', e)
+      })
     }
 
     return NextResponse.json({

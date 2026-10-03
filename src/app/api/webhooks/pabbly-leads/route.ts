@@ -262,8 +262,10 @@ async function handleLeadWebhook(req: NextRequest) {
 
     let industry = 'Digital Marketing'
     const lowerInd = String(rawIndustry || '').toLowerCase().trim()
-    const allContext = `${rawIndustry} ${body.form_name || ''} ${body.campaign_name || ''} ${body.ad_name || ''} ${JSON.stringify(qualificationAnswers)}`.toLowerCase()
-    // Exclude institute name so "Institute of Business & AI" doesn't falsely match
+    // Only check explicit program/industry field for BBA/MBA — NOT the whole context
+    // (prevents DM leads whose qualification answers mention "BBA/MBA" being misclassified)
+    const allContext = `${rawIndustry} ${body.form_name || ''} ${body.campaign_name || ''} ${body.ad_name || ''}`.toLowerCase()
+    // Also exclude institute name so "Institute of Business & AI" doesn't falsely match
     const cleanContext = allContext.replace(/institute of business\s*(&|and)?\s*ai/gi, '')
 
     if (
@@ -275,13 +277,14 @@ async function handleLeadWebhook(req: NextRequest) {
       cleanContext.includes('ai program')
     ) {
       industry = 'AI Course'
-    } else if (lowerInd.includes('share') || lowerInd.includes('stock') || lowerInd.includes('trading') || cleanContext.includes('share market') || cleanContext.includes('stock market')) {
+    } else if (lowerInd.includes('share') || lowerInd.includes('stock') || lowerInd.includes('trading')) {
       industry = 'Share Market'
-    } else if (lowerInd.includes('amazon') || cleanContext.includes('amazon listing') || cleanContext.includes('amazon course')) {
+    } else if (lowerInd.includes('amazon')) {
       industry = 'Amazon'
-    } else if (lowerInd.includes('bba') || lowerInd.includes('mba') || cleanContext.includes('bba') || cleanContext.includes('mba')) {
+    } else if (lowerInd.includes('bba') || lowerInd.includes('mba')) {
+      // Only classify as BBA/MBA when the EXPLICIT program field says so
       industry = 'BBA/MBA'
-    } else if (lowerInd.includes('digital') || lowerInd.includes('marketing') || cleanContext.includes('digital marketing')) {
+    } else if (lowerInd.includes('digital') || lowerInd.includes('marketing')) {
       industry = 'Digital Marketing'
     } else if (rawIndustry && rawIndustry.trim()) {
       industry = rawIndustry.trim()
@@ -393,7 +396,7 @@ async function handleLeadWebhook(req: NextRequest) {
       }
     }
 
-    // 5.3 Check if Pabbly passed a number field (1 -> Naveen/Navin, 2 -> Poonam)
+    // 5.3 Check if Pabbly passed a number field (1 → Poonam, 2 → Naveen)
     const routingNumInput =
       body.number ||
       body.salesperson_number ||
@@ -420,14 +423,15 @@ async function handleLeadWebhook(req: NextRequest) {
       const numStr = String(routingNumInput).trim()
       const num = parseInt(numStr, 10)
       
+      // 1 → Poonam
       if (num === 1 || numStr === '1' || numStr === '01') {
         const matchedProfile = await queryOne<{ id: string; full_name: string; email: string }>(
           `SELECT id, full_name, email
            FROM profiles
            WHERE (
-             LOWER(full_name) ILIKE '%naveen%' OR
-             LOWER(full_name) ILIKE '%navin%' OR
-             LOWER(email) ILIKE '%nav%'
+             LOWER(full_name) ILIKE '%poonam%' OR
+             LOWER(full_name) ILIKE '%punam%' OR
+             LOWER(email) ILIKE '%poonam%'
            )
            AND is_active = true
            LIMIT 1`
@@ -437,14 +441,15 @@ async function handleLeadWebhook(req: NextRequest) {
           assignedToName = matchedProfile.full_name
           assignedToEmail = matchedProfile.email
         }
+      // 2 → Naveen
       } else if (num === 2 || numStr === '2' || numStr === '02') {
         const matchedProfile = await queryOne<{ id: string; full_name: string; email: string }>(
           `SELECT id, full_name, email
            FROM profiles
            WHERE (
-             LOWER(full_name) ILIKE '%poonam%' OR
-             LOWER(full_name) ILIKE '%punam%' OR
-             LOWER(email) ILIKE '%poonam%'
+             LOWER(full_name) ILIKE '%naveen%' OR
+             LOWER(full_name) ILIKE '%navin%' OR
+             LOWER(email) ILIKE '%nav%'
            )
            AND is_active = true
            LIMIT 1`

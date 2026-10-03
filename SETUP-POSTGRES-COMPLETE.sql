@@ -105,8 +105,11 @@ CREATE TABLE IF NOT EXISTS task_updates (
 CREATE TABLE IF NOT EXISTS task_reminder_log (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   task_id       UUID REFERENCES tasks(id) ON DELETE CASCADE,
+  recipient_id  UUID REFERENCES profiles(id) ON DELETE CASCADE,
   reminder_type TEXT DEFAULT 'deadline',
-  sent_at       TIMESTAMPTZ DEFAULT NOW()
+  channel       TEXT DEFAULT 'in_app',
+  sent_at       TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT uq_task_reminder UNIQUE (task_id, recipient_id, reminder_type, channel)
 );
 
 -- DAILY REPORTS

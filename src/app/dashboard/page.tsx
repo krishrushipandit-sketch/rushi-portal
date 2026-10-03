@@ -214,6 +214,27 @@ export default function DashboardPage() {
     return () => clearInterval(interval)
   }, [profile, fetchUnreadCount])
 
+  // Background trigger for task reminders & visit/workshop reminders (throttled to every 15 mins)
+  useEffect(() => {
+    if (!profile) return
+    try {
+      const lastCheck = sessionStorage.getItem('rp_last_cron_check')
+      const now = Date.now()
+      if (!lastCheck || now - parseInt(lastCheck, 10) > 15 * 60 * 1000) {
+        sessionStorage.setItem('rp_last_cron_check', String(now))
+        const token = localStorage.getItem('rushi_token')
+        if (token) {
+          fetch('/api/cron/task-reminders', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          }).catch(() => {})
+          fetch('/api/cron/visit-reminders', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          }).catch(() => {})
+        }
+      }
+    } catch { /* silent */ }
+  }, [profile])
+
   if (loading) {
     return (
       <div style={{
