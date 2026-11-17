@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { getInitials, formatDate } from '@/lib/utils'
-import { Plus, Trash2, X, Loader2, Users, Phone, Mail, Edit2, ToggleLeft, ToggleRight, Upload, Tag, Building2, Globe, Sparkles, Check } from 'lucide-react'
+import { Plus, Trash2, X, Loader2, Users, Phone, Mail, Edit2, ToggleLeft, ToggleRight, Upload, Tag, Building2, Globe, Sparkles, Check, KeyRound, UserX, AlertTriangle } from 'lucide-react'
 
 interface Props { profile: Profile }
 
@@ -55,6 +55,19 @@ export default function EmployeesSection({ profile }: Props) {
   const [assignedBrandIds, setAssignedBrandIds] = useState<string[]>([])
   const [loadingAssignments, setLoadingAssignments] = useState(false)
   const [savingBrandAssignments, setSavingBrandAssignments] = useState(false)
+
+  // Change Password state
+  const [pwEmployee, setPwEmployee] = useState<Employee | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [savingPassword, setSavingPassword] = useState(false)
+  const [pwSuccess, setPwSuccess] = useState(false)
+
+  // Offboard state
+  const [offboardEmployee, setOffboardEmployee] = useState<Employee | null>(null)
+  const [offboardReassignTo, setOffboardReassignTo] = useState('')
+  const [offboarding, setOffboarding] = useState(false)
+  const [offboardResult, setOffboardResult] = useState<{ leadsReassigned: number; tasksUnassigned: number } | null>(null)
 
   const [form, setForm] = useState({
     full_name: '', email: '', password: '', role: 'employee',
@@ -149,6 +162,64 @@ export default function EmployeesSection({ profile }: Props) {
       alert('Failed to save assignments: ' + err.message)
     } finally {
       setSavingBrandAssignments(false)
+    }
+  }
+
+  const openChangePassword = (emp: Employee) => {
+    setPwEmployee(emp)
+    setNewPassword('')
+    setConfirmPassword('')
+    setPwSuccess(false)
+  }
+
+  const handleChangePassword = async () => {
+    if (!pwEmployee) return
+    if (newPassword.length < 8) return alert('Password must be at least 8 characters')
+    if (newPassword !== confirmPassword) return alert('Passwords do not match')
+    setSavingPassword(true)
+    const token = getToken()
+    try {
+      const res = await fetch(`/api/employees/${pwEmployee.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ password: newPassword }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to change password')
+      setPwSuccess(true)
+      setTimeout(() => setPwEmployee(null), 1500)
+    } catch (err: any) {
+      alert(err.message)
+    } finally {
+      setSavingPassword(false)
+    }
+  }
+
+  const openOffboard = (emp: Employee) => {
+    setOffboardEmployee(emp)
+    setOffboardReassignTo('')
+    setOffboardResult(null)
+  }
+
+  const handleOffboard = async () => {
+    if (!offboardEmployee) return
+    if (!confirm(`⚠️ Offboard "${offboardEmployee.full_name}"?\n\nThis will:\n• Deactivate their login immediately\n• Reassign or unassign all open leads\n• Unassign all open tasks\n• Remove them from lead round-robin\n\nThis action cannot be undone automatically.`)) return
+    setOffboarding(true)
+    const token = getToken()
+    try {
+      const res = await fetch(`/api/employees/${offboardEmployee.id}/offboard`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reassign_to: offboardReassignTo || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Offboarding failed')
+      setOffboardResult(data.summary)
+      fetchEmployees()
+    } catch (err: any) {
+      alert(err.message)
+    } finally {
+      setOffboarding(false)
     }
   }
 
@@ -365,6 +436,30 @@ export default function EmployeesSection({ profile }: Props) {
                         >
                           <Edit2 size={13} />
                         </button>
+                        {/* Change Password */}
+                        {emp.id !== profile.id && (
+                          <button
+                            className="btn btn-sm"
+                            style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)' }}
+                            onClick={() => openChangePassword(emp)}
+                            data-tooltip="Change password"
+                            title="Change Password"
+                          >
+                            <KeyRound size={13} />
+                          </button>
+                        )}
+                        {/* Offboard */}
+                        {emp.id !== profile.id && emp.is_active && (
+                          <button
+                            className="btn btn-sm"
+                            style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.25)' }}
+                            onClick={() => openOffboard(emp)}
+                            data-tooltip="Offboard employee"
+                            title="Offboard Employee"
+                          >
+                            <UserX size={13} />
+                          </button>
+                        )}
                         {/* Internal Brands & External Clients Assignment — for video editors and team members */}
                         <button
                           className="btn btn-sm"
@@ -772,6 +867,168 @@ export default function EmployeesSection({ profile }: Props) {
       )}
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+      {/* ── Change Password Modal ── */}
+      {pwEmployee && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setPwEmployee(null)}>
+          <div className="modal-content" style={{ maxWidth: '420px' }}>
+            <div className="modal-header">
+              <div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <KeyRound size={18} style={{ color: '#f59e0b' }} /> Change Password
+                </h3>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '3px 0 0' }}>
+                  Setting new password for <strong>{pwEmployee.full_name}</strong>
+                </p>
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => setPwEmployee(null)}><X size={18} /></button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {pwSuccess ? (
+                <div style={{ textAlign: 'center', padding: '1.5rem 0' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>✅</div>
+                  <p style={{ fontWeight: 700, color: '#10b981' }}>Password changed successfully!</p>
+                </div>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">New Password *</label>
+                    <input
+                      className="form-input"
+                      type="password"
+                      placeholder="Minimum 8 characters"
+                      value={newPassword}
+                      onChange={e => setNewPassword(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Confirm New Password *</label>
+                    <input
+                      className="form-input"
+                      type="password"
+                      placeholder="Re-enter password"
+                      value={confirmPassword}
+                      onChange={e => setConfirmPassword(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleChangePassword()}
+                    />
+                    {confirmPassword && newPassword !== confirmPassword && (
+                      <p style={{ fontSize: '0.72rem', color: '#ef4444', marginTop: '4px' }}>Passwords do not match</p>
+                    )}
+                  </div>
+                  <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '10px', padding: '0.625rem 0.875rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                    ⚠️ The employee will need to use this new password on their next login.
+                  </div>
+                </>
+              )}
+            </div>
+            {!pwSuccess && (
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setPwEmployee(null)}>Cancel</button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleChangePassword}
+                  disabled={savingPassword || newPassword.length < 8 || newPassword !== confirmPassword}
+                  style={{ background: '#f59e0b', borderColor: '#f59e0b' }}
+                >
+                  {savingPassword ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Saving...</> : '🔑 Change Password'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Offboard Employee Modal ── */}
+      {offboardEmployee && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && !offboarding && setOffboardEmployee(null)}>
+          <div className="modal-content" style={{ maxWidth: '480px' }}>
+            <div className="modal-header">
+              <div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444' }}>
+                  <UserX size={18} /> Offboard Employee
+                </h3>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '3px 0 0' }}>
+                  Removing access for <strong>{offboardEmployee.full_name}</strong>
+                </p>
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => setOffboardEmployee(null)} disabled={offboarding}><X size={18} /></button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {offboardResult ? (
+                <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>✅</div>
+                  <p style={{ fontWeight: 700, color: '#10b981', marginBottom: '0.5rem' }}>
+                    {offboardEmployee.full_name} has been offboarded
+                  </p>
+                  <div style={{ background: 'var(--bg-surface)', borderRadius: '10px', padding: '0.875rem', textAlign: 'left', fontSize: '0.82rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <span>🔒 Login disabled immediately</span>
+                    <span>📋 {offboardResult.leadsReassigned} open lead{offboardResult.leadsReassigned !== 1 ? 's' : ''} {offboardResult.leadsReassigned > 0 ? (offboardResult.leadsReassigned > 0 ? 'reassigned/unassigned' : '') : 'found (none open)'}</span>
+                    <span>✅ {offboardResult.tasksUnassigned} open task{offboardResult.tasksUnassigned !== 1 ? 's' : ''} unassigned</span>
+                    <span>🎯 Removed from lead round-robin</span>
+                  </div>
+                  <button className="btn btn-secondary" style={{ marginTop: '1rem' }} onClick={() => setOffboardEmployee(null)}>Close</button>
+                </div>
+              ) : (
+                <>
+                  {/* Warning banner */}
+                  <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '10px', padding: '0.875rem', display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                    <AlertTriangle size={18} style={{ color: '#ef4444', flexShrink: 0, marginTop: '1px' }} />
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                      <strong style={{ color: '#ef4444' }}>This will immediately:</strong>
+                      <ul style={{ margin: '0.4rem 0 0', paddingLeft: '1.1rem' }}>
+                        <li>Block <strong>{offboardEmployee.full_name}</strong> from logging in</li>
+                        <li>Reassign (or unassign) all their open leads</li>
+                        <li>Unassign all their pending tasks</li>
+                        <li>Remove them from round-robin lead routing</li>
+                      </ul>
+                      <p style={{ marginTop: '0.4rem', marginBottom: 0 }}>Historical data (closed leads, reports, completed tasks) is <strong>preserved</strong>.</p>
+                    </div>
+                  </div>
+
+                  {/* Reassign leads to */}
+                  <div className="form-group">
+                    <label className="form-label">Reassign Open Leads To</label>
+                    <select
+                      className="form-select"
+                      value={offboardReassignTo}
+                      onChange={e => setOffboardReassignTo(e.target.value)}
+                    >
+                      <option value="">— Leave unassigned (admin can re-assign later) —</option>
+                      {employees
+                        .filter(e => e.is_active && e.id !== offboardEmployee.id)
+                        .map(e => (
+                          <option key={e.id} value={e.id}>
+                            {e.full_name} {e.department ? `(${e.department})` : ''}
+                          </option>
+                        ))}
+                    </select>
+                    <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                      Only active employees shown. Closed/won/lost leads are not affected.
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+            {!offboardResult && (
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setOffboardEmployee(null)} disabled={offboarding}>Cancel</button>
+                <button
+                  className="btn btn-danger"
+                  onClick={handleOffboard}
+                  disabled={offboarding}
+                  style={{ background: '#ef4444', color: '#fff', border: 'none' }}
+                >
+                  {offboarding
+                    ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Offboarding...</>
+                    : <><UserX size={14} /> Offboard {offboardEmployee.full_name}</>
+                  }
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
