@@ -140,22 +140,14 @@ export async function sendAiSensyRingingSaleTemplate(
     // Exactly 3 variables matching template: [Lead Name] [Status] [Sales Phone]
     const templateParams = [fullName, statusText, salesPhone]
 
-    const payload = {
+    // Clean, direct payload strictly adhering to AiSensy API v2 specification
+    const payload: Record<string, any> = {
       apiKey,
       campaignName: templateName,
       destination,
       userName: fullName,
       templateParams,
       source: 'rushi_portal',
-      media: {},
-      buttons: [],
-      carouselCards: [],
-      location: {},
-      paramsFallbackValue: {
-        FirstName: fullName,
-        Status: statusText,
-        Phone: salesPhone,
-      },
     }
 
     console.log(`[AiSensy] Sending '${templateName}' to ${destination} | params:`, templateParams)
@@ -221,14 +213,23 @@ export async function handleLeadStatusChangeAiSensy(
 
     if (!shouldSend) return
 
-    // Get lead details
-    const lead = await queryOne<LeadForAiSensy>(
-      `SELECT id, name, client_name, phone, status, assigned_to FROM leads WHERE id = $1`,
+    // Get lead details including last_whatsapp_sent_at for throttling duplicate clicks
+    const lead = await queryOne<LeadForAiSensy & { last_whatsapp_sent_at?: string | null }>(
+      `SELECT id, name, client_name, phone, status, assigned_to, last_whatsapp_sent_at FROM leads WHERE id = $1`,
       [leadId]
     )
     if (!lead) {
       console.warn(`[AiSensy] Lead not found: ${leadId}`)
       return
+    }
+
+    // Cooldown check: if a WhatsApp message was already triggered in the last 60 seconds, suppress duplicate clicks
+    if (lead.last_whatsapp_sent_at) {
+      const elapsedSec = (Date.now() - new Date(lead.last_whatsapp_sent_at).getTime()) / 1000
+      if (elapsedSec < 60) {
+        console.log(`[AiSensy] Throttling rapid re-click for lead ${leadId} (${elapsedSec.toFixed(1)}s elapsed). Already queued/sent.`)
+        return
+      }
     }
 
     // Get salesperson's phone number
@@ -362,18 +363,13 @@ export async function sendAiSensyVisitReminder(params: VisitReminderParams): Pro
       }
     }
 
-    const payload = {
+    const payload: Record<string, any> = {
       apiKey,
       campaignName,
       destination,
       userName: fullName,
       templateParams,
       source: 'rushi_portal',
-      media: {},
-      buttons: [],
-      carouselCards: [],
-      location: {},
-      paramsFallbackValue,
     }
 
     console.log(`[AiSensy Visit] Sending '${campaignName}' (${params.reminderType}) to ${destination} | params:`, templateParams)
@@ -684,17 +680,13 @@ export async function sendAiWorkshopReminder(params: {
     templateParams = [fullName, timing]
   }
 
-  const payload = {
+  const payload: Record<string, any> = {
     apiKey,
     campaignName,
     destination,
     userName: fullName,
     templateParams,
     source: 'rushi_portal',
-    media: {},
-    buttons: [],
-    carouselCards: [],
-    location: {},
   }
 
   console.log(`[AiSensy Workshop] Sending '${campaignName}' (${params.reminderType}) to ${destination}`)

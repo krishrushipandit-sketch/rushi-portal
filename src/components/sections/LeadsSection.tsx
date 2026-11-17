@@ -11,7 +11,7 @@ import {
   User, Layers, CircleDot, TrendingUp, CheckCircle, XCircle,
   PhoneOff, PhoneMissed, Voicemail, Zap, Calendar, Activity,
   BarChart2, Filter, ClipboardList, Send, RefreshCw, CalendarDays, BellRing,
-  CalendarClock, CalendarCheck
+  CalendarClock, CalendarCheck, Check
 } from 'lucide-react'
 
 interface Props { profile: Profile }
@@ -477,6 +477,7 @@ function FollowupPanel({
   )
   const [showSurvey, setShowSurvey] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [savedSuccess, setSavedSuccess] = useState(false)
 
   const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
 
@@ -505,6 +506,7 @@ function FollowupPanel({
   // Save followup and update lead in DB
   const executeSave = async (selectedStatus: string) => {
     setSaving(true)
+    setSavedSuccess(false)
     const token = getToken()
     try {
       // 1. Post to followups API
@@ -519,7 +521,7 @@ function FollowupPanel({
       })
 
       // 2. Also patch lead directly to guarantee all columns are in sync
-      await fetch(`/api/leads/${lead.id}`, {
+      const patchRes = await fetch(`/api/leads/${lead.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -531,11 +533,14 @@ function FollowupPanel({
       })
 
       const data = await res.json().catch(() => ({}))
+      const patchData = await patchRes.json().catch(() => ({}))
 
       // Refresh local history
       const updatedHistory = await fetch(`/api/leads/${lead.id}/followups`, { headers: { Authorization: `Bearer ${token}` } })
       const hData = await updatedHistory.json()
       if (Array.isArray(hData)) setHistory(hData)
+
+      const isWhatsAppEligible = ['ringing', 'callback', 'busy_callback', 'switched_off', 'busy', 'not_connected'].includes(selectedStatus)
 
       // Optimistic update object
       const updatedLeadObj = {
@@ -545,11 +550,19 @@ function FollowupPanel({
         follow_up_date: scheduledAt ? new Date(scheduledAt).toISOString() : lead.follow_up_date,
         next_followup_at: scheduledAt ? new Date(scheduledAt).toISOString() : lead.next_followup_at,
         followup_count: (lead.followup_count || 0) + 1,
-        last_followup_at: new Date().toISOString()
+        last_followup_at: new Date().toISOString(),
+        whatsapp_ringing_sent: isWhatsAppEligible ? true : lead.whatsapp_ringing_sent,
+        whatsapp_msg_status: isWhatsAppEligible ? 'aisensy_ringing_sent' : lead.whatsapp_msg_status,
       }
 
-      onSaved(data.lead || updatedLeadObj)
+      onSaved(patchData?.id ? { ...updatedLeadObj, ...patchData } : (data.lead || updatedLeadObj))
       setCallStatus(selectedStatus)
+      setSavedSuccess(true)
+
+      // Auto-close after 1.2s to confirm success and prevent double-submitting
+      setTimeout(() => {
+        onClose()
+      }, 1200)
     } catch (err: any) {
       alert('Error updating lead: ' + err.message)
     } finally {
@@ -769,15 +782,31 @@ function FollowupPanel({
               )}
             </div>
 
-            <button
-              onClick={() => executeSave(callStatus)}
-              disabled={saving}
-              className="btn btn-primary"
-              style={{ width: '100%', justifyContent: 'center', height: '42px', fontWeight: 800, fontSize: '0.85rem', background: '#0e3d35', borderColor: '#0e3d35', color: '#ffffff', boxShadow: '0 4px 14px rgba(14, 61, 53, 0.25)' }}
-            >
-              {saving ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={16} />}
-              {saving ? 'Saving...' : 'Save & Update Lead'}
-            </button>
+            {savedSuccess ? (
+              <div
+                style={{
+                  width: '100%', height: '42px', borderRadius: '8px',
+                  background: 'rgba(22, 163, 74, 0.12)', border: '1px solid #16a34a',
+                  color: '#16a34a', fontWeight: 800, fontSize: '0.85rem',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+                }}
+              >
+                <Check size={18} />
+                <span>
+                  ✓ Saved {['ringing', 'callback', 'busy_callback', 'switched_off', 'busy', 'not_connected'].includes(callStatus) ? '& WhatsApp Initiated!' : 'Successfully!'}
+                </span>
+              </div>
+            ) : (
+              <button
+                onClick={() => executeSave(callStatus)}
+                disabled={saving}
+                className="btn btn-primary"
+                style={{ width: '100%', justifyContent: 'center', height: '42px', fontWeight: 800, fontSize: '0.85rem', background: '#0e3d35', borderColor: '#0e3d35', color: '#ffffff', boxShadow: '0 4px 14px rgba(14, 61, 53, 0.25)' }}
+              >
+                {saving ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={16} />}
+                {saving ? 'Saving & Triggering WhatsApp...' : 'Save & Update Lead'}
+              </button>
+            )}
           </div>
 
           {/* Followup History Timeline */}
@@ -890,7 +919,14 @@ export default function LeadsSection({ profile }: Props) {
 
   // Direct quick status change handler
   const handleQuickStatusChange = async (leadId: string, newStatus: string) => {
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status: newStatus } : l))
+    const isWhatsAppEligible = ['ringing', 'callback', 'busy_callback', 'switched_off', 'busy', 'not_connected'].includes(newStatus)
+
+    setLeads(prev => prev.map(l => l.id === leadId ? {
+      ...l,
+      status: newStatus,
+      whatsapp_ringing_sent: isWhatsAppEligible ? true : l.whatsapp_ringing_sent,
+      whatsapp_msg_status: isWhatsAppEligible ? 'aisensy_ringing_sent' : l.whatsapp_msg_status
+    } : l))
 
     const token = getToken()
     try {
@@ -901,6 +937,11 @@ export default function LeadsSection({ profile }: Props) {
       })
       if (!res.ok) {
         fetchLeads()
+      } else {
+        const data = await res.json().catch(() => null)
+        if (data?.id) {
+          setLeads(prev => prev.map(l => l.id === leadId ? { ...l, ...data } : l))
+        }
       }
     } catch (err) {
       fetchLeads()
