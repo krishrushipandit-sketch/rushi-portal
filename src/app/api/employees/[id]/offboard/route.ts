@@ -27,27 +27,31 @@ export async function POST(
     const body = await req.json().catch(() => ({}))
     const { reassign_to } = body as { reassign_to?: string }
 
-    // 1. Count open leads before doing anything (for summary)
+    // 1. Count new leads from the current month before reassigning
     const [leadCount] = await query<{ count: string }>(
       `SELECT COUNT(*) AS count FROM leads
        WHERE assigned_to = $1
-         AND status NOT IN ('closed_won', 'closed_lost')`,
+         AND status = 'new'
+         AND created_at >= date_trunc('month', NOW())`,
       [id]
     )
 
-    // 2. Reassign or unassign open leads
+    // 2. Reassign ONLY uncontacted new leads of the current month
+    // All worked/pipeline leads (ringing, callback, interested, etc.) and older historical leads remain with the employee!
     if (reassign_to) {
       await execute(
         `UPDATE leads SET assigned_to = $1, updated_at = NOW()
          WHERE assigned_to = $2
-           AND status NOT IN ('closed_won', 'closed_lost')`,
+           AND status = 'new'
+           AND created_at >= date_trunc('month', NOW())`,
         [reassign_to, id]
       )
     } else {
       await execute(
         `UPDATE leads SET assigned_to = NULL, updated_at = NOW()
          WHERE assigned_to = $1
-           AND status NOT IN ('closed_won', 'closed_lost')`,
+           AND status = 'new'
+           AND created_at >= date_trunc('month', NOW())`,
         [id]
       )
     }
@@ -68,9 +72,9 @@ export async function POST(
 
     // 4. Remove industry skills so they stop getting round-robin lead assignments
     await execute(
-      `DELETE FROM sales_industry_skills WHERE user_id = $1`,
+      `DELETE FROM sales_industry_skills WHERE employee_id = $1`,
       [id]
-    )
+    ).catch(() => {})
 
     // 5. Deactivate the account
     await execute(

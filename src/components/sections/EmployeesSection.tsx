@@ -975,12 +975,12 @@ export default function EmployeesSection({ profile }: Props) {
                   <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '10px', padding: '0.875rem', display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
                     <AlertTriangle size={18} style={{ color: '#ef4444', flexShrink: 0, marginTop: '1px' }} />
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                      <strong style={{ color: '#ef4444' }}>This will immediately:</strong>
+                      <strong style={{ color: '#ef4444' }}>This will:</strong>
                       <ul style={{ margin: '0.4rem 0 0', paddingLeft: '1.1rem' }}>
                         <li>Block <strong>{offboardEmployee.full_name}</strong> from logging in</li>
-                        <li>Reassign (or unassign) all their open leads</li>
-                        <li>Unassign all their pending tasks</li>
-                        <li>Remove them from round-robin lead routing</li>
+                        <li>Reassign only <strong>new, uncontacted leads from this month</strong></li>
+                        <li>Keep all historical worked leads (ringing, callback, etc.) in their records</li>
+                        <li>Unassign pending tasks</li>
                       </ul>
                       <p style={{ marginTop: '0.4rem', marginBottom: 0 }}>Historical data (closed leads, reports, completed tasks) is <strong>preserved</strong>.</p>
                     </div>
@@ -988,7 +988,7 @@ export default function EmployeesSection({ profile }: Props) {
 
                   {/* Reassign leads to */}
                   <div className="form-group">
-                    <label className="form-label">Reassign Open Leads To</label>
+                    <label className="form-label">Reassign New Leads (This Month) To</label>
                     <select
                       className="form-select"
                       value={offboardReassignTo}
@@ -1004,7 +1004,7 @@ export default function EmployeesSection({ profile }: Props) {
                         ))}
                     </select>
                     <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                      Only active employees shown. Closed/won/lost leads are not affected.
+                      Only fresh, uncontacted new leads from this month will be reassigned. All existing calls &amp; pipeline stay in records.
                     </p>
                   </div>
                 </>
