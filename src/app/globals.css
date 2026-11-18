@@ -1515,8 +1515,9 @@ html[data-theme="light"] .data-table th { background: rgba(244, 247, 250, 0.95);
 }
 
 /* ── Utilities ──────────────────────────────────────────── */
-/* Opacity only: a transform here would trap position:fixed modals inside the page. */
-.animate-fade-in { animation: fadeIn 0.3s var(--ease) both; }
+/* Opacity only, and no fill-mode: a lingering transform/opacity animation creates a stacking
+   context that traps the page's modals underneath portaled side panels. */
+.animate-fade-in { animation: fadeIn 0.3s var(--ease); }
 .hidden-desktop { display: none !important; }
 .divider { height: 1px; background: var(--border-subtle); }
 .text-muted { color: var(--text-muted); }
