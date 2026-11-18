@@ -23,6 +23,9 @@ echo "▶ 1/6  Pre-flight checks"
 docker ps --format '{{.Names}}' | grep -qx "$DB_CONTAINER" || { echo "✗ Database container $DB_CONTAINER is not running — aborting, nothing changed."; exit 1; }
 LEADS_BEFORE="$(docker exec "$DB_CONTAINER" psql -U rushi_admin -d rushi_portal -Atc 'SELECT count(*) FROM leads')"
 PROFILES_BEFORE="$(docker exec "$DB_CONTAINER" psql -U rushi_admin -d rushi_portal -Atc 'SELECT count(*) FROM profiles')"
+# Read-only fingerprint of every login password (no hashes are printed) — proves passwords are unchanged afterwards
+PW_SQL="SELECT md5(coalesce(string_agg(id::text || ':' || coalesce(password_hash, ''), ',' ORDER BY id), '')) FROM profiles"
+PW_BEFORE="$(docker exec "$DB_CONTAINER" psql -U rushi_admin -d rushi_portal -Atc "$PW_SQL")"
 echo "   leads: $LEADS_BEFORE   profiles: $PROFILES_BEFORE"
 
 echo "▶ 2/6  Read-only database backup (safety copy, does not modify anything)"
@@ -59,6 +62,8 @@ curl -fsS -o /dev/null "http://localhost:3005/" || { echo "✗ App did not come 
 LEADS_AFTER="$(docker exec "$DB_CONTAINER" psql -U rushi_admin -d rushi_portal -Atc 'SELECT count(*) FROM leads')"
 PROFILES_AFTER="$(docker exec "$DB_CONTAINER" psql -U rushi_admin -d rushi_portal -Atc 'SELECT count(*) FROM profiles')"
 echo "   leads: $LEADS_BEFORE → $LEADS_AFTER   profiles: $PROFILES_BEFORE → $PROFILES_AFTER"
+PW_AFTER="$(docker exec "$DB_CONTAINER" psql -U rushi_admin -d rushi_portal -Atc "$PW_SQL")"
+if [ "$PW_BEFORE" = "$PW_AFTER" ]; then echo "   passwords: all $PROFILES_AFTER unchanged ✓"; else echo "   ⚠ passwords fingerprint changed — check before telling staff"; fi
 
 echo ""
 echo "✅ Deployed $NEW_COMMIT. Database container and data were not touched."
