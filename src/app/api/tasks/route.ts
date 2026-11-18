@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { query, queryOne, execute } from '@/lib/db'
 import { getUserFromRequest } from '@/lib/auth'
 import { formatPhoneForWhatsApp } from '@/lib/utils'
+import { postToAiSensy } from '@/lib/aisensy'
 
 // POST /api/tasks — create task (admin only)
 export async function POST(req: NextRequest) {
@@ -83,8 +84,6 @@ export async function POST(req: NextRequest) {
     const DEFAULT_EMPLOYEE_PHONE = '9768726006'   // fallback test number
 
     if (AISENSY_KEY && AISENSY_KEY !== 'your-aisensy-api-key-here') {
-      const AISENSY_ENDPOINT = 'https://backend.aisensy.com/campaign/t1/api/v2'
-      
       // 1. Send to Assignee
       const empRaw = (assigneeProfile?.phone && assigneeProfile.phone.trim().length >= 10)
         ? assigneeProfile.phone
@@ -93,7 +92,7 @@ export async function POST(req: NextRequest) {
       const empE164 = empCleaned.startsWith('91') ? empCleaned : `91${empCleaned}`
 
       try {
-        await fetch(AISENSY_ENDPOINT, {
+        await postToAiSensy({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -125,7 +124,7 @@ export async function POST(req: NextRequest) {
         const adminE164 = adminCleaned.startsWith('91') ? adminCleaned : `91${adminCleaned}`
 
         try {
-          await fetch(AISENSY_ENDPOINT, {
+          await postToAiSensy({
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -176,7 +175,8 @@ export async function GET(req: NextRequest) {
         ) AS assigned_to_profile,
         json_build_object(
           'id', p_by.id,
-          'full_name', p_by.full_name
+          'full_name', p_by.full_name,
+          'avatar_url', p_by.avatar_url
         ) AS assigned_by_profile,
         COALESCE(
           (
@@ -268,7 +268,7 @@ export async function PUT(req: NextRequest) {
             ? new Date(task.deadline).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
             : 'soon'
 
-          const response = await fetch('https://backend.aisensy.com/campaign/t1/api/v2', {
+          const response = await postToAiSensy({
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

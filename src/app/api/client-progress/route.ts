@@ -15,8 +15,7 @@ async function getAuth(req: NextRequest) {
 const currentMonthRange = () => {
   const now = new Date()
   // Use IST
-  const istNow = new Date(now.getTime() + (330 * 60000) - (now.getTimezoneOffset() * 60000))
-  const monthStr = istNow.toISOString().slice(0, 7)
+  const monthStr = new Date(now.getTime() + 330 * 60000).toISOString().slice(0, 7)
   const dateFrom = `${monthStr}-01`
   const dateTo = new Date(new Date(dateFrom).setMonth(new Date(dateFrom).getMonth() + 1))
     .toISOString().slice(0, 10)

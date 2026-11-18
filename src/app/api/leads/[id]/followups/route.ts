@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { query, queryOne } from '@/lib/db'
 import { getUserFromRequest } from '@/lib/auth'
 import { checkAndSendImmediateVisitReminder } from '@/lib/aisensy'
+import { ensureVisitDoneColumn, visitDoneAtAssignment } from '@/lib/leads'
 
 export async function GET(
   req: NextRequest,
@@ -112,8 +113,10 @@ export async function POST(
     }
 
     // 3. Update lead table: update status, followup_count, timestamps
+    await ensureVisitDoneColumn()
     const updatedLead = await queryOne(
       `UPDATE leads SET
+        ${visitDoneAtAssignment('$1::text')},
         status = $1,
         followup_count = $2,
         last_followup_at = $3,

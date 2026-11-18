@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { normalizePhoneForWhatsApp, formatSalesRepPhone, formatStatusForTemplate, getAiSensyApiKey } from '@/lib/aisensy'
+import { normalizePhoneForWhatsApp, formatSalesRepPhone, formatStatusForTemplate, getAiSensyApiKey, postToAiSensy } from '@/lib/aisensy'
 
 /**
  * GET /api/admin/test-aisensy?phone=9768726006&name=Paurnima&status=Ringing
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
       },
     }
 
-    const res = await fetch('https://backend.aisensy.com/campaign/t1/api/v2', {
+    const res = await postToAiSensy({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)

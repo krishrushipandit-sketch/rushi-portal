@@ -3,8 +3,14 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
-import { getInitials, formatDate } from '@/lib/utils'
-import { Plus, Trash2, X, Loader2, Users, Phone, Mail, Edit2, ToggleLeft, ToggleRight, Upload, Tag, Building2, Globe, Sparkles, Check, KeyRound, UserX, AlertTriangle } from 'lucide-react'
+import { formatDate } from '@/lib/utils'
+import { Plus, Trash2, X, Loader2, Users, Edit2, Upload, Tag, Building2, Globe, Sparkles, KeyRound, UserX, AlertTriangle, Search, ChevronRight } from 'lucide-react'
+import PageHeader from '@/components/ui/PageHeader'
+import GlowButton from '@/components/ui/GlowButton'
+import Reveal from '@/components/ui/Reveal'
+import Avatar from '@/components/ui/Avatar'
+import Pill from '@/components/ui/Pill'
+import SidePanel, { KeyValues, PanelSection } from '@/components/ui/SidePanel'
 
 interface Props { profile: Profile }
 
@@ -41,6 +47,10 @@ export default function EmployeesSection({ profile }: Props) {
   const [showModal, setShowModal] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null)
+  const [openEmpId, setOpenEmpId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [filterDept, setFilterDept] = useState('all')
+  const [filterActive, setFilterActive] = useState<'all' | 'active' | 'inactive'>('all')
 
   // Industry Skills Manager state
   const [skillsEmployee, setSkillsEmployee] = useState<Employee | null>(null)
@@ -245,8 +255,8 @@ export default function EmployeesSection({ profile }: Props) {
         headers: { Authorization: `Bearer ${token}` },
         body: formData
       })
-      if (!res.ok) throw new Error('Upload failed')
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Upload failed')
       setForm(f => ({ ...f, avatar_url: data.url }))
     } catch (err: any) {
       alert('Avatar upload failed: ' + err.message)
@@ -308,196 +318,156 @@ export default function EmployeesSection({ profile }: Props) {
   }
 
 
-  if (profile.role !== 'admin') return null
-
-  if (loading) {
-    return (
-      <div>
-        <div className="skeleton" style={{ height: '40px', marginBottom: '1rem' }} />
-        {[1,2,3].map(i => <div key={i} className="skeleton" style={{ height: '80px', marginBottom: '8px' }} />)}
-      </div>
-    )
+  const openEdit = (emp: Employee) => {
+    setEditEmployee(emp)
+    setForm({
+      full_name: emp.full_name, email: emp.email, password: '',
+      role: emp.role, department: emp.department || '',
+      designation: emp.designation || '', phone: emp.phone || '',
+      whatsapp_number: emp.whatsapp_number || '', avatar_url: emp.avatar_url || ''
+    })
+    setShowModal(true)
   }
 
-  return (
-    <div className="animate-fade-in">
-      <div className="page-header">
-        <div>
-          <h1 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Employee Management</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            {employees.length} team member{employees.length !== 1 ? 's' : ''} — {employees.filter(e => e.is_active).length} active
-          </p>
-        </div>
-        <button className="btn btn-primary" onClick={openCreate}>
-          <Plus size={16} />
-          Add Employee
-        </button>
-      </div>
+  if (profile.role !== 'admin') return null
 
-      {/* Employee Grid */}
-      {employees.length === 0 ? (
-        <div className="glass-card">
-          <div className="empty-state">
-            <div className="empty-state-icon"><Users size={24} /></div>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>No employees added yet</p>
-            <button className="btn btn-primary btn-sm" onClick={openCreate}><Plus size={14} /> Add First Employee</button>
+  const q = search.toLowerCase()
+  const visible = employees.filter(e =>
+    (!q || e.full_name.toLowerCase().includes(q) || e.email.toLowerCase().includes(q) || (e.designation || '').toLowerCase().includes(q)) &&
+    (filterDept === 'all' || (e.department || '').toLowerCase() === filterDept.toLowerCase()) &&
+    (filterActive === 'all' || (filterActive === 'active' ? e.is_active : !e.is_active))
+  )
+  const departments = Array.from(new Set(employees.map(e => e.department).filter(Boolean))) as string[]
+  const openEmp = employees.find(e => e.id === openEmpId) || null
+  const skillsOf = (id: string) => allSkills.filter(s => (s.employee_id || s.user_id) === id).map(s => s.industry)
+  const cols = 'minmax(220px, 2fr) 96px minmax(110px, 1fr) minmax(180px, 1.6fr) 96px 110px 14px'
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      <PageHeader
+        eyebrow={`${employees.length} people · ${employees.filter(e => e.is_active).length} active`}
+        title="Employees"
+        description="Click a team member to manage their profile, access and assignments."
+        actions={<GlowButton onClick={openCreate}><Plus size={15} /> Add employee</GlowButton>}
+      />
+
+      <Reveal>
+        <section className="card list">
+          <div className="list-toolbar">
+            <div className="input-icon">
+              <Search size={14} />
+              <input className="form-input" placeholder="Search name, email or role…" value={search} onChange={e => setSearch(e.target.value)} />
+            </div>
+            <select className="form-select" style={{ width: 'auto' }} value={filterDept} onChange={e => setFilterDept(e.target.value)} aria-label="Department">
+              <option value="all">All departments</option>
+              {departments.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+            <div className="segmented">
+              {(['all', 'active', 'inactive'] as const).map(f => (
+                <button key={f} className={filterActive === f ? 'active' : ''} onClick={() => setFilterActive(f)} style={{ textTransform: 'capitalize' }}>{f}</button>
+              ))}
+            </div>
           </div>
-        </div>
-      ) : (
-        <div className="glass-card" style={{ overflow: 'hidden' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th className="hidden-mobile">Role</th>
-                  <th className="hidden-mobile">Department</th>
-                  <th>Contact</th>
-                  <th className="hidden-mobile">WhatsApp</th>
-                  <th>Status</th>
-                  <th className="hidden-mobile">Joined</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {employees.map(emp => (
-                  <tr key={emp.id} style={{ opacity: emp.is_active ? 1 : 0.6 }}>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        {emp.avatar_url ? (
-                          <img src={emp.avatar_url} alt="Avatar" className="avatar avatar-sm" style={{ objectFit: 'cover' }} />
-                        ) : (
-                          <div className="avatar avatar-sm">{getInitials(emp.full_name)}</div>
-                        )}
-                        <div>
-                          <p style={{ fontWeight: 600, fontSize: '0.875rem' }}>{emp.full_name}</p>
-                          <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{emp.designation || '—'}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="hidden-mobile">
-                      <span className="badge" style={{
-                        background: emp.role === 'admin' ? 'rgba(99, 102, 241, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-                        color: emp.role === 'admin' ? '#6366f1' : '#10b981',
-                      }}>
-                        {emp.role}
-                      </span>
-                    </td>
-                    <td className="hidden-mobile">
-                      <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                        {emp.department || '—'}
-                      </span>
-                    </td>
-                    <td>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                          <Mail size={11} /> {emp.email}
-                        </div>
-                        {emp.phone && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                            <Phone size={11} /> {emp.phone}
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="hidden-mobile">
-                      <span style={{ fontSize: '0.8rem', color: emp.whatsapp_number ? 'var(--text-secondary)' : 'var(--text-muted)' }}>
-                        {emp.whatsapp_number || 'Not set'}
-                      </span>
-                    </td>
-                    <td>
-                      <button onClick={() => toggleActive(emp)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                        {emp.is_active
-                          ? <ToggleRight size={22} style={{ color: '#10b981' }} />
-                          : <ToggleLeft size={22} style={{ color: 'var(--text-muted)' }} />
-                        }
-                      </button>
-                    </td>
-                    <td className="hidden-mobile">
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                        {formatDate(emp.created_at, 'dd MMM yyyy')}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => {
-                            setEditEmployee(emp)
-                            setForm({
-                              full_name: emp.full_name, email: emp.email, password: '',
-                              role: emp.role, department: emp.department || '',
-                              designation: emp.designation || '', phone: emp.phone || '',
-                              whatsapp_number: emp.whatsapp_number || '', avatar_url: emp.avatar_url || ''
-                            })
-                            setShowModal(true)
-                          }}
-                          data-tooltip="Edit employee"
-                        >
-                          <Edit2 size={13} />
-                        </button>
-                        {/* Change Password */}
-                        {emp.id !== profile.id && (
-                          <button
-                            className="btn btn-sm"
-                            style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)' }}
-                            onClick={() => openChangePassword(emp)}
-                            data-tooltip="Change password"
-                            title="Change Password"
-                          >
-                            <KeyRound size={13} />
-                          </button>
-                        )}
-                        {/* Offboard */}
-                        {emp.id !== profile.id && emp.is_active && (
-                          <button
-                            className="btn btn-sm"
-                            style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.25)' }}
-                            onClick={() => openOffboard(emp)}
-                            data-tooltip="Offboard employee"
-                            title="Offboard Employee"
-                          >
-                            <UserX size={13} />
-                          </button>
-                        )}
-                        {/* Internal Brands & External Clients Assignment — for video editors and team members */}
-                        <button
-                          className="btn btn-sm"
-                          style={{ background: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.25)' }}
-                          onClick={() => openBrandAssignmentManager(emp)}
-                          data-tooltip="Assign Brands & Clients"
-                          title="Assign Internal Brands & External Clients"
-                        >
-                          <Building2 size={13} />
-                        </button>
-                        {/* Industry Skills Manager — for Sales employees */}
-                        {emp.department?.toLowerCase() === 'sales' && (
-                          <button
-                            className="btn btn-sm"
-                            style={{ background: 'rgba(99,102,241,0.12)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.2)' }}
-                            onClick={() => openSkillsManager(emp)}
-                            data-tooltip="Manage Lead Industries (Round-Robin)"
-                          >
-                            <Tag size={13} />
-                          </button>
-                        )}
-                        {emp.id !== profile.id && (
-                          <button
-                            className="btn btn-danger btn-sm"
-                            onClick={() => handleDelete(emp.id, emp.full_name)}
-                            data-tooltip="Delete employee"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+
+          {loading ? (
+            <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[1, 2, 3, 4].map(i => <div key={i} className="skeleton" style={{ height: 52 }} />)}
+            </div>
+          ) : visible.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-state-icon"><Users size={20} /></div>
+              <p style={{ fontWeight: 550, color: 'var(--text-secondary)' }}>{employees.length === 0 ? 'No employees added yet' : 'No one matches these filters'}</p>
+              {employees.length === 0 && <button className="btn btn-primary btn-sm" onClick={openCreate}><Plus size={14} /> Add first employee</button>}
+            </div>
+          ) : (
+            <div role="list">
+              <div className="list-head" style={{ '--cols': cols } as React.CSSProperties}>
+                <span>Employee</span><span>Role</span><span>Department</span><span>Email</span><span>Status</span><span>Joined</span><span />
+              </div>
+              {visible.map(emp => (
+                <div
+                  key={emp.id}
+                  role="listitem"
+                  tabIndex={0}
+                  className={`list-row ${openEmpId === emp.id ? 'selected' : ''}`}
+                  style={{ '--cols': cols, opacity: emp.is_active ? 1 : 0.6 } as React.CSSProperties}
+                  onClick={() => setOpenEmpId(emp.id)}
+                  onKeyDown={e => { if (e.key === 'Enter') setOpenEmpId(emp.id) }}
+                >
+                  <div className="row-main">
+                    <Avatar name={emp.full_name} src={emp.avatar_url} size="sm" />
+                    <div style={{ minWidth: 0 }}>
+                      <div className="row-title">{emp.full_name}{emp.id === profile.id ? ' (you)' : ''}</div>
+                      <div className="row-sub">{emp.designation || '—'}</div>
+                    </div>
+                  </div>
+                  <span className="col-hide-sm"><Pill color={emp.role === 'admin' ? '#8b5cf6' : '#14b8a0'}>{emp.role}</Pill></span>
+                  <span className="row-cell col-hide-sm">{emp.department || '—'}</span>
+                  <span className="row-cell col-hide-sm">{emp.email}</span>
+                  <span><Pill color={emp.is_active ? '#22c55e' : '#8592a3'} dot>{emp.is_active ? 'Active' : 'Inactive'}</Pill></span>
+                  <span className="row-cell col-hide-sm tabular">{formatDate(emp.created_at, 'dd MMM yyyy')}</span>
+                  <ChevronRight size={16} className="row-chevron col-hide-sm" />
+                </div>
+              ))}
+              <div className="list-foot"><span>{visible.length} of {employees.length} people</span></div>
+            </div>
+          )}
+        </section>
+      </Reveal>
+
+      {openEmp && (
+        <SidePanel
+          open
+          onClose={() => setOpenEmpId(null)}
+          leading={<Avatar name={openEmp.full_name} src={openEmp.avatar_url} size="md" />}
+          title={<>{openEmp.full_name} <Pill color={openEmp.role === 'admin' ? '#8b5cf6' : '#14b8a0'}>{openEmp.role}</Pill></>}
+          subtitle={<>
+            <span>{[openEmp.designation, openEmp.department].filter(Boolean).join(' · ') || 'Team member'}</span>
+            <Pill color={openEmp.is_active ? '#22c55e' : '#8592a3'} dot>{openEmp.is_active ? 'Active' : 'Inactive'}</Pill>
+          </>}
+        >
+          <div className="quick-actions">
+            <button className="btn btn-secondary" onClick={() => openEdit(openEmp)}><Edit2 size={14} /> Edit</button>
+            {openEmp.id !== profile.id && <button className="btn btn-secondary" onClick={() => openChangePassword(openEmp)}><KeyRound size={14} /> Password</button>}
+            <button className="btn btn-secondary" onClick={() => openBrandAssignmentManager(openEmp)}><Building2 size={14} /> Brands</button>
+            {openEmp.department?.toLowerCase() === 'sales' && <button className="btn btn-secondary" onClick={() => openSkillsManager(openEmp)}><Tag size={14} /> Lead industries</button>}
           </div>
-        </div>
+
+          <KeyValues items={[
+            { label: 'Email', value: openEmp.email },
+            { label: 'Phone', value: openEmp.phone || '—' },
+            { label: 'WhatsApp', value: openEmp.whatsapp_number || 'Not set' },
+            { label: 'Department', value: openEmp.department || '—' },
+            { label: 'Joined', value: formatDate(openEmp.created_at, 'dd MMM yyyy') },
+            { label: 'Attendance device', value: openEmp.registered_device_id ? 'Registered' : 'Not registered' },
+          ]} />
+
+          {openEmp.department?.toLowerCase() === 'sales' && (
+            <PanelSection title="Lead industries (round-robin)" aside={<button className="btn btn-ghost btn-sm" onClick={() => openSkillsManager(openEmp)}>Manage</button>}>
+              {skillsOf(openEmp.id).length === 0
+                ? <div className="empty-inline">No industries assigned — this rep won’t receive auto-routed leads.</div>
+                : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{skillsOf(openEmp.id).map(s => <Pill key={s} color="#2f9bff">{s}</Pill>)}</div>}
+            </PanelSection>
+          )}
+
+          {openEmp.id !== profile.id && (
+            <PanelSection title="Access">
+              <div className="setting-row">
+                <div>
+                  <strong>{openEmp.is_active ? 'Account active' : 'Account disabled'}</strong>
+                  <p>{openEmp.is_active ? 'Can sign in and receive tasks and leads.' : 'Cannot sign in.'}</p>
+                </div>
+                <button className={`switch ${openEmp.is_active ? 'on' : ''}`} role="switch" aria-checked={openEmp.is_active} aria-label="Toggle account active" onClick={() => toggleActive(openEmp)}>
+                  <span />
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {openEmp.is_active && <button className="btn btn-danger" onClick={() => openOffboard(openEmp)}><UserX size={14} /> Offboard</button>}
+                <button className="btn btn-ghost" style={{ color: 'var(--status-danger)' }} onClick={() => { handleDelete(openEmp.id, openEmp.full_name); setOpenEmpId(null) }}><Trash2 size={14} /> Delete permanently</button>
+              </div>
+            </PanelSection>
+          )}
+        </SidePanel>
       )}
 
       {/* Employee Modal */}
@@ -522,7 +492,7 @@ export default function EmployeesSection({ profile }: Props) {
                   )}
                   <label style={{ position: 'absolute', bottom: '-4px', right: '-4px', background: 'var(--brand-primary)', color: '#fff', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }}>
                     <Upload size={14} />
-                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} disabled={submitting} />
+                    <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" style={{ display: 'none' }} onChange={handleAvatarUpload} disabled={submitting} />
                   </label>
                 </div>
               </div>
@@ -772,7 +742,7 @@ export default function EmployeesSection({ profile }: Props) {
                               }}
                               style={{ width: '15px', height: '15px', accentColor: '#6366f1' }}
                             />
-                            <span style={{ fontSize: '0.82rem', fontWeight: isAssigned ? 700 : 500, color: isAssigned ? '#f8fafc' : 'var(--text-secondary)' }}>
+                            <span style={{ fontSize: '0.82rem', fontWeight: isAssigned ? 700 : 500, color: isAssigned ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
                               {brand.name}
                             </span>
                           </label>
@@ -838,7 +808,7 @@ export default function EmployeesSection({ profile }: Props) {
                               }}
                               style={{ width: '15px', height: '15px', accentColor: '#10b981' }}
                             />
-                            <span style={{ fontSize: '0.82rem', fontWeight: isAssigned ? 700 : 500, color: isAssigned ? '#f8fafc' : 'var(--text-secondary)' }}>
+                            <span style={{ fontSize: '0.82rem', fontWeight: isAssigned ? 700 : 500, color: isAssigned ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
                               {client.name}
                             </span>
                           </label>

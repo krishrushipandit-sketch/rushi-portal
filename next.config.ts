@@ -2,6 +2,9 @@ import type { NextConfig } from "next"
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  devIndicators: { position: 'bottom-right' },
+  // The on-disk dev cache kept serving stale CSS after edits/builds on this machine
+  experimental: { turbopackFileSystemCacheForDev: false },
   output: 'standalone',
   images: {
     remotePatterns: [

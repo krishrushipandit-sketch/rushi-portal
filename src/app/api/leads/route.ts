@@ -1,23 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, queryOne } from '@/lib/db'
 import { getUserFromRequest } from '@/lib/auth'
+import { ensureWhatsAppLog } from '@/lib/aisensy'
 
 export async function GET(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    await ensureWhatsAppLog()
     let sql = `
-      SELECT 
+      SELECT
         l.*,
         COALESCE(l.client_name, l.name, '') AS client_name,
         CASE WHEN p.id IS NOT NULL THEN json_build_object(
           'id', p.id,
           'full_name', p.full_name,
-          'email', p.email
-        ) ELSE NULL END AS assigned_to_profile
+          'email', p.email,
+          'avatar_url', p.avatar_url
+        ) ELSE NULL END AS assigned_to_profile,
+        wa.wa_last
       FROM leads l
       LEFT JOIN profiles p ON p.id = l.assigned_to
+      LEFT JOIN LATERAL (
+        SELECT json_build_object('kind', w.kind, 'detail', w.detail, 'status', w.status, 'error', w.error, 'at', w.created_at) AS wa_last
+        FROM lead_whatsapp_log w
+        WHERE w.lead_id = l.id
+        ORDER BY w.created_at DESC
+        LIMIT 1
+      ) wa ON true
     `
     const params: unknown[] = []
 

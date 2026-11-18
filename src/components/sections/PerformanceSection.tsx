@@ -3,14 +3,14 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
-import { getInitials } from '@/lib/utils'
-import {
-  BarChart3, CheckCircle2, AlertTriangle, Clock,
-  ChevronDown, ChevronUp, CheckCircle, X, Calendar
-} from 'lucide-react'
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
-} from 'recharts'
+import { BarChart3, CheckCircle2, AlertTriangle, Clock, Calendar, ChevronRight, RefreshCw, MessageSquareText } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import PageHeader from '@/components/ui/PageHeader'
+import Reveal from '@/components/ui/Reveal'
+import KpiCard from '@/components/ui/KpiCard'
+import Avatar from '@/components/ui/Avatar'
+import Pill from '@/components/ui/Pill'
+import SidePanel, { KeyValues, PanelSection } from '@/components/ui/SidePanel'
 
 interface ReportEntry { description: string; notes?: string; count: number }
 interface ReportDetail { date: string; entries: ReportEntry[]; note: string }
@@ -20,35 +20,31 @@ interface EmployeePerf {
   tasks: { total: number; completed: number; pending: number; in_progress: number; overdue: number }
   completionRate: number
   onTimeRate: number
-  leads: {
-    total: number; closed_won: number; closed_lost: number
-    conversion_rate: number; by_category: Record<string, number>
-  }
+  leads: { total: number; closed_won: number; closed_lost: number; conversion_rate: number; by_category: Record<string, number> }
   reports: { total_this_month: number; details: ReportDetail[] }
 }
 
-interface GlobalStats {
-  total_tasks: number; completed: number; in_progress: number; overdue: number
-  total_leads: number; leads_closed_won: number
+interface GlobalStats { total_tasks: number; completed: number; in_progress: number; overdue: number; total_leads: number; leads_closed_won: number }
+
+const tooltip = {
+  contentStyle: { background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 10, fontSize: 12, color: 'var(--text-primary)' },
+  cursor: { fill: 'color-mix(in srgb, var(--brand-primary) 8%, transparent)' },
 }
 
 export default function PerformanceSection({ profile }: { profile: Profile }) {
   const router = useRouter()
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
+  const [selectedMonth, setSelectedMonth] = useState(new Date(Date.now() + 19800000).toISOString().slice(0, 7))
   const [performance, setPerformance] = useState<EmployeePerf[]>([])
   const [globalStats, setGlobalStats] = useState<GlobalStats | null>(null)
   const [loading, setLoading] = useState(true)
-  const [expandedEmpId, setExpandedEmpId] = useState<string | null>(null)
+  const [openId, setOpenId] = useState<string | null>(null)
   const [activeDate, setActiveDate] = useState<string | null>(null)
-
-  const canAccess = profile.role === 'admin'
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     const token = localStorage.getItem('rushi_token')
     if (!token) { router.push('/'); return }
-    const res = await fetch(`/api/performance?month=${selectedMonth}`, { headers: { Authorization: `Bearer ${token}` } })
-    const data = await res.json()
+    const data = await fetch(`/api/performance?month=${selectedMonth}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json())
     if (data.performance) {
       setPerformance(data.performance)
       setGlobalStats(data.globalStats)
@@ -58,257 +54,168 @@ export default function PerformanceSection({ profile }: { profile: Profile }) {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  if (!canAccess) return (
-    <div className="empty-state">
-      <p style={{ color: 'var(--text-muted)' }}>Access restricted to administrators and managers</p>
-    </div>
-  )
-
-  if (loading) {
-    return (
-      <div>
-        <div className="skeleton" style={{ height: '36px', width: '240px', marginBottom: '1.5rem' }} />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
-          {[1, 2, 3, 4].map(i => <div key={i} className="skeleton" style={{ height: '88px' }} />)}
-        </div>
-        <div className="skeleton" style={{ height: '300px' }} />
-      </div>
-    )
+  if (profile.role !== 'admin') {
+    return <div className="empty-state"><p>Performance analytics are available to administrators.</p></div>
   }
 
-  const currentMonthLabel = new Date(selectedMonth + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
-
-  const completionChartData = performance.map(p => ({
-    name: p.employee.full_name.split(' ')[0],
-    'Completion %': p.completionRate,
-    'On-Time %': p.onTimeRate,
-  }))
-
-  const reportsChartData = performance.map(p => ({
-    name: p.employee.full_name.split(' ')[0],
-    'Reports': p.reports.total_this_month,
-  }))
+  const monthLabel = new Date(`${selectedMonth}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+  const completionData = performance.map(p => ({ name: p.employee.full_name.split(' ')[0], 'Completion %': p.completionRate, 'On-time %': p.onTimeRate }))
+  const reportsData = performance.map(p => ({ name: p.employee.full_name.split(' ')[0], Reports: p.reports.total_this_month }))
+  const open = performance.find(p => p.employee.id === openId) || null
+  const activeReport = open?.reports.details.find(d => d.date === activeDate) || null
+  const cols = 'minmax(200px, 1.8fr) 70px 70px 70px 80px minmax(140px, 1.2fr) 80px 14px'
 
   return (
-    <div className="animate-fade-in">
-      <div className="page-header" style={{ alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>Tasks & Performance Reports</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            {currentMonthLabel} — Task KPIs, completion rates & daily report analytics for all employees
-          </p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginLeft: 'auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'var(--bg-card)', padding: '4px 8px', borderRadius: '8px', border: '1px solid var(--border-default)' }}>
-            <Calendar size={15} style={{ color: 'var(--brand-primary)' }} />
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={e => setSelectedMonth(e.target.value)}
-              style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', outline: 'none' }}
-            />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      <PageHeader
+        eyebrow={monthLabel}
+        title="Performance"
+        description="Task delivery and reporting discipline across the team. Click a person for their full month."
+        actions={<>
+          <div style={{ position: 'relative' }}>
+            <Calendar size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+            <input type="month" className="form-input" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} style={{ width: 'auto', paddingLeft: 32 }} aria-label="Month" />
           </div>
-          <button className="btn btn-secondary btn-sm" onClick={fetchData}>Refresh</button>
-        </div>
-      </div>
+          <button className="icon-btn bordered" onClick={fetchData} aria-label="Refresh"><RefreshCw size={15} /></button>
+        </>}
+      />
 
-      {globalStats && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '1rem', marginBottom: '2rem' }}>
-          {[
-            { label: 'Total Tasks', value: globalStats.total_tasks, icon: BarChart3, color: '#6366f1' },
-            { label: 'Completed', value: globalStats.completed, icon: CheckCircle2, color: '#10b981' },
-            { label: 'In Progress', value: globalStats.in_progress, icon: Clock, color: '#3b82f6' },
-            { label: 'Overdue', value: globalStats.overdue, icon: AlertTriangle, color: '#ef4444' },
-          ].map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className="stat-card">
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                <div>
-                  <div className="metric-value" style={{ color }}>{value}</div>
-                  <div className="metric-label">{label}</div>
-                </div>
-                <div style={{ width: '40px', height: '40px', background: `${color}18`, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color, border: `1px solid ${color}22` }}>
-                  <Icon size={18} />
-                </div>
+      {loading ? (
+        <div className="grid-4">{[1, 2, 3, 4].map(i => <div key={i} className="skeleton" style={{ height: 116 }} />)}</div>
+      ) : (
+        <>
+          {globalStats && (
+            <Reveal className="grid-4">
+              <KpiCard label="Total tasks" value={globalStats.total_tasks} icon={BarChart3} />
+              <KpiCard label="Completed" value={globalStats.completed} icon={CheckCircle2} tone="brand" foot={`${globalStats.total_tasks ? Math.round((globalStats.completed / globalStats.total_tasks) * 100) : 0}% of all tasks`} />
+              <KpiCard label="Active" value={globalStats.in_progress} icon={Clock} tone="info" foot="Pending or in progress" />
+              <KpiCard label="Overdue" value={globalStats.overdue} icon={AlertTriangle} tone={globalStats.overdue ? 'danger' : 'default'} foot={globalStats.overdue ? 'Needs follow-up' : 'On schedule'} />
+            </Reveal>
+          )}
+
+          <Reveal delay={0.05} className="grid-2">
+            <section className="card">
+              <div className="card-header"><div className="card-title">Task completion by person</div></div>
+              <div style={{ padding: '1rem 1rem 0.5rem' }}>
+                {completionData.length ? (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={completionData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                      <CartesianGrid vertical={false} stroke="var(--border-subtle)" />
+                      <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+                      <YAxis domain={[0, 100]} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} unit="%" />
+                      <Tooltip {...tooltip} formatter={v => [`${v}%`]} />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Bar dataKey="Completion %" fill="var(--brand-primary)" radius={[5, 5, 0, 0]} maxBarSize={22} />
+                      <Bar dataKey="On-time %" fill="var(--brand-secondary)" radius={[5, 5, 0, 0]} maxBarSize={22} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : <div className="empty-state"><p>No task data yet</p></div>}
               </div>
-            </div>
-          ))}
-        </div>
+            </section>
+            <section className="card">
+              <div className="card-header"><div className="card-title">Daily reports submitted</div></div>
+              <div style={{ padding: '1rem 1rem 0.5rem' }}>
+                {reportsData.some(d => d.Reports > 0) ? (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={reportsData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                      <CartesianGrid vertical={false} stroke="var(--border-subtle)" />
+                      <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+                      <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+                      <Tooltip {...tooltip} />
+                      <Bar dataKey="Reports" fill="var(--status-warning)" radius={[5, 5, 0, 0]} maxBarSize={28} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : <div className="empty-state"><p>No reports this month</p></div>}
+              </div>
+            </section>
+          </Reveal>
+
+          <Reveal delay={0.1}>
+            <section className="card list">
+              <div className="card-header"><div className="card-title">Individual performance</div><span className="card-subtitle">{performance.length} people</span></div>
+              {performance.length === 0 ? (
+                <div className="empty-state"><p>No employee data available</p></div>
+              ) : (
+                <div role="list">
+                  <div className="list-head" style={{ '--cols': cols } as React.CSSProperties}>
+                    <span>Employee</span><span>Tasks</span><span>Done</span><span>Active</span><span>Overdue</span><span>Completion</span><span>Reports</span><span />
+                  </div>
+                  {performance.map(p => (
+                    <div key={p.employee.id} role="listitem" tabIndex={0} className={`list-row ${openId === p.employee.id ? 'selected' : ''}`} style={{ '--cols': cols } as React.CSSProperties}
+                      onClick={() => { setOpenId(p.employee.id); setActiveDate(null) }} onKeyDown={e => { if (e.key === 'Enter') { setOpenId(p.employee.id); setActiveDate(null) } }}>
+                      <div className="row-main">
+                        <Avatar name={p.employee.full_name} src={p.employee.avatar_url} size="sm" />
+                        <div style={{ minWidth: 0 }}>
+                          <div className="row-title">{p.employee.full_name}</div>
+                          <div className="row-sub">{[p.employee.designation, p.employee.department].filter(Boolean).join(' · ') || 'Employee'}</div>
+                        </div>
+                      </div>
+                      <span className="row-cell col-hide-sm tabular">{p.tasks.total}</span>
+                      <span className="row-cell col-hide-sm tabular" style={{ color: 'var(--status-success)' }}>{p.tasks.completed}</span>
+                      <span className="row-cell col-hide-sm tabular" style={{ color: 'var(--status-info)' }}>{p.tasks.in_progress + p.tasks.pending}</span>
+                      <span className="row-cell col-hide-sm tabular" style={{ color: p.tasks.overdue ? 'var(--status-danger)' : undefined }}>{p.tasks.overdue}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div className="progress-bar" style={{ height: 5, flex: 1 }}><div className="progress-fill" style={{ width: `${p.completionRate}%`, background: 'var(--brand-gradient)' }} /></div>
+                        <span className="tabular" style={{ fontSize: '0.75rem', fontWeight: 600, width: 36, textAlign: 'right' }}>{p.completionRate}%</span>
+                      </div>
+                      <span className="col-hide-sm"><Pill color={p.reports.total_this_month ? '#f5a524' : '#8592a3'}>{p.reports.total_this_month}</Pill></span>
+                      <ChevronRight size={16} className="row-chevron col-hide-sm" />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </Reveal>
+        </>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '2rem' }}>
-        <div className="glass-card" style={{ padding: '1.5rem' }}>
-          <h3 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '1.25rem' }}>Task Completion by Employee</h3>
-          {completionChartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={completionChartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-                <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} unit="%" />
-                <Tooltip formatter={(v) => [`${v}%`]} contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)', borderRadius: '8px', fontSize: '0.8rem' }} />
-                <Legend wrapperStyle={{ fontSize: '0.75rem' }} />
-                <Bar dataKey="Completion %" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="On-Time %" fill="#10b981" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="empty-state" style={{ height: '160px' }}><p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No task data yet</p></div>
-          )}
-        </div>
-        <div className="glass-card" style={{ padding: '1.5rem' }}>
-          <h3 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '1.25rem' }}>Daily Reports Submitted This Month</h3>
-          {reportsChartData.some(d => d.Reports > 0) ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={reportsChartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-                <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-                <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} allowDecimals={false} />
-                <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)', borderRadius: '8px', fontSize: '0.8rem' }} />
-                <Bar dataKey="Reports" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="empty-state" style={{ height: '160px' }}><p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No reports this month</p></div>
-          )}
-        </div>
-      </div>
+      {open && (
+        <SidePanel
+          open
+          onClose={() => setOpenId(null)}
+          width={620}
+          leading={<Avatar name={open.employee.full_name} src={open.employee.avatar_url} size="md" />}
+          title={open.employee.full_name}
+          subtitle={<>{[open.employee.designation, open.employee.department].filter(Boolean).join(' · ') || 'Employee'} · {monthLabel}</>}
+        >
+          <KeyValues items={[
+            { label: 'Tasks', value: `${open.tasks.total} total · ${open.tasks.completed} done` },
+            { label: 'Overdue', value: open.tasks.overdue },
+            { label: 'Completion rate', value: `${open.completionRate}%` },
+            { label: 'On-time rate', value: `${open.onTimeRate}%` },
+            { label: 'Leads handled', value: open.leads.total },
+            { label: 'Lead conversion', value: `${open.leads.conversion_rate}% (${open.leads.closed_won} won)` },
+          ]} />
 
-      <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '1rem' }}>Individual Performance</h2>
-
-      {performance.length === 0 ? (
-        <div className="glass-card">
-          <div className="empty-state">
-            <div className="empty-state-icon"><BarChart3 size={24} /></div>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>No employee data available</p>
-          </div>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {performance.map(perf => {
-            const isExpanded = expandedEmpId === perf.employee.id
-            const activeDateKey = `${perf.employee.id}::${activeDate}`
-            const activeReport = isExpanded && activeDate
-              ? perf.reports.details.find(d => `${perf.employee.id}::${d.date}` === activeDateKey)
-              : null
-
-            return (
-              <div key={perf.employee.id} className="glass-card" style={{ overflow: 'hidden', transition: 'all 0.2s' }}>
-                <div
-                  onClick={() => {
-                    if (isExpanded) { setExpandedEmpId(null); setActiveDate(null) }
-                    else { setExpandedEmpId(perf.employee.id); setActiveDate(null) }
-                  }}
-                  style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem 1.25rem', cursor: 'pointer', flexWrap: 'wrap' }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', minWidth: '180px', flex: 1 }}>
-                    {perf.employee.avatar_url ? (
-                      <img src={perf.employee.avatar_url} alt={perf.employee.full_name} style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '2px solid var(--border-default)' }} />
-                    ) : (
-                      <div className="avatar avatar-lg" style={{ flexShrink: 0 }}>{getInitials(perf.employee.full_name)}</div>
-                    )}
-                    <div>
-                      <p style={{ fontWeight: 700, fontSize: '0.95rem' }}>{perf.employee.full_name}</p>
-                      <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        {perf.employee.designation || 'Employee'}{perf.employee.department ? ` — ${perf.employee.department}` : ''}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '1.5rem' }}>
-                    {[
-                      { label: 'Tasks', value: perf.tasks.total, color: 'var(--text-primary)' },
-                      { label: 'Done', value: perf.tasks.completed, color: '#10b981' },
-                      { label: 'Active', value: perf.tasks.in_progress + perf.tasks.pending, color: '#3b82f6' },
-                      { label: 'Overdue', value: perf.tasks.overdue, color: '#ef4444' },
-                    ].map(({ label, value, color }) => (
-                      <div key={label} style={{ textAlign: 'center', minWidth: '48px' }}>
-                        <div style={{ fontSize: '1.2rem', fontWeight: 800, color }}>{value}</div>
-                        <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: '1px' }}>{label}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div style={{ textAlign: 'center', minWidth: '72px' }}>
-                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#6366f1' }}>{perf.completionRate}%</div>
-                    <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>Completion</div>
-                    <div style={{ marginTop: '4px', height: '3px', borderRadius: '99px', background: 'var(--border-subtle)' }}>
-                      <div style={{ height: '3px', borderRadius: '99px', width: `${perf.completionRate}%`, background: 'linear-gradient(90deg,#6366f1,#8b5cf6)' }} />
-                    </div>
-                  </div>
-
-                  <div style={{ padding: '0.5rem 0.875rem', borderRadius: 'var(--radius-md)', textAlign: 'center', background: perf.reports.total_this_month > 0 ? 'rgba(245,158,11,0.08)' : 'var(--bg-elevated)', border: `1px solid ${perf.reports.total_this_month > 0 ? 'rgba(245,158,11,0.25)' : 'var(--border-subtle)'}`, minWidth: '80px' }}>
-                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: perf.reports.total_this_month > 0 ? '#f59e0b' : 'var(--text-muted)' }}>{perf.reports.total_this_month}</div>
-                    <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>Reports</div>
-                  </div>
-
-                  {isExpanded ? <ChevronUp size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} /> : <ChevronDown size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
-                </div>
-
-                {isExpanded && (
-                  <div style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-elevated)' }}>
-                    <div style={{ padding: '0.875rem 1.25rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginRight: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                        {currentMonthLabel}:
-                      </span>
-                      {perf.reports.details.length === 0 ? (
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>No reports submitted this month</span>
-                      ) : perf.reports.details.map(rpt => {
-                        const key = `${perf.employee.id}::${rpt.date}`
-                        const isActive = key === activeDateKey
-                        return (
-                          <button key={rpt.date} onClick={e => { e.stopPropagation(); setActiveDate(isActive ? null : rpt.date) }} style={{ padding: '5px 12px', borderRadius: '99px', border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700, transition: 'all 0.15s', background: isActive ? 'var(--brand-primary)' : 'rgba(16,185,129,0.1)', color: isActive ? 'white' : '#10b981', boxShadow: isActive ? '0 2px 8px rgba(14,61,53,0.3)' : 'none', outline: isActive ? '2px solid var(--brand-primary)' : '1px solid rgba(16,185,129,0.25)', outlineOffset: '1px' }}>
-                            {new Date(rpt.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} <span style={{ opacity: 0.7 }}>({rpt.entries.length})</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                    {activeReport && (
-                      <div style={{ margin: '0 1.25rem 1.25rem', borderRadius: 'var(--radius-lg)', overflow: 'hidden', border: '1px solid var(--border-default)', background: 'var(--bg-card)', boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
-                        <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(135deg, rgba(14,61,53,0.06) 0%, transparent 100%)' }}>
-                          <div>
-                            <p style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--brand-primary)' }}>{new Date(activeReport.date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
-                            <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>{activeReport.entries.length} work item{activeReport.entries.length !== 1 ? 's' : ''} logged</p>
-                          </div>
-                          <button onClick={e => { e.stopPropagation(); setActiveDate(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', padding: '4px' }}><X size={16} /></button>
-                        </div>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                          <thead>
-                            <tr style={{ background: 'var(--bg-elevated)' }}>
-                              <th style={{ padding: '0.45rem 1.25rem', textAlign: 'left', fontSize: '0.63rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', width: '200px' }}>Responsibility</th>
-                              <th style={{ padding: '0.45rem 1rem', textAlign: 'left', fontSize: '0.63rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>Description</th>
-                              <th style={{ padding: '0.45rem 1.25rem', textAlign: 'center', fontSize: '0.63rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', width: '70px' }}>Count</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {activeReport.entries.map((entry, i) => (
-                              <tr key={i} style={{ borderTop: '1px solid var(--border-subtle)' }}>
-                                <td style={{ padding: '0.75rem 1.25rem', verticalAlign: 'top' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <CheckCircle size={12} style={{ color: '#10b981', flexShrink: 0 }} />
-                                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>{entry.description}</span>
-                                  </div>
-                                </td>
-                                <td style={{ padding: '0.75rem 1rem', verticalAlign: 'top' }}><p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{entry.notes || '—'}</p></td>
-                                <td style={{ padding: '0.75rem 1.25rem', textAlign: 'center', verticalAlign: 'top' }}>
-                                  <span style={{ fontSize: '0.9rem', fontWeight: 800, color: entry.count > 0 ? 'var(--brand-primary)' : 'var(--text-muted)' }}>{entry.count > 0 ? entry.count : '—'}</span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        {activeReport.note && (
-                          <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid var(--border-subtle)', background: 'rgba(99,102,241,0.04)', display: 'flex', gap: '0.625rem', alignItems: 'flex-start' }}>
-                            <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6366f1', flexShrink: 0, marginTop: '1px' }}>Note</span>
-                            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{activeReport.note}</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+          <PanelSection title={`Daily reports · ${open.reports.total_this_month}`}>
+            {open.reports.details.length === 0 ? (
+              <div className="empty-inline">No reports submitted this month</div>
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {open.reports.details.map(r => (
+                  <button key={r.date} className={`chip ${activeDate === r.date ? 'active' : ''}`} onClick={() => setActiveDate(activeDate === r.date ? null : r.date)}>
+                    {new Date(r.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                    <span style={{ opacity: 0.6 }}>{r.entries.length}</span>
+                  </button>
+                ))}
               </div>
-            )
-          })}
-        </div>
+            )}
+            {activeReport && (
+              <>
+                <ul className="report-entries">
+                  {activeReport.entries.map((e, i) => (
+                    <li key={i}>
+                      <CheckCircle2 size={14} style={{ color: 'var(--status-success)', flexShrink: 0, marginTop: 2 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}><strong>{e.description}</strong>{e.notes && <p>{e.notes}</p>}</div>
+                      <span className="report-count tabular">{e.count > 0 ? e.count : '—'}</span>
+                    </li>
+                  ))}
+                </ul>
+                {activeReport.note && <div className="note-box"><MessageSquareText size={14} /><span>{activeReport.note}</span></div>}
+              </>
+            )}
+          </PanelSection>
+        </SidePanel>
       )}
     </div>
   )

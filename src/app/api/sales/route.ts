@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getUserFromRequest } from '@/lib/auth'
+import { ensureVisitDoneColumn } from '@/lib/leads'
 
 interface SalesEmployee {
   id: string
@@ -40,10 +41,23 @@ interface LeadRecord {
 }
 
 const CALL_STATUSES = [
-  'new', 'ringing', 'not_connected', 'switched_off',
-  'not_logical', 'busy_callback', 'interested',
-  'visit_scheduled', 'closed_won', 'closed_lost'
+  'new', 'ringing', 'connected', 'callback', 'follow_up', 'switched_off',
+  'interested', 'visit_scheduled', 'visit_done', 'ai_workshop_saturday',
+  'not_interested', 'closed_won', 'closed_lost',
+  'not_connected', 'not_logical', 'busy_callback',
 ]
+
+const PIPELINE_STATUSES = ['interested', 'visit_scheduled', 'visit_done', 'ai_workshop_saturday', 'callback', 'follow_up', 'busy_callback']
+
+interface VisitRecord {
+  id: string
+  client_name: string
+  phone: string
+  industry: string | null
+  status: string
+  assigned_to: string
+  visit_done_at: string
+}
 
 const ENROLLMENT_KEYWORDS = ['enrollment', 'enroll', 'admission', 'join', 'amazon', 'dm ', 'target']
 const isMonthlyTarget = (title: string) =>
@@ -66,8 +80,8 @@ export async function GET(req: NextRequest) {
     const repParam = searchParams.get('rep') // admin can request a specific rep or 'all'
 
     const dateFrom = `${monthParam}-01`
-    const d0 = new Date(`${dateFrom}T00:00:00`)
-    const dateTo = new Date(d0.getFullYear(), d0.getMonth() + 1, 1).toISOString().slice(0, 10)
+    const [fy, fm] = dateFrom.split('-').map(Number)
+    const dateTo = new Date(Date.UTC(fy, fm, 1)).toISOString().slice(0, 10)
 
     // ── 1. Determine which employees to include ──────────────────────────────
     let salesEmployees: SalesEmployee[] = []
@@ -135,6 +149,30 @@ export async function GET(req: NextRequest) {
       [empIds, dateFrom, dateTo]
     )
 
+    // ── 3b. Visits completed this month (stamped when status moves to visit_done) ──
+    await ensureVisitDoneColumn()
+    const visitsThisMonth = await query<VisitRecord>(
+      `SELECT id, COALESCE(NULLIF(client_name, ''), name) AS client_name, phone,
+              COALESCE(industry, category) AS industry, status, assigned_to,
+              TO_CHAR(visit_done_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI') AS visit_done_at
+       FROM leads
+       WHERE assigned_to = ANY($1::uuid[])
+         AND visit_done_at >= ($2::timestamp AT TIME ZONE 'Asia/Kolkata')
+         AND visit_done_at <  ($3::timestamp AT TIME ZONE 'Asia/Kolkata')
+       ORDER BY visit_done_at DESC`,
+      [empIds, dateFrom, dateTo]
+    )
+
+    const visitTrend = await query<{ month: string; visits: number }>(
+      `SELECT TO_CHAR(visit_done_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM') AS month, COUNT(*)::int AS visits
+       FROM leads
+       WHERE assigned_to = ANY($1::uuid[])
+         AND visit_done_at >= (($2::date - INTERVAL '5 months')::timestamp AT TIME ZONE 'Asia/Kolkata')
+         AND visit_done_at <  ($3::timestamp AT TIME ZONE 'Asia/Kolkata')
+       GROUP BY 1 ORDER BY 1`,
+      [empIds, dateFrom, dateTo]
+    )
+
     // ── 4. Daily reports for this month ────────────────────────────────────
     const responsibilities = await query<Responsibility>(
       `SELECT employee_id, title, daily_target FROM employee_responsibilities
@@ -169,16 +207,18 @@ export async function GET(req: NextRequest) {
       const empConverted = (convertedThisMonth || []).filter(l => l.assigned_to === emp.id)
       const empResps = (responsibilities || []).filter(r => r.employee_id === emp.id)
       const empReports = (reports || []).filter(r => r.employee_id === emp.id)
+      const empVisits = visitsThisMonth.filter(v => v.assigned_to === emp.id)
 
-      // Status breakdown: count each of the 10 statuses
+      const statuses = Array.from(new Set([...CALL_STATUSES, ...empLeads.map(l => l.status)]))
+
       const statusBreakdown: Record<string, number> = {}
-      for (const s of CALL_STATUSES) {
+      for (const s of statuses) {
         statusBreakdown[s] = empLeads.filter(l => l.status === s).length
       }
 
       // Leads by status: for clicking through to see exact names
       const leadsByStatus: Record<string, { id: string; client_name: string; phone: string; email: string | null; industry: string | null; platform: string | null; created_at: string; notes: string | null }[]> = {}
-      for (const s of CALL_STATUSES) {
+      for (const s of statuses) {
         leadsByStatus[s] = empLeads
           .filter(l => l.status === s)
           .map(l => ({
@@ -250,7 +290,10 @@ export async function GET(req: NextRequest) {
         totalLeads: empLeads.length,
         convertedCount: empConverted.length,
         conversionRate: empLeads.length > 0 ? Math.round((empLeads.filter(l => l.status === 'closed_won').length / empLeads.length) * 100) : 0,
-        activeLeads: empLeads.filter(l => ['interested', 'visit_scheduled', 'busy_callback'].includes(l.status)).length,
+        activeLeads: empLeads.filter(l => PIPELINE_STATUSES.includes(l.status)).length,
+        visitsScheduled: empLeads.filter(l => l.status === 'visit_scheduled').length,
+        visitsDone: empVisits.length,
+        visitsDoneLeads: empVisits,
         statusBreakdown,
         leadsByStatus,
         convertedLeads,
@@ -269,6 +312,8 @@ export async function GET(req: NextRequest) {
       workingDaysSoFar,
       team,
       teamSummary,
+      visitsDoneTotal: visitsThisMonth.length,
+      visitTrend,
     })
   } catch (err: unknown) {
     console.error('Sales route error:', err)

@@ -3,13 +3,14 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import type { Profile } from '@/lib/database.types'
 import {
-  Users, Award, TrendingUp, Target, Calendar, Filter, Search,
-  Download, RefreshCw, ChevronRight, X, Phone, Mail, Clock,
-  FileText, Activity, Layers, CheckCircle2, XCircle, PhoneOff,
-  PhoneMissed, Voicemail, Zap, CircleDot, User, ArrowUpRight,
-  RadioTower, Sparkles, Building2, ShieldCheck, Loader2
+  Users, Award, TrendingUp, Calendar, Filter, Search, Download, RefreshCw, ChevronRight, X, Phone, Mail,
+  FileText, Activity, Layers, CheckCircle2, XCircle, PhoneOff, PhoneMissed, Voicemail, Zap, CircleDot,
+  PhoneCall, CalendarClock, CalendarCheck, MapPinCheck, BellRing, Loader2, ArrowUpRight, ArrowDownRight,
 } from 'lucide-react'
-import { getInitials, formatDate } from '@/lib/utils'
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { formatDate } from '@/lib/utils'
+import KpiCard from '@/components/ui/KpiCard'
+import Avatar from '@/components/ui/Avatar'
 
 interface Props { profile: Profile }
 
@@ -36,250 +37,193 @@ interface LeadInStatus {
   notes: string | null
 }
 
+interface VisitLead {
+  id: string
+  client_name: string
+  phone: string
+  industry: string | null
+  status: string
+  assigned_to: string
+  visit_done_at: string
+  rep_name?: string
+}
+
 interface EmployeeData {
   employee: { id: string; full_name: string; designation: string | null; department: string | null; avatar_url: string | null }
   responsibilities: { title: string; daily_target: number }[]
-  metrics: Record<string, { total: number; dailyTarget: number; monthlyTarget: number; entries: any[] }>
+  metrics: Record<string, { total: number; dailyTarget: number; monthlyTarget: number; entries: unknown[] }>
   daysReported: number
   workingDaysSoFar: number
   reportRate: number
-  daily: { date: string; entries: any[]; note: string; totalCount: number }[]
+  daily: { date: string; entries: { description: string; count: number }[]; note: string; totalCount: number }[]
   totalLeads: number
   convertedCount: number
   conversionRate: number
   activeLeads: number
+  visitsScheduled: number
+  visitsDone: number
+  visitsDoneLeads: VisitLead[]
   statusBreakdown: Record<string, number>
   leadsByStatus: Record<string, LeadInStatus[]>
   convertedLeads: ConvertedLead[]
 }
 
-// 10 Status definitions with clear colors and professional Lucide icons
-const STATUS_DEFINITIONS: {
-  id: string
-  label: string
-  color: string
-  bg: string
-  icon: React.ReactNode
-  stage: 'Discovery' | 'Nurturing' | 'Closing'
-  description: string
-}[] = [
-  { id: 'new',             label: 'New Lead',        color: '#6366f1', bg: 'rgba(99,102,241,0.08)',  icon: <CircleDot size={13} />,   stage: 'Discovery', description: 'Fresh inbound lead, awaiting first contact' },
-  { id: 'ringing',         label: 'Ringing',         color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',  icon: <Phone size={13} />,       stage: 'Discovery', description: 'Call initiated but unanswered' },
-  { id: 'not_connected',   label: 'Not Connected',   color: '#ef4444', bg: 'rgba(239,68,68,0.08)',   icon: <PhoneOff size={13} />,    stage: 'Discovery', description: 'Network issue or unreachable' },
-  { id: 'switched_off',    label: 'Switched Off',    color: '#6b7280', bg: 'rgba(107,114,128,0.08)', icon: <PhoneMissed size={13} />, stage: 'Discovery', description: 'Device powered off' },
-  { id: 'not_logical',     label: 'Not Logical',     color: '#94a3b8', bg: 'rgba(148,163,184,0.08)', icon: <XCircle size={13} />,     stage: 'Discovery', description: 'Invalid number or wrong requirement' },
-  { id: 'busy_callback',   label: 'Busy / Callback', color: '#8b5cf6', bg: 'rgba(139,92,246,0.08)',  icon: <Voicemail size={13} />,   stage: 'Nurturing', description: 'Lead requested a call back later' },
-  { id: 'interested',      label: 'Interested',      color: '#06b6d4', bg: 'rgba(6,182,212,0.08)',   icon: <Zap size={13} />,         stage: 'Nurturing', description: 'Expressed interest in syllabus & fees' },
-  { id: 'visit_scheduled', label: 'Visit Scheduled', color: '#ec4899', bg: 'rgba(236,72,153,0.08)',  icon: <Calendar size={13} />,    stage: 'Nurturing', description: 'Campus counselling visit booked' },
-  { id: 'closed_won',      label: 'Enrolled (Won)',  color: '#10b981', bg: 'rgba(16,185,129,0.08)',  icon: <CheckCircle2 size={13} />, stage: 'Closing',   description: 'Successfully admitted / converted' },
-  { id: 'closed_lost',     label: 'Lost / Dropped',  color: '#dc2626', bg: 'rgba(220,38,38,0.08)',   icon: <XCircle size={13} />,     stage: 'Closing',   description: 'Decided against or joined elsewhere' },
+type Stage = 'Discovery' | 'Nurturing' | 'Visit' | 'Closing'
+
+// Mirrors the call statuses used on the Leads page; legacy ones only render when they still hold leads.
+const STATUS_DEFINITIONS: { id: string; label: string; color: string; icon: React.ReactNode; stage: Stage; description: string; legacy?: boolean }[] = [
+  { id: 'new',                  label: 'New Lead',        color: '#7c83ff', icon: <CircleDot size={13} />,     stage: 'Discovery', description: 'Fresh inbound lead, awaiting first contact' },
+  { id: 'ringing',              label: 'Ringing',         color: '#f5b544', icon: <Phone size={13} />,         stage: 'Discovery', description: 'Call placed but unanswered' },
+  { id: 'connected',            label: 'Connected',       color: '#2cc2c9', icon: <PhoneCall size={13} />,     stage: 'Discovery', description: 'Spoke with the lead' },
+  { id: 'switched_off',         label: 'Switched Off',    color: '#8a94a3', icon: <PhoneMissed size={13} />,   stage: 'Discovery', description: 'Phone powered off' },
+  { id: 'not_connected',        label: 'Not Connected',   color: '#ff5c6c', icon: <PhoneOff size={13} />,      stage: 'Discovery', description: 'Unreachable', legacy: true },
+  { id: 'not_logical',          label: 'Not Logical',     color: '#8a94a3', icon: <XCircle size={13} />,       stage: 'Discovery', description: 'Invalid number or requirement', legacy: true },
+  { id: 'callback',             label: 'Call Back',       color: '#9b87f5', icon: <Voicemail size={13} />,     stage: 'Nurturing', description: 'Asked to be called later' },
+  { id: 'busy_callback',        label: 'Busy / Callback', color: '#9b87f5', icon: <Voicemail size={13} />,     stage: 'Nurturing', description: 'Asked to be called later', legacy: true },
+  { id: 'follow_up',            label: 'Follow Up',       color: '#f5b544', icon: <CalendarClock size={13} />, stage: 'Nurturing', description: 'Scheduled follow-up call' },
+  { id: 'interested',           label: 'Interested',      color: '#4ab8ff', icon: <Zap size={13} />,           stage: 'Nurturing', description: 'Interested in syllabus & fees' },
+  { id: 'ai_workshop_saturday', label: 'AI Workshop',     color: '#9b87f5', icon: <BellRing size={13} />,      stage: 'Nurturing', description: 'Registered for Saturday AI workshop' },
+  { id: 'visit_scheduled',      label: 'Visit Scheduled', color: '#ec5f9e', icon: <CalendarCheck size={13} />, stage: 'Visit',     description: 'Campus counselling visit booked' },
+  { id: 'visit_done',           label: 'Visit Done',      color: '#2fd0b0', icon: <MapPinCheck size={13} />,   stage: 'Visit',     description: 'Visited the campus — ready to close' },
+  { id: 'closed_won',           label: 'Enrolled',        color: '#3ee6a8', icon: <CheckCircle2 size={13} />,  stage: 'Closing',   description: 'Admitted / converted' },
+  { id: 'not_interested',       label: 'Not Interested',  color: '#ff5c6c', icon: <XCircle size={13} />,       stage: 'Closing',   description: 'Declined' },
+  { id: 'closed_lost',          label: 'Lost / Dropped',  color: '#ff5c6c', icon: <XCircle size={13} />,       stage: 'Closing',   description: 'Joined elsewhere or dropped', legacy: true },
 ]
 
-const statusMap = STATUS_DEFINITIONS.reduce((acc, s) => ({ ...acc, [s.id]: s }), {} as Record<string, typeof STATUS_DEFINITIONS[0]>)
+const statusMap = Object.fromEntries(STATUS_DEFINITIONS.map(s => [s.id, s])) as Record<string, typeof STATUS_DEFINITIONS[number]>
 
-// Generate last 6 months list
-const MONTH_OPTIONS: { value: string; label: string }[] = []
-const currentDate = new Date()
-for (let i = 0; i < 6; i++) {
-  let y = currentDate.getFullYear()
-  let m = currentDate.getMonth() - i + 1
-  if (m <= 0) { m += 12; y -= 1 }
-  const val = `${y}-${String(m).padStart(2, '0')}`
-  const lbl = new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-  MONTH_OPTIONS.push({ value: val, label: lbl })
+const istNow = () => new Date(Date.now() + 5.5 * 3600 * 1000)
+const MONTH_OPTIONS = Array.from({ length: 6 }, (_, i) => {
+  const n = istNow()
+  const d = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth() - i, 1))
+  return { value: d.toISOString().slice(0, 7), label: d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }) }
+})
+const shortMonth = (ym: string) => new Date(`${ym}-01T00:00:00Z`).toLocaleDateString('en-IN', { month: 'short', timeZone: 'UTC' })
+const prevMonth = (ym: string) => {
+  const [y, m] = ym.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 7)
 }
 
-// ─── Status Drill-Down Slide-Over Drawer ──────────────────────────────────
-function StatusDrilldownDrawer({
-  statusId,
-  leads,
-  repName,
-  onClose
-}: {
-  statusId: string
-  leads: LeadInStatus[]
-  repName: string
-  onClose: () => void
+const chartTooltip = {
+  contentStyle: { background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 10, fontSize: 12, color: 'var(--text-primary)', boxShadow: 'var(--shadow-md)' },
+  labelStyle: { color: 'var(--text-muted)', marginBottom: 2 },
+  cursor: { fill: 'color-mix(in srgb, var(--brand-primary) 8%, transparent)' },
+}
+
+// ─── Status drill-down drawer ─────────────────────────────────────────────
+function Drawer({ title, subtitle, icon, color, count, onClose, children }: {
+  title: string; subtitle: string; icon: React.ReactNode; color: string; count: number; onClose: () => void; children: React.ReactNode
 }) {
-  const [search, setSearch] = useState('')
-  const cfg = statusMap[statusId] || statusMap['new']
-
-  const filtered = leads.filter(l =>
-    l.client_name.toLowerCase().includes(search.toLowerCase()) ||
-    l.phone.includes(search) ||
-    (l.email || '').toLowerCase().includes(search.toLowerCase()) ||
-    (l.industry || '').toLowerCase().includes(search.toLowerCase())
-  )
-
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', esc)
+    return () => window.removeEventListener('keydown', esc)
+  }, [onClose])
   return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 999,
-        background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-        display: 'flex', justifyContent: 'flex-end', animation: 'fadeIn 0.15s ease'
-      }}
-      onClick={e => e.target === e.currentTarget && onClose()}
-    >
-      <div
-        style={{
-          width: '100%', maxWidth: '580px', height: '100%',
-          background: 'var(--bg-elevated)', display: 'flex', flexDirection: 'column',
-          boxShadow: '-20px 0 60px rgba(0,0,0,0.5)', borderLeft: '1px solid var(--border-default)',
-          animation: 'slideLeft 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
-        }}
-      >
-        {/* Header */}
-        <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-default)', display: 'flex', alignItems: 'flex-start', gap: '0.875rem' }}>
-          <div style={{
-            width: 38, height: 38, borderRadius: '10px', flexShrink: 0,
-            background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}30`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center'
-          }}>
-            {cfg.icon}
-          </div>
+    <div className="drawer-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <aside className="drawer" role="dialog" aria-label={title}>
+        <header className="drawer-header">
+          <span className="drawer-icon" style={{ color, background: `color-mix(in srgb, ${color} 14%, transparent)`, boxShadow: `0 0 20px -6px ${color}` }}>{icon}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-                {cfg.label} Leads
-              </h3>
-              <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: '99px', background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}30` }}>
-                {leads.length}
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>{title}</h3>
+              <span className="badge" style={{ color, borderColor: `color-mix(in srgb, ${color} 30%, transparent)` }}>{count}</span>
             </div>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '3px 0 0' }}>
-              {repName} • {cfg.description}
-            </p>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 2 }}>{subtitle}</p>
           </div>
-          <button
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', borderRadius: '8px' }}
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* Search Filter */}
-        <div style={{ padding: '0.875rem 1.5rem', borderBottom: '1px solid var(--border-default)', background: 'var(--bg-surface)' }}>
-          <div style={{ position: 'relative' }}>
-            <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search leads by name, phone or program..."
-              style={{
-                width: '100%', paddingLeft: '32px', padding: '0.5rem 0.75rem 0.5rem 32px',
-                borderRadius: '8px', border: '1px solid var(--border-default)', background: 'var(--bg-elevated)',
-                color: 'var(--text-primary)', fontSize: '0.82rem', outline: 'none', boxSizing: 'border-box'
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Lead List */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
-          {filtered.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              No leads match your search
-            </div>
-          ) : (
-            filtered.map((lead) => (
-              <div
-                key={lead.id}
-                style={{
-                  padding: '0.875rem 1rem', borderRadius: '10px',
-                  background: 'var(--bg-surface)', border: '1px solid var(--border-default)',
-                  display: 'flex', flexDirection: 'column', gap: '0.5rem'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.75rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                    <div style={{
-                      width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-                      background: 'rgba(99,102,241,0.12)', color: '#6366f1',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '0.68rem', fontWeight: 700
-                    }}>
-                      {getInitials(lead.client_name)}
-                    </div>
-                    <div>
-                      <p style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)', margin: 0 }}>
-                        {lead.client_name}
-                      </p>
-                      <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '2px 0 0' }}>
-                        Added {formatDate(lead.created_at, 'dd MMM yyyy')}
-                        {lead.platform ? ` via ${lead.platform}` : ''}
-                      </p>
-                    </div>
-                  </div>
-                  {lead.industry && (
-                    <span style={{ fontSize: '0.7rem', fontWeight: 600, padding: '2px 8px', borderRadius: '6px', background: 'rgba(99,102,241,0.08)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.15)', whiteSpace: 'nowrap' }}>
-                      {lead.industry}
-                    </span>
-                  )}
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', paddingTop: '0.25rem' }}>
-                  <a
-                    href={`tel:${lead.phone}`}
-                    style={{
-                      fontSize: '0.78rem', color: '#6366f1', textDecoration: 'none',
-                      display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 600
-                    }}
-                  >
-                    <Phone size={12} /> {lead.phone}
-                  </a>
-                  {lead.email && (
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      <Mail size={11} /> {lead.email}
-                    </span>
-                  )}
-                </div>
-
-                {lead.notes && (
-                  <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: '0.375rem 0.625rem', borderRadius: '6px', margin: 0, fontStyle: 'italic' }}>
-                    {lead.notes}
-                  </p>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+          <button className="icon-btn" onClick={onClose} aria-label="Close"><X size={18} /></button>
+        </header>
+        {children}
+      </aside>
     </div>
   )
 }
 
-// ─── Main SalesSection Component ──────────────────────────────────────────
+function StatusDrilldownDrawer({ statusId, leads, repName, onClose }: { statusId: string; leads: LeadInStatus[]; repName: string; onClose: () => void }) {
+  const [search, setSearch] = useState('')
+  const cfg = statusMap[statusId] || statusMap['new']
+  const q = search.toLowerCase()
+  const filtered = leads.filter(l =>
+    l.client_name.toLowerCase().includes(q) || l.phone.includes(search) ||
+    (l.email || '').toLowerCase().includes(q) || (l.industry || '').toLowerCase().includes(q)
+  )
+
+  return (
+    <Drawer title={`${cfg.label} leads`} subtitle={`${repName} · ${cfg.description}`} icon={cfg.icon} color={cfg.color} count={leads.length} onClose={onClose}>
+      <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border-subtle)' }}>
+        <div style={{ position: 'relative' }}>
+          <Search size={14} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+          <input className="form-input" autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, phone or program…" style={{ paddingLeft: 32 }} />
+        </div>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+        {filtered.length === 0 ? (
+          <div className="empty-state"><p>No leads match your search</p></div>
+        ) : filtered.map(lead => (
+          <div key={lead.id} className="card" style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', minWidth: 0 }}>
+                <Avatar name={lead.client_name} size="sm" />
+                <div style={{ minWidth: 0 }}>
+                  <p className="truncate-1" style={{ fontWeight: 600, fontSize: '0.875rem' }}>{lead.client_name}</p>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    Added {formatDate(lead.created_at, 'dd MMM yyyy')}{lead.platform ? ` via ${lead.platform}` : ''}
+                  </p>
+                </div>
+              </div>
+              {lead.industry && <span className="badge tone-violet">{lead.industry}</span>}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem', flexWrap: 'wrap' }}>
+              <a href={`tel:${lead.phone}`} style={{ fontSize: '0.78rem', color: 'var(--brand-secondary)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 550 }}>
+                <Phone size={12} /> {lead.phone}
+              </a>
+              {lead.email && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Mail size={11} /> {lead.email}</span>}
+            </div>
+            {lead.notes && <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'var(--bg-inset)', padding: '0.4rem 0.6rem', borderRadius: 6 }}>{lead.notes}</p>}
+          </div>
+        ))}
+      </div>
+    </Drawer>
+  )
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────
+type Tab = 'visits' | 'funnel' | 'enrolled' | 'team' | 'activity'
+
 export default function SalesSection({ profile }: Props) {
   const [selectedMonth, setSelectedMonth] = useState(MONTH_OPTIONS[0].value)
   const [selectedRep, setSelectedRep] = useState<string>('all')
-  const [activeTab, setActiveTab] = useState<'funnel' | 'enrolled' | 'team' | 'activity'>('funnel')
+  const [activeTab, setActiveTab] = useState<Tab>('visits')
   const [teamData, setTeamData] = useState<EmployeeData[]>([])
+  const [repOptions, setRepOptions] = useState<{ id: string; name: string }[]>([])
+  const [visitTrend, setVisitTrend] = useState<{ month: string; visits: number }[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [workingDays, setWorkingDays] = useState(0)
   const [searchEnrolled, setSearchEnrolled] = useState('')
-  const [selectedStatusDrilldown, setSelectedStatusDrilldown] = useState<{ id: string; repName: string; leads: LeadInStatus[] } | null>(null)
+  const [searchVisits, setSearchVisits] = useState('')
+  const [drilldown, setDrilldown] = useState<{ id: string; repName: string; leads: LeadInStatus[] } | null>(null)
 
   const isAdmin = profile.role === 'admin'
-  const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
 
   const fetchData = useCallback(async () => {
-    const token = getToken()
+    const token = localStorage.getItem('rushi_token') || ''
     if (!token) return
     setLoading(true)
-
+    setError('')
     let url = `/api/sales?month=${selectedMonth}`
     if (isAdmin && selectedRep !== 'all') url += `&rep=${selectedRep}`
-
     try {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
-      if (data.team) {
-        setTeamData(data.team)
-        setWorkingDays(data.workingDaysSoFar || 0)
-      }
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      const team: EmployeeData[] = data.team ?? []
+      setTeamData(team)
+      setWorkingDays(data.workingDaysSoFar || 0)
+      setVisitTrend(data.visitTrend ?? [])
+      if (selectedRep === 'all') setRepOptions(team.map(t => ({ id: t.employee.id, name: t.employee.full_name })))
     } catch (err) {
-      console.error('Failed to load sales data:', err)
+      setError((err as Error).message)
     } finally {
       setLoading(false)
     }
@@ -287,603 +231,477 @@ export default function SalesSection({ profile }: Props) {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  // Aggregate stats across visible teamData
   const aggregate = useMemo(() => {
-    const totalLeads = teamData.reduce((s, e) => s + e.totalLeads, 0)
-    const totalEnrolled = teamData.reduce((s, e) => s + e.convertedCount, 0)
-    const activePipeline = teamData.reduce((s, e) => s + e.activeLeads, 0)
-    const convRate = totalLeads > 0 ? Math.round((totalEnrolled / totalLeads) * 100) : 0
-    const avgReportRate = teamData.length > 0 ? Math.round(teamData.reduce((s, e) => s + e.reportRate, 0) / teamData.length) : 0
-
-    // Combine all converted leads with salesperson name
-    const allEnrolled: ConvertedLead[] = teamData.flatMap(e =>
-      e.convertedLeads.map(l => ({ ...l, rep_name: e.employee.full_name }))
-    )
-
-    // Combine status breakdown totals
+    const sum = (f: (e: EmployeeData) => number) => teamData.reduce((s, e) => s + f(e), 0)
+    const totalLeads = sum(e => e.totalLeads)
+    const totalEnrolled = sum(e => e.convertedCount)
+    const allVisits: VisitLead[] = teamData.flatMap(e => (e.visitsDoneLeads ?? []).map(v => ({ ...v, rep_name: e.employee.full_name })))
+      .sort((a, b) => b.visit_done_at.localeCompare(a.visit_done_at))
     const statusCounts: Record<string, number> = {}
     const statusLeadsMap: Record<string, LeadInStatus[]> = {}
     for (const def of STATUS_DEFINITIONS) {
-      statusCounts[def.id] = teamData.reduce((sum, e) => sum + (e.statusBreakdown[def.id] || 0), 0)
+      statusCounts[def.id] = sum(e => e.statusBreakdown[def.id] || 0)
       statusLeadsMap[def.id] = teamData.flatMap(e => e.leadsByStatus[def.id] || [])
     }
-
     return {
       totalLeads,
       totalEnrolled,
-      activePipeline,
-      convRate,
-      avgReportRate,
-      allEnrolled,
+      activePipeline: sum(e => e.activeLeads),
+      visitsScheduled: sum(e => e.visitsScheduled ?? 0),
+      visitsDone: allVisits.length,
+      visitToEnrol: allVisits.filter(v => v.status === 'closed_won').length,
+      convRate: totalLeads > 0 ? Math.round((totalEnrolled / totalLeads) * 100) : 0,
+      avgReportRate: teamData.length ? Math.round(sum(e => e.reportRate) / teamData.length) : 0,
+      allEnrolled: teamData.flatMap(e => e.convertedLeads.map(l => ({ ...l, rep_name: e.employee.full_name }))),
+      allVisits,
       statusCounts,
-      statusLeadsMap
+      statusLeadsMap,
     }
   }, [teamData])
 
-  // Filtered enrolled leads for directory
+  const trendData = useMemo(() => {
+    const byMonth = new Map(visitTrend.map(r => [r.month, r.visits]))
+    const months: string[] = []
+    let m = selectedMonth
+    for (let i = 0; i < 6; i++) { months.unshift(m); m = prevMonth(m) }
+    return months.map(ym => ({ ym, month: shortMonth(ym), visits: byMonth.get(ym) ?? 0 }))
+  }, [visitTrend, selectedMonth])
+
+  const lastMonthVisits = trendData[trendData.length - 2]?.visits ?? 0
+  const visitDelta = aggregate.visitsDone - lastMonthVisits
+
   const filteredEnrolled = useMemo(() => {
+    const q = searchEnrolled.toLowerCase()
     return aggregate.allEnrolled.filter(l =>
-      l.client_name.toLowerCase().includes(searchEnrolled.toLowerCase()) ||
-      l.phone.includes(searchEnrolled) ||
-      (l.industry || '').toLowerCase().includes(searchEnrolled.toLowerCase()) ||
-      (l.rep_name || '').toLowerCase().includes(searchEnrolled.toLowerCase())
-    )
+      l.client_name.toLowerCase().includes(q) || l.phone.includes(searchEnrolled) ||
+      (l.industry || '').toLowerCase().includes(q) || (l.rep_name || '').toLowerCase().includes(q))
   }, [aggregate.allEnrolled, searchEnrolled])
 
-  // Export enrolled leads as CSV
-  const handleExportCSV = () => {
-    if (aggregate.allEnrolled.length === 0) return
-    const headers = ['Student Name', 'Phone Number', 'Email', 'Program / Course', 'Sales Representative', 'Enrollment Date', 'Notes']
-    const rows = aggregate.allEnrolled.map(l => [
-      `"${l.client_name.replace(/"/g, '""')}"`,
-      `"${l.phone}"`,
-      `"${l.email || ''}"`,
-      `"${l.industry || ''}"`,
-      `"${l.rep_name || ''}"`,
-      `"${l.enrolled_at}"`,
-      `"${(l.notes || '').replace(/"/g, '""')}"`
-    ])
-    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
+  const filteredVisits = useMemo(() => {
+    const q = searchVisits.toLowerCase()
+    return aggregate.allVisits.filter(v =>
+      v.client_name.toLowerCase().includes(q) || v.phone.includes(searchVisits) ||
+      (v.industry || '').toLowerCase().includes(q) || (v.rep_name || '').toLowerCase().includes(q))
+  }, [aggregate.allVisits, searchVisits])
+
+  const csv = (rows: string[][], name: string) => {
+    const esc = (v: string) => `"${(v ?? '').replace(/"/g, '""')}"`
+    const blob = new Blob([rows.map(r => r.map(esc).join(',')).join('\n')], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
-    link.setAttribute('href', url)
-    link.setAttribute('download', `enrolled_students_${selectedMonth}.csv`)
+    link.href = URL.createObjectURL(blob)
+    link.download = name
     document.body.appendChild(link)
     link.click()
-    document.body.removeChild(link)
+    link.remove()
   }
 
-  const selectedMonthLabel = MONTH_OPTIONS.find(m => m.value === selectedMonth)?.label || selectedMonth
+  const handleExport = () => {
+    if (activeTab === 'visits') {
+      csv([
+        ['Student Name', 'Phone', 'Program', 'Sales Executive', 'Visit Date', 'Current Status'],
+        ...aggregate.allVisits.map(v => [v.client_name, v.phone, v.industry || '', v.rep_name || '', v.visit_done_at.replace('T', ' '), statusMap[v.status]?.label || v.status]),
+      ], `visits_done_${selectedMonth}.csv`)
+    } else {
+      csv([
+        ['Student Name', 'Phone Number', 'Email', 'Program / Course', 'Sales Representative', 'Enrollment Date', 'Notes'],
+        ...aggregate.allEnrolled.map(l => [l.client_name, l.phone, l.email || '', l.industry || '', l.rep_name || '', l.enrolled_at, l.notes || '']),
+      ], `enrolled_students_${selectedMonth}.csv`)
+    }
+  }
+  const exportDisabled = activeTab === 'visits' ? aggregate.allVisits.length === 0 : aggregate.allEnrolled.length === 0
+
+  const monthLabel = MONTH_OPTIONS.find(m => m.value === selectedMonth)?.label || selectedMonth
+  const monthName = monthLabel.split(' ')[0]
+
+  const repVisitRows = [...teamData].sort((a, b) => (b.visitsDone ?? 0) - (a.visitsDone ?? 0))
+  const maxRepVisits = Math.max(1, ...repVisitRows.map(r => r.visitsDone ?? 0))
 
   return (
-    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-
-      {/* ── Page Header & Controls ── */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       <div className="page-header" style={{ marginBottom: 0 }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em', margin: 0 }}>
-            Sales & Conversion Analytics
-          </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '4px' }}>
-            {selectedMonthLabel} • Performance tracking, enrollment conversion, and pipeline velocity
-          </p>
+          <p className="eyebrow">Sales intelligence · {monthLabel}</p>
+          <h1 style={{ marginTop: '0.4rem' }}>Sales Analytics</h1>
+          <p>Visits, conversions, pipeline health and rep performance.</p>
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
-          {/* Month Selector */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative' }}>
-            <Calendar size={13} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-            <select
-              value={selectedMonth}
-              onChange={e => setSelectedMonth(e.target.value)}
-              className="form-select"
-              style={{ paddingLeft: '30px', fontSize: '0.82rem', height: '36px' }}
-            >
+            <Calendar size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+            <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="form-select" style={{ paddingLeft: 30, height: 36, minHeight: 36, width: 'auto' }} aria-label="Month">
               {MONTH_OPTIONS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
           </div>
-
-          {/* Sales Rep Selector (Admin Only) */}
-          {isAdmin && teamData.length > 0 && (
+          {isAdmin && repOptions.length > 0 && (
             <div style={{ position: 'relative' }}>
-              <Filter size={13} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-              <select
-                value={selectedRep}
-                onChange={e => setSelectedRep(e.target.value)}
-                className="form-select"
-                style={{ paddingLeft: '30px', fontSize: '0.82rem', height: '36px' }}
-              >
-                <option value="all">All Sales Executives ({teamData.length})</option>
-                {teamData.map(e => (
-                  <option key={e.employee.id} value={e.employee.id}>{e.employee.full_name}</option>
-                ))}
+              <Filter size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+              <select value={selectedRep} onChange={e => setSelectedRep(e.target.value)} className="form-select" style={{ paddingLeft: 30, height: 36, minHeight: 36, width: 'auto' }} aria-label="Sales executive">
+                <option value="all">All sales executives ({repOptions.length})</option>
+                {repOptions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
             </div>
           )}
-
-          {/* Export CSV Button */}
-          <button
-            onClick={handleExportCSV}
-            disabled={aggregate.allEnrolled.length === 0}
-            className="btn btn-secondary btn-sm"
-            style={{ height: '36px', opacity: aggregate.allEnrolled.length === 0 ? 0.5 : 1 }}
-            data-tooltip="Export enrolled student list as CSV"
-          >
-            <Download size={13} /> Export CSV
+          <button onClick={handleExport} disabled={exportDisabled} className="btn btn-secondary">
+            <Download size={14} /> Export {activeTab === 'visits' ? 'visits' : 'enrolled'}
           </button>
-
-          {/* Refresh Button */}
-          <button
-            onClick={fetchData}
-            className="btn btn-ghost btn-sm"
-            style={{ height: '36px' }}
-            data-tooltip="Refresh data"
-          >
-            <RefreshCw size={13} />
-          </button>
+          <button onClick={fetchData} className="icon-btn bordered" aria-label="Refresh"><RefreshCw size={15} /></button>
         </div>
       </div>
 
-      {/* ── KPI Metric Strip ── */}
-      <div className="grid-4" style={{ gap: '1rem' }}>
-        {/* Total Leads */}
-        <div className="stat-card" style={{ padding: '1.25rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Total Inbound Leads
-            </span>
-            <div style={{ width: 28, height: 28, borderRadius: '8px', background: 'rgba(99,102,241,0.12)', color: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Users size={14} />
-            </div>
-          </div>
-          <div style={{ fontSize: '1.85rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1 }}>
-            {aggregate.totalLeads}
-          </div>
-          <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '6px' }}>
-            Assigned during {selectedMonthLabel.split(' ')[0]}
-          </p>
-        </div>
+      {error && <div className="alert-strip tone-danger"><span className="alert-strip-icon"><XCircle size={16} /></span><span>Couldn’t load sales data: {error}</span></div>}
 
-        {/* Enrolled Students */}
-        <div className="stat-card" style={{ padding: '1.25rem', border: '1px solid rgba(16,185,129,0.25)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Enrolled (Closed Won)
-            </span>
-            <div style={{ width: 28, height: 28, borderRadius: '8px', background: 'rgba(16,185,129,0.15)', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Award size={14} />
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-            <span style={{ fontSize: '1.85rem', fontWeight: 800, color: '#10b981', lineHeight: 1 }}>
-              {aggregate.totalEnrolled}
-            </span>
-            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
-              {aggregate.convRate}% rate
-            </span>
-          </div>
-          <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '6px' }}>
-            Confirmed student admissions
-          </p>
-        </div>
-
-        {/* Active Pipeline */}
-        <div className="stat-card" style={{ padding: '1.25rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#06b6d4', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Active Pipeline
-            </span>
-            <div style={{ width: 28, height: 28, borderRadius: '8px', background: 'rgba(6,182,212,0.12)', color: '#06b6d4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <TrendingUp size={14} />
-            </div>
-          </div>
-          <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#06b6d4', lineHeight: 1 }}>
-            {aggregate.activePipeline}
-          </div>
-          <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '6px' }}>
-            Interested + Scheduled Visits
-          </p>
-        </div>
-
-        {/* Report Compliance */}
-        <div className="stat-card" style={{ padding: '1.25rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Daily Log Compliance
-            </span>
-            <div style={{ width: 28, height: 28, borderRadius: '8px', background: 'rgba(139,92,246,0.12)', color: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Activity size={14} />
-            </div>
-          </div>
-          <div style={{ fontSize: '1.85rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1 }}>
-            {aggregate.avgReportRate}%
-          </div>
-          <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '6px' }}>
-            Across {workingDays} working days
-          </p>
-        </div>
-      </div>
-
-      {/* ── Tabbed Navigation Bar ── */}
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--border-default)', gap: '1.5rem' }}>
-        {[
-          { id: 'funnel', label: 'Funnel & Pipeline Breakdown', count: aggregate.totalLeads, icon: <Layers size={14} /> },
-          { id: 'enrolled', label: 'Enrolled Students Directory', count: aggregate.totalEnrolled, icon: <Award size={14} /> },
-          { id: 'team', label: 'Sales Rep Scorecards', count: teamData.length, icon: <Users size={14} /> },
-          { id: 'activity', label: 'Daily Activity Logs', count: null, icon: <FileText size={14} /> },
-        ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
-            style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              padding: '0.75rem 0.25rem 0.875rem', display: 'flex', alignItems: 'center', gap: '6px',
-              fontSize: '0.85rem', fontWeight: activeTab === tab.id ? 700 : 500,
-              color: activeTab === tab.id ? 'var(--brand-primary)' : 'var(--text-secondary)',
-              borderBottom: activeTab === tab.id ? '2px solid var(--brand-primary)' : '2px solid transparent',
-              transition: 'all 0.15s'
-            }}
-          >
-            {tab.icon}
-            {tab.label}
-            {tab.count !== null && (
-              <span style={{
-                fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: '99px',
-                background: activeTab === tab.id ? 'rgba(99,102,241,0.15)' : 'var(--bg-elevated)',
-                color: activeTab === tab.id ? 'var(--brand-primary)' : 'var(--text-muted)'
-              }}>
-                {tab.count}
+      <div className="sales-kpis">
+        <KpiCard
+          label={`Visits done · ${monthName}`}
+          value={aggregate.visitsDone}
+          icon={MapPinCheck}
+          tone="brand"
+          active={activeTab === 'visits'}
+          onClick={() => setActiveTab('visits')}
+          foot={
+            <>
+              <span className={visitDelta >= 0 ? 'trend-up' : 'trend-down'} style={{ display: 'inline-flex', alignItems: 'center' }}>
+                {visitDelta >= 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}{Math.abs(visitDelta)}
               </span>
-            )}
+              vs {shortMonth(prevMonth(selectedMonth))}
+            </>
+          }
+        />
+        <KpiCard label="Visits scheduled" value={aggregate.visitsScheduled} icon={CalendarCheck} tone="info" foot="Upcoming campus visits" onClick={() => aggregate.visitsScheduled > 0 && setDrilldown({ id: 'visit_scheduled', repName: selectedRep === 'all' ? 'Entire team' : teamData[0]?.employee.full_name || '', leads: aggregate.statusLeadsMap['visit_scheduled'] })} />
+        <KpiCard label="Enrolled" value={aggregate.totalEnrolled} icon={Award} tone="warning" foot={`${aggregate.convRate}% of all leads`} onClick={() => setActiveTab('enrolled')} active={activeTab === 'enrolled'} />
+        <KpiCard label="Active pipeline" value={aggregate.activePipeline} icon={TrendingUp} foot={`${aggregate.totalLeads} leads assigned`} onClick={() => setActiveTab('funnel')} active={activeTab === 'funnel'} />
+        <KpiCard label="Report compliance" value={aggregate.avgReportRate} suffix="%" icon={Activity} foot={`${workingDays} working days`} onClick={() => setActiveTab('activity')} active={activeTab === 'activity'} />
+      </div>
+
+      <div className="segmented" role="tablist" style={{ alignSelf: 'flex-start', overflowX: 'auto', maxWidth: '100%' }}>
+        {([
+          { id: 'visits', label: 'Visits', icon: <MapPinCheck size={13} />, count: aggregate.visitsDone },
+          { id: 'funnel', label: 'Funnel', icon: <Layers size={13} />, count: aggregate.totalLeads },
+          { id: 'enrolled', label: 'Enrolled', icon: <Award size={13} />, count: aggregate.totalEnrolled },
+          { id: 'team', label: 'Scorecards', icon: <Users size={13} />, count: teamData.length },
+          { id: 'activity', label: 'Activity logs', icon: <FileText size={13} />, count: null },
+        ] as const).map(tab => (
+          <button key={tab.id} role="tab" aria-selected={activeTab === tab.id} className={activeTab === tab.id ? 'active' : ''} onClick={() => setActiveTab(tab.id)}>
+            {tab.icon}{tab.label}
+            {tab.count !== null && <span className="tabular" style={{ color: 'var(--text-faint)', fontWeight: 500 }}>{tab.count}</span>}
           </button>
         ))}
       </div>
 
-      {/* ── Main Tab Content ── */}
       {loading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '5rem 0', gap: '0.75rem', color: 'var(--text-muted)' }}>
-          <Loader2 size={22} style={{ animation: 'spin 1s linear infinite' }} />
-          <span style={{ fontSize: '0.875rem' }}>Aggregating sales intelligence...</span>
+        <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '5rem 0', gap: '0.75rem', color: 'var(--text-muted)' }}>
+          <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} />
+          <span style={{ fontSize: '0.875rem' }}>Crunching sales data…</span>
         </div>
       ) : (
         <>
-          {/* TAB 1: FUNNEL & PIPELINE BREAKDOWN */}
-          {activeTab === 'funnel' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              {/* Funnel Stage Grouping */}
-              {(['Discovery', 'Nurturing', 'Closing'] as const).map(stageName => {
-                const stageStatuses = STATUS_DEFINITIONS.filter(s => s.stage === stageName)
-                const stageTotal = stageStatuses.reduce((s, def) => s + (aggregate.statusCounts[def.id] || 0), 0)
-                const stagePct = aggregate.totalLeads > 0 ? Math.round((stageTotal / aggregate.totalLeads) * 100) : 0
-
-                return (
-                  <div key={stageName} className="glass-card" style={{ padding: '1.25rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                          {stageName} Stage
-                        </span>
-                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                          • {stageTotal} lead{stageTotal !== 1 ? 's' : ''} ({stagePct}% of volume)
-                        </span>
-                      </div>
+          {activeTab === 'visits' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div className="sales-split">
+                <section className="card">
+                  <div className="card-header">
+                    <div>
+                      <div className="card-title">Visits done per month</div>
+                      <div className="card-subtitle">Counted on the day a lead is marked “Visit Done”</div>
                     </div>
+                  </div>
+                  <div style={{ padding: '1rem 1rem 0.5rem' }}>
+                    <ResponsiveContainer width="100%" height={240}>
+                      <BarChart data={trendData} margin={{ top: 16, right: 8, left: -18, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="visitBar" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="var(--brand-primary)" stopOpacity={1} />
+                            <stop offset="100%" stopColor="var(--brand-secondary)" stopOpacity={0.55} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid vertical={false} stroke="var(--border-subtle)" />
+                        <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: 'var(--text-muted)' }} />
+                        <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+                        <Tooltip {...chartTooltip} formatter={(v) => [`${v} visits`, 'Visits done']} />
+                        <Bar dataKey="visits" radius={[6, 6, 2, 2]} maxBarSize={44} label={{ position: 'top', fill: 'var(--text-secondary)', fontSize: 11 }}>
+                          {trendData.map(d => (
+                            <Cell key={d.ym} fill={d.ym === selectedMonth ? 'url(#visitBar)' : 'color-mix(in srgb, var(--text-muted) 30%, transparent)'} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </section>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.75rem' }}>
-                      {stageStatuses.map(def => {
-                        const count = aggregate.statusCounts[def.id] || 0
-                        const leadList = aggregate.statusLeadsMap[def.id] || []
-                        const pctOfTotal = aggregate.totalLeads > 0 ? Math.round((count / aggregate.totalLeads) * 100) : 0
-
-                        return (
-                          <div
-                            key={def.id}
-                            onClick={() => count > 0 && setSelectedStatusDrilldown({ id: def.id, repName: selectedRep === 'all' ? 'Entire Team' : teamData[0]?.employee.full_name || '', leads: leadList })}
-                            style={{
-                              padding: '1rem', borderRadius: '12px',
-                              background: count > 0 ? 'var(--bg-surface)' : 'rgba(255,255,255,0.02)',
-                              border: `1px solid ${count > 0 ? def.color + '30' : 'var(--border-default)'}`,
-                              cursor: count > 0 ? 'pointer' : 'default',
-                              transition: 'all 0.15s ease',
-                              opacity: count === 0 ? 0.45 : 1
-                            }}
-                            className={count > 0 ? 'hover:scale-[1.02]' : ''}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                              <div style={{ width: 26, height: 26, borderRadius: '7px', background: def.bg, color: def.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {def.icon}
-                              </div>
-                              <span style={{ fontSize: '1.35rem', fontWeight: 800, color: def.color, lineHeight: 1 }}>
-                                {count}
-                              </span>
+                <section className="card">
+                  <div className="card-header">
+                    <div>
+                      <div className="card-title">Visits by sales executive</div>
+                      <div className="card-subtitle">{monthLabel}</div>
+                    </div>
+                  </div>
+                  <div style={{ padding: '0.5rem 0.75rem 0.9rem' }}>
+                    {repVisitRows.length === 0 ? (
+                      <div className="empty-state"><p>No sales executives found</p></div>
+                    ) : repVisitRows.map(rep => {
+                      const done = rep.visitsDone ?? 0
+                      const enrolledAfterVisit = (rep.visitsDoneLeads ?? []).filter(v => v.status === 'closed_won').length
+                      return (
+                        <div key={rep.employee.id} className="rep-visit-row">
+                          <Avatar name={rep.employee.full_name} src={rep.employee.avatar_url} size="sm" />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+                              <span className="truncate-1" style={{ fontWeight: 550, fontSize: '0.875rem' }}>{rep.employee.full_name}</span>
+                              <span className="tabular" style={{ fontWeight: 650, fontSize: '1rem' }}>{done}</span>
                             </div>
-
-                            <p style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 2px' }}>
-                              {def.label}
-                            </p>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                              <span>{pctOfTotal}% of pipeline</span>
-                              {count > 0 && <ChevronRight size={11} color={def.color} />}
+                            <div className="progress-bar" style={{ height: 5, margin: '6px 0 5px' }}>
+                              <div className="progress-fill" style={{ width: `${(done / maxRepVisits) * 100}%`, background: 'var(--brand-gradient)' }} />
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.9rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                              <span>{rep.visitsScheduled ?? 0} scheduled</span>
+                              <span>{enrolledAfterVisit} enrolled after visit</span>
                             </div>
                           </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </section>
+              </div>
+
+              <section className="card" style={{ overflow: 'hidden' }}>
+                <div className="card-header" style={{ flexWrap: 'wrap' }}>
+                  <div>
+                    <div className="card-title">Leads who visited · {monthLabel}</div>
+                    <div className="card-subtitle">
+                      {aggregate.visitsDone} visit{aggregate.visitsDone === 1 ? '' : 's'} · {aggregate.visitToEnrol} already enrolled
+                      {aggregate.visitsDone > 0 && ` (${Math.round((aggregate.visitToEnrol / aggregate.visitsDone) * 100)}% visit → enrol)`}
+                    </div>
+                  </div>
+                  <div style={{ position: 'relative', width: 260, maxWidth: '100%' }}>
+                    <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                    <input value={searchVisits} onChange={e => setSearchVisits(e.target.value)} placeholder="Search visits…" className="form-input" style={{ paddingLeft: 32, height: 34, minHeight: 34 }} />
+                  </div>
+                </div>
+                {filteredVisits.length === 0 ? (
+                  <div className="empty-state">
+                    <div className="empty-state-icon"><MapPinCheck size={20} /></div>
+                    <p style={{ fontWeight: 550, color: 'var(--text-secondary)' }}>
+                      {aggregate.allVisits.length === 0 ? `No visits recorded in ${monthLabel} yet` : 'No visits match your search'}
+                    </p>
+                    <p style={{ fontSize: '0.8rem' }}>Mark a lead as <strong>Visit Done</strong> on the Leads page and it will appear here.</p>
+                  </div>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="data-table">
+                      <thead>
+                        <tr><th>Student</th><th>Contact</th><th>Program</th><th>Sales executive</th><th>Visited on</th><th>Current status</th></tr>
+                      </thead>
+                      <tbody>
+                        {filteredVisits.map(v => {
+                          const s = statusMap[v.status]
+                          return (
+                            <tr key={v.id}>
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                  <Avatar name={v.client_name} size="sm" />
+                                  <span style={{ fontWeight: 550, whiteSpace: 'nowrap' }}>{v.client_name}</span>
+                                </div>
+                              </td>
+                              <td><a href={`tel:${v.phone}`} style={{ color: 'var(--brand-secondary)', textDecoration: 'none', fontWeight: 550, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Phone size={12} />{v.phone}</a></td>
+                              <td><span className="badge tone-violet">{v.industry || 'General'}</span></td>
+                              <td style={{ whiteSpace: 'nowrap' }}>{v.rep_name}</td>
+                              <td className="tabular" style={{ whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>{formatDate(v.visit_done_at, 'dd MMM, hh:mm a')}</td>
+                              <td>
+                                <span className="badge" style={{ color: s?.color, borderColor: `color-mix(in srgb, ${s?.color ?? 'gray'} 30%, transparent)`, background: `color-mix(in srgb, ${s?.color ?? 'gray'} 10%, transparent)` }}>
+                                  {s?.icon} {s?.label ?? v.status}
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+
+          {activeTab === 'funnel' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {(['Discovery', 'Nurturing', 'Visit', 'Closing'] as const).map(stage => {
+                const defs = STATUS_DEFINITIONS.filter(s => s.stage === stage && (!s.legacy || (aggregate.statusCounts[s.id] || 0) > 0))
+                const stageTotal = defs.reduce((s, d) => s + (aggregate.statusCounts[d.id] || 0), 0)
+                const stagePct = aggregate.totalLeads > 0 ? Math.round((stageTotal / aggregate.totalLeads) * 100) : 0
+                return (
+                  <section key={stage} className="card" style={{ padding: '1.1rem 1.25rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', marginBottom: '0.9rem' }}>
+                      <span className="eyebrow" style={{ color: 'var(--text-secondary)' }}>{stage === 'Visit' ? 'Campus visits' : stage}</span>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{stageTotal} lead{stageTotal !== 1 ? 's' : ''} · {stagePct}%</span>
+                    </div>
+                    <div className="funnel-grid">
+                      {defs.map(def => {
+                        const count = aggregate.statusCounts[def.id] || 0
+                        const pct = aggregate.totalLeads > 0 ? Math.round((count / aggregate.totalLeads) * 100) : 0
+                        return (
+                          <button
+                            key={def.id}
+                            className="funnel-tile"
+                            disabled={count === 0}
+                            style={{ '--tone': def.color } as React.CSSProperties}
+                            onClick={() => setDrilldown({ id: def.id, repName: selectedRep === 'all' ? 'Entire team' : teamData[0]?.employee.full_name || '', leads: aggregate.statusLeadsMap[def.id] })}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <span className="funnel-tile-icon">{def.icon}</span>
+                              <span className="tabular" style={{ fontSize: '1.4rem', fontWeight: 650, color: count ? def.color : 'var(--text-faint)' }}>{count}</span>
+                            </div>
+                            <span style={{ fontSize: '0.8125rem', fontWeight: 550, color: 'var(--text-primary)' }}>{def.label}</span>
+                            <div className="progress-bar" style={{ height: 3 }}><div className="progress-fill" style={{ width: `${pct}%`, background: def.color }} /></div>
+                            <span style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                              {pct}% of leads {count > 0 && <ChevronRight size={12} />}
+                            </span>
+                          </button>
                         )
                       })}
                     </div>
-                  </div>
+                  </section>
                 )
               })}
             </div>
           )}
 
-          {/* TAB 2: ENROLLED STUDENTS DIRECTORY (100% ACCURATE ROSTER) */}
           {activeTab === 'enrolled' && (
-            <div className="glass-card" style={{ overflow: 'hidden' }}>
-              {/* Directory Filter Bar */}
-              <div style={{ padding: '1.25rem', borderBottom: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+            <section className="card" style={{ overflow: 'hidden' }}>
+              <div className="card-header" style={{ flexWrap: 'wrap' }}>
                 <div>
-                  <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-                    Official Enrolled Student Roster — {selectedMonthLabel}
-                  </h3>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '2px 0 0' }}>
-                    100% verified lead conversions logged as Closed Won
-                  </p>
+                  <div className="card-title">Enrolled students · {monthLabel}</div>
+                  <div className="card-subtitle">Leads marked Enrolled this month</div>
                 </div>
-
-                <div style={{ position: 'relative', width: '260px' }}>
-                  <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                  <input
-                    value={searchEnrolled}
-                    onChange={e => setSearchEnrolled(e.target.value)}
-                    placeholder="Search student name, phone, program..."
-                    className="form-input"
-                    style={{ paddingLeft: '32px', height: '34px', fontSize: '0.8rem' }}
-                  />
+                <div style={{ position: 'relative', width: 260, maxWidth: '100%' }}>
+                  <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  <input value={searchEnrolled} onChange={e => setSearchEnrolled(e.target.value)} placeholder="Search students…" className="form-input" style={{ paddingLeft: 32, height: 34, minHeight: 34 }} />
                 </div>
               </div>
-
               {filteredEnrolled.length === 0 ? (
                 <div className="empty-state">
-                  <div className="empty-state-icon">
-                    <Award size={24} color="#10b981" />
-                  </div>
-                  <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                    {aggregate.allEnrolled.length === 0
-                      ? `No student enrollments recorded for ${selectedMonthLabel} yet`
-                      : 'No student matches your search'}
-                  </p>
+                  <div className="empty-state-icon"><Award size={20} /></div>
+                  <p>{aggregate.allEnrolled.length === 0 ? `No enrolments recorded for ${monthLabel} yet` : 'No student matches your search'}</p>
                 </div>
               ) : (
                 <div style={{ overflowX: 'auto' }}>
                   <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>#</th>
-                        <th>Student Details</th>
-                        <th>Contact</th>
-                        <th>Enrolled Program</th>
-                        <th>Sales Executive</th>
-                        <th>Platform</th>
-                        <th>Enrolled Date</th>
-                        <th>Notes</th>
-                      </tr>
-                    </thead>
+                    <thead><tr><th>#</th><th>Student</th><th>Contact</th><th>Program</th><th>Sales executive</th><th>Platform</th><th>Date</th><th>Notes</th></tr></thead>
                     <tbody>
                       {filteredEnrolled.map((lead, idx) => (
                         <tr key={lead.id}>
-                          <td style={{ fontSize: '0.75rem', fontWeight: 700, color: '#10b981' }}>
-                            {idx + 1}
-                          </td>
+                          <td className="tabular" style={{ color: 'var(--text-muted)' }}>{idx + 1}</td>
                           <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                              <div style={{
-                                width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-                                background: 'rgba(16,185,129,0.15)', color: '#10b981',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: '0.68rem', fontWeight: 700
-                              }}>
-                                {getInitials(lead.client_name)}
-                              </div>
-                              <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                                {lead.client_name}
-                              </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                              <Avatar name={lead.client_name} size="sm" />
+                              <span style={{ fontWeight: 550, whiteSpace: 'nowrap' }}>{lead.client_name}</span>
                             </div>
                           </td>
                           <td>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <a href={`tel:${lead.phone}`} style={{ fontSize: '0.8rem', color: '#6366f1', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
-                                <Phone size={11} /> {lead.phone}
-                              </a>
-                              {lead.email && (
-                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <Mail size={10} /> {lead.email}
-                                </span>
-                              )}
-                            </div>
+                            <a href={`tel:${lead.phone}`} style={{ color: 'var(--brand-secondary)', textDecoration: 'none', fontWeight: 550, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Phone size={12} />{lead.phone}</a>
+                            {lead.email && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{lead.email}</div>}
                           </td>
-                          <td>
-                            <span style={{
-                              fontSize: '0.75rem', fontWeight: 600, padding: '3px 8px', borderRadius: '6px',
-                              background: 'rgba(99,102,241,0.08)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.18)',
-                              whiteSpace: 'nowrap'
-                            }}>
-                              {lead.industry || 'General'}
-                            </span>
-                          </td>
-                          <td>
-                            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                              {lead.rep_name || 'Sales Rep'}
-                            </span>
-                          </td>
-                          <td>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                              {lead.platform || 'Facebook'}
-                            </span>
-                          </td>
-                          <td>
-                            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                              {lead.enrolled_at}
-                            </span>
-                          </td>
-                          <td style={{ maxWidth: '180px' }}>
-                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                              {lead.notes || '—'}
-                            </span>
-                          </td>
+                          <td><span className="badge tone-violet">{lead.industry || 'General'}</span></td>
+                          <td style={{ whiteSpace: 'nowrap' }}>{lead.rep_name}</td>
+                          <td style={{ color: 'var(--text-muted)' }}>{lead.platform || 'Facebook'}</td>
+                          <td className="tabular" style={{ whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>{lead.enrolled_at}</td>
+                          <td style={{ maxWidth: 200, fontSize: '0.78rem', color: 'var(--text-muted)' }}>{lead.notes || '—'}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
               )}
-            </div>
+            </section>
           )}
 
-          {/* TAB 3: SALES REP SCORECARDS */}
           {activeTab === 'team' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1.25rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
               {teamData.map(rep => (
-                <div key={rep.employee.id} className="glass-card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {/* Rep Header */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
-                    {rep.employee.avatar_url ? (
-                      <img src={rep.employee.avatar_url} alt="" style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover' }} />
-                    ) : (
-                      <div className="avatar avatar-md">
-                        {getInitials(rep.employee.full_name)}
-                      </div>
-                    )}
+                <section key={rep.employee.id} className="card" style={{ padding: '1.2rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                    <Avatar name={rep.employee.full_name} src={rep.employee.avatar_url} size="md" />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-                        {rep.employee.full_name}
-                      </h4>
-                      <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '2px 0 0' }}>
-                        {rep.employee.designation || 'Sales Executive'}
-                      </p>
+                      <h4 style={{ fontSize: '0.95rem', fontWeight: 600 }}>{rep.employee.full_name}</h4>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{rep.employee.designation || 'Sales Executive'}</p>
                     </div>
-                    <span style={{
-                      fontSize: '0.72rem', fontWeight: 700, padding: '3px 8px', borderRadius: '99px',
-                      background: rep.reportRate >= 80 ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
-                      color: rep.reportRate >= 80 ? '#10b981' : '#f59e0b',
-                      border: `1px solid ${rep.reportRate >= 80 ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`
-                    }}>
-                      {rep.reportRate}% compliance
-                    </span>
+                    <span className={`badge ${rep.reportRate >= 80 ? 'tone-success' : 'tone-warning'}`}>{rep.reportRate}% logs</span>
                   </div>
-
-                  {/* Stat Grid */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem', background: 'var(--bg-surface)', padding: '0.75rem', borderRadius: '10px' }}>
-                    <div style={{ textAlign: 'center' }}>
-                      <p style={{ fontSize: '1.25rem', fontWeight: 800, color: '#6366f1', margin: 0 }}>{rep.totalLeads}</p>
-                      <p style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', margin: '2px 0 0' }}>Assigned</p>
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      <p style={{ fontSize: '1.25rem', fontWeight: 800, color: '#10b981', margin: 0 }}>{rep.convertedCount}</p>
-                      <p style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', margin: '2px 0 0' }}>Enrolled</p>
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      <p style={{ fontSize: '1.25rem', fontWeight: 800, color: '#f59e0b', margin: 0 }}>{rep.conversionRate}%</p>
-                      <p style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', margin: '2px 0 0' }}>Conv. Rate</p>
-                    </div>
+                  <div className="scorecard-stats">
+                    {[
+                      { label: 'Assigned', value: rep.totalLeads },
+                      { label: 'Visits', value: rep.visitsDone ?? 0, accent: true },
+                      { label: 'Enrolled', value: rep.convertedCount },
+                      { label: 'Conv.', value: `${rep.conversionRate}%` },
+                    ].map(s => (
+                      <div key={s.label}>
+                        <p className={`tabular ${s.accent ? 'text-gradient' : ''}`} style={{ fontSize: '1.25rem', fontWeight: 650 }}>{s.value}</p>
+                        <p className="kpi-label" style={{ fontSize: '0.625rem' }}>{s.label}</p>
+                      </div>
+                    ))}
                   </div>
-
-                  {/* Daily Report Activity Targets */}
                   {Object.keys(rep.metrics).length > 0 && (
                     <div>
-                      <p style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-                        Quota Progress ({workingDays} Days)
-                      </p>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <p className="kpi-label" style={{ marginBottom: '0.5rem' }}>Quota progress · {workingDays} days</p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
                         {Object.entries(rep.metrics).map(([title, m]) => {
                           const pct = m.monthlyTarget > 0 ? Math.min(100, Math.round((m.total / m.monthlyTarget) * 100)) : 0
-                          const color = title.toLowerCase().includes('enroll') ? '#10b981' : '#6366f1'
                           return (
-                            <div key={title} style={{ fontSize: '0.75rem' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                                <span style={{ color: 'var(--text-secondary)' }}>{title}</span>
-                                <span style={{ fontWeight: 700, color }}>{m.total} / {m.monthlyTarget} ({pct}%)</span>
+                            <div key={title} style={{ fontSize: '0.78rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, gap: 8 }}>
+                                <span className="truncate-1" style={{ color: 'var(--text-secondary)' }}>{title}</span>
+                                <span className="tabular" style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{m.total} / {m.monthlyTarget} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({pct}%)</span></span>
                               </div>
-                              <div className="progress-bar" style={{ height: '4px' }}>
-                                <div className="progress-fill" style={{ width: `${pct}%`, background: color }} />
-                              </div>
+                              <div className="progress-bar" style={{ height: 4 }}><div className="progress-fill" style={{ width: `${pct}%` }} /></div>
                             </div>
                           )
                         })}
                       </div>
                     </div>
                   )}
-                </div>
+                </section>
               ))}
             </div>
           )}
 
-          {/* TAB 4: DAILY ACTIVITY LOGS */}
           {activeTab === 'activity' && (
-            <div className="glass-card" style={{ overflow: 'hidden' }}>
-              <div style={{ padding: '1.25rem', borderBottom: '1px solid var(--border-default)' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-                  Sales Team Daily Report Submissions
-                </h3>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '2px 0 0' }}>
-                  Audited work logs recorded for {selectedMonthLabel}
-                </p>
+            <section className="card" style={{ overflow: 'hidden' }}>
+              <div className="card-header">
+                <div>
+                  <div className="card-title">Daily report submissions</div>
+                  <div className="card-subtitle">Work logs recorded in {monthLabel}</div>
+                </div>
               </div>
-
               <div style={{ overflowX: 'auto' }}>
                 <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Sales Executive</th>
-                      <th>Date</th>
-                      <th>Total Activity Count</th>
-                      <th>Task Breakdown</th>
-                      <th>Notes / Remarks</th>
-                    </tr>
-                  </thead>
+                  <thead><tr><th>Sales executive</th><th>Date</th><th>Total activity</th><th>Breakdown</th><th>Notes</th></tr></thead>
                   <tbody>
-                    {teamData.flatMap(e =>
-                      e.daily.map((d, i) => (
-                        <tr key={`${e.employee.id}-${d.date}-${i}`}>
-                          <td style={{ fontWeight: 600 }}>{e.employee.full_name}</td>
-                          <td style={{ whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>{d.date}</td>
-                          <td style={{ fontWeight: 700, color: '#6366f1' }}>{d.totalCount} calls / tasks</td>
-                          <td>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                              {Array.isArray(d.entries) && d.entries.map((entry: any, k: number) => (
-                                <span key={k} style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
-                                  {entry.description}: {entry.count}
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-                          <td style={{ maxWidth: '240px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            {d.note || '—'}
-                          </td>
-                        </tr>
-                      ))
-                    )}
+                    {teamData.flatMap(e => e.daily.map((d, i) => (
+                      <tr key={`${e.employee.id}-${d.date}-${i}`}>
+                        <td style={{ fontWeight: 550, whiteSpace: 'nowrap' }}>{e.employee.full_name}</td>
+                        <td className="tabular" style={{ whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>{d.date}</td>
+                        <td className="tabular" style={{ fontWeight: 600 }}>{d.totalCount}</td>
+                        <td>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                            {Array.isArray(d.entries) && d.entries.map((entry, k) => (
+                              <span key={k} className="badge">{entry.description}: <strong style={{ color: 'var(--text-primary)' }}>{entry.count}</strong></span>
+                            ))}
+                          </div>
+                        </td>
+                        <td style={{ maxWidth: 240, fontSize: '0.78rem', color: 'var(--text-muted)' }}>{d.note || '—'}</td>
+                      </tr>
+                    )))}
                   </tbody>
                 </table>
+                {teamData.every(e => e.daily.length === 0) && <div className="empty-state"><p>No reports submitted in {monthLabel}</p></div>}
               </div>
-            </div>
+            </section>
           )}
         </>
       )}
 
-      {/* ── Status Drilldown Slide-Over Drawer ── */}
-      {selectedStatusDrilldown && (
-        <StatusDrilldownDrawer
-          statusId={selectedStatusDrilldown.id}
-          leads={selectedStatusDrilldown.leads}
-          repName={selectedStatusDrilldown.repName}
-          onClose={() => setSelectedStatusDrilldown(null)}
-        />
+      {drilldown && (
+        <StatusDrilldownDrawer statusId={drilldown.id} leads={drilldown.leads} repName={drilldown.repName} onClose={() => setDrilldown(null)} />
       )}
-
-      <style>{`
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes slideLeft { from { transform: translateX(100%); } to { transform: translateX(0); } }
-      `}</style>
     </div>
   )
 }

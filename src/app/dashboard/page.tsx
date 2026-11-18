@@ -3,8 +3,10 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
+import { canAccessLeads, findNavItem, type ActiveSection } from '@/lib/navigation'
 import Sidebar from '@/components/Sidebar'
 import Topbar from '@/components/Topbar'
+import CommandPalette from '@/components/CommandPalette'
 import OverviewSection from '@/components/sections/OverviewSection'
 import TasksSection from '@/components/sections/TasksSection'
 import LeadsSection from '@/components/sections/LeadsSection'
@@ -20,21 +22,9 @@ import AttendanceSection from '@/components/sections/AttendanceSection'
 import RealtimeLeadAlert from '@/components/RealtimeLeadAlert'
 import PWAInstallPrompt from '@/components/PWAInstallPrompt'
 import MobileBottomNav from '@/components/MobileBottomNav'
+import ClickSpark from '@/components/fx/ClickSpark'
 
-export type ActiveSection =
-  | 'overview'
-  | 'tasks'
-  | 'my-tasks'
-  | 'leads'
-  | 'sales'
-  | 'reports'
-  | 'performance'
-  | 'employees'
-  | 'notifications'
-  | 'strategy'
-  | 'settings'
-  | 'leaderboard'
-  | 'attendance'
+export type { ActiveSection } from '@/lib/navigation'
 
 /** Get the stored JWT token for API calls */
 export function getAuthToken(): string | null {
@@ -48,6 +38,12 @@ export function authHeaders(): HeadersInit {
   return token ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' }
 }
 
+const sectionFromHash = (): ActiveSection | null => {
+  if (typeof window === 'undefined') return null
+  const h = window.location.hash.replace('#', '')
+  return (h || null) as ActiveSection | null
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -55,14 +51,23 @@ export default function DashboardPage() {
   const [activeSection, setActiveSection] = useState<ActiveSection>('overview')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [navBadges, setNavBadges] = useState<Record<string, number | 'dot'>>({})
 
-  // Initialize sidebar collapsed state from localStorage
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('rp-sidebar-collapsed')
-      if (saved === 'true') setSidebarCollapsed(true)
+      if (localStorage.getItem('rp-sidebar-collapsed') === 'true') setSidebarCollapsed(true)
     } catch { /* silent */ }
+  }, [])
+
+  const navigate = useCallback((section: ActiveSection) => {
+    setActiveSection(section)
+    setSidebarOpen(false)
+    if (window.location.hash !== `#${section}`) {
+      window.history.replaceState(null, '', section === 'overview' ? window.location.pathname : `#${section}`)
+    }
+    window.scrollTo({ top: 0 })
   }, [])
 
   // ── Auto Logout at 12:00 AM Midnight IST ──
@@ -71,58 +76,45 @@ export default function DashboardPage() {
       localStorage.removeItem('rushi_token')
       localStorage.removeItem('rushi_user')
       localStorage.removeItem('rushi_login_date')
-      if (typeof document !== 'undefined') {
-        document.cookie = 'rushi_session=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;'
-      }
+      document.cookie = 'rushi_session=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;'
       router.push('/?session=expired')
     }
 
     const checkMidnightLogout = () => {
       const now = new Date()
-      // IST time: UTC + 5:30 (19800000 ms)
       const istOffsetMs = 5.5 * 60 * 60 * 1000
       const istTime = new Date(now.getTime() + istOffsetMs)
-      
       const storedLoginDate = localStorage.getItem('rushi_login_date')
       const currentIstDateStr = istTime.toISOString().split('T')[0]
-      
+
       if (!storedLoginDate) {
         localStorage.setItem('rushi_login_date', currentIstDateStr)
       } else if (storedLoginDate !== currentIstDateStr) {
-        // Date has crossed midnight! Trigger logout
         handleMidnightExpiry()
         return 0
       }
 
-      // Next midnight in IST (00:00:00 of next day)
       const nextMidnightIST = new Date(Date.UTC(
-        istTime.getUTCFullYear(),
-        istTime.getUTCMonth(),
-        istTime.getUTCDate() + 1,
-        0, 0, 0, 0
+        istTime.getUTCFullYear(), istTime.getUTCMonth(), istTime.getUTCDate() + 1, 0, 0, 0, 0
       ))
       return (nextMidnightIST.getTime() - istOffsetMs) - now.getTime()
     }
 
     const msUntilMidnight = checkMidnightLogout()
-
-    // 1. Precise timer to fire exactly at 12:00 AM midnight
     let timer: NodeJS.Timeout | null = null
     if (msUntilMidnight > 0 && msUntilMidnight < 2147483647) {
       timer = setTimeout(handleMidnightExpiry, msUntilMidnight)
     }
-
-    // 2. Continuous interval (every 15s) in case device was sleeping / tab was paused
+    // Catch-up check in case the device slept through midnight
     const interval = setInterval(checkMidnightLogout, 15000)
-
     return () => {
       if (timer) clearTimeout(timer)
       clearInterval(interval)
     }
   }, [router])
 
-  const handleToggleSidebar = () => {
-    if (typeof window !== 'undefined' && window.innerWidth <= 1024) {
+  const handleToggleSidebar = useCallback(() => {
+    if (window.innerWidth <= 1024) {
       setSidebarOpen(prev => !prev)
     } else {
       setSidebarCollapsed(prev => {
@@ -131,23 +123,34 @@ export default function DashboardPage() {
         return next
       })
     }
-  }
+  }, [])
+
+  // ⌘K / Ctrl+K opens the command palette; "[" toggles the sidebar
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen(o => !o)
+        return
+      }
+      const target = e.target as HTMLElement
+      const typing = target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+      if (!typing && e.key === '[' && !e.metaKey && !e.ctrlKey) handleToggleSidebar()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [handleToggleSidebar])
 
   const fetchProfile = useCallback(async () => {
     try {
       const token = localStorage.getItem('rushi_token')
       const userStr = localStorage.getItem('rushi_user')
-
       if (!token || !userStr) {
         router.push('/')
         return
       }
 
-      // Verify token is still valid
-      const res = await fetch('/api/auth/me', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-
+      const res = await fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` } })
       if (!res.ok) {
         localStorage.removeItem('rushi_token')
         localStorage.removeItem('rushi_user')
@@ -156,17 +159,11 @@ export default function DashboardPage() {
       }
 
       const { user } = await res.json()
-
-      // Fetch full profile
-      const profileRes = await fetch(`/api/employees/${user.userId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
+      const profileRes = await fetch(`/api/employees/${user.userId}`, { headers: { 'Authorization': `Bearer ${token}` } })
 
       if (profileRes.ok) {
-        const profileData = await profileRes.json()
-        setProfile(profileData)
+        setProfile(await profileRes.json())
       } else {
-        // Build profile from JWT data
         setProfile({
           id: user.userId,
           email: user.email,
@@ -181,7 +178,6 @@ export default function DashboardPage() {
           created_at: new Date().toISOString(),
         } as Profile)
       }
-
       setLoading(false)
     } catch (err) {
       console.error('Session error:', err)
@@ -193,19 +189,63 @@ export default function DashboardPage() {
     try {
       const token = localStorage.getItem('rushi_token')
       if (!token) return
-      const res = await fetch('/api/notifications?unread=true', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
+      const res = await fetch('/api/notifications?unread=true', { headers: { 'Authorization': `Bearer ${token}` } })
       if (res.ok) {
         const data = await res.json()
-        setUnreadCount(Array.isArray(data) ? data.filter((n: {is_read: boolean}) => !n.is_read).length : 0)
+        setUnreadCount(Array.isArray(data) ? data.filter((n: { is_read: boolean }) => !n.is_read).length : 0)
       }
     } catch { /* silent */ }
   }, [])
 
+  // Employee reminders in the nav: report not yet submitted today, tasks due today or overdue
+  const fetchBadges = useCallback(async () => {
+    const token = localStorage.getItem('rushi_token')
+    if (!token || !profile || profile.role === 'admin') return
+    const headers = { Authorization: `Bearer ${token}` }
+    try {
+      const [reports, tasks] = await Promise.all([
+        fetch('/api/reports', { headers }).then(r => (r.ok ? r.json() : [])),
+        fetch('/api/tasks', { headers }).then(r => (r.ok ? r.json() : [])),
+      ])
+      const today = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10)
+      const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999)
+      const reportDone = Array.isArray(reports) && reports.some((r: { report_date: string }) => String(r.report_date).slice(0, 10) === today)
+      const due = Array.isArray(tasks)
+        ? tasks.filter((t: { status: string; deadline: string | null }) => t.deadline && !['completed', 'cancelled'].includes(t.status) && new Date(t.deadline) <= endOfToday).length
+        : 0
+      setNavBadges({ reports: reportDone ? 0 : 'dot', tasks: due })
+    } catch { /* badges are best-effort */ }
+  }, [profile])
+
   useEffect(() => {
-    fetchProfile()
+    if (!profile || profile.role === 'admin') return
+    fetchBadges()
+    const interval = setInterval(fetchBadges, 120000)
+    const onRefresh = () => fetchBadges()
+    window.addEventListener('rp:refresh-badges', onRefresh)
+    return () => { clearInterval(interval); window.removeEventListener('rp:refresh-badges', onRefresh) }
+  }, [profile, fetchBadges, activeSection])
+
+  useEffect(() => { fetchProfile() }, [fetchProfile])
+
+  useEffect(() => {
+    const onProfile = () => fetchProfile()
+    window.addEventListener('rp:profile-updated', onProfile)
+    return () => window.removeEventListener('rp:profile-updated', onProfile)
   }, [fetchProfile])
+
+  // Restore the section from the URL once we know what this user may see
+  useEffect(() => {
+    if (!profile) return
+    const fromHash = sectionFromHash()
+    if (fromHash && findNavItem(profile, fromHash)) setActiveSection(fromHash)
+    const onHash = () => {
+      const s = sectionFromHash()
+      if (s && findNavItem(profile, s)) setActiveSection(s)
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [profile])
 
   useEffect(() => {
     if (!profile) return
@@ -214,7 +254,7 @@ export default function DashboardPage() {
     return () => clearInterval(interval)
   }, [profile, fetchUnreadCount])
 
-  // Background trigger for task reminders & visit/workshop reminders (throttled to every 15 mins)
+  // Background trigger for task & visit/workshop reminders (throttled to every 15 mins)
   useEffect(() => {
     if (!profile) return
     try {
@@ -224,12 +264,8 @@ export default function DashboardPage() {
         sessionStorage.setItem('rp_last_cron_check', String(now))
         const token = localStorage.getItem('rushi_token')
         if (token) {
-          fetch('/api/cron/task-reminders', {
-            headers: { 'Authorization': `Bearer ${token}` }
-          }).catch(() => {})
-          fetch('/api/cron/visit-reminders', {
-            headers: { 'Authorization': `Bearer ${token}` }
-          }).catch(() => {})
+          fetch('/api/cron/task-reminders', { headers: { 'Authorization': `Bearer ${token}` } }).catch(() => {})
+          fetch('/api/cron/visit-reminders', { headers: { 'Authorization': `Bearer ${token}` } }).catch(() => {})
         }
       }
     } catch { /* silent */ }
@@ -237,46 +273,30 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--bg-base)',
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{
-            width: '48px',
-            height: '48px',
-            border: '3px solid var(--border-default)',
-            borderTopColor: 'var(--brand-primary)',
-            borderRadius: '50%',
-            animation: 'spin 0.8s linear infinite',
-            margin: '0 auto 1rem',
-          }} />
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Loading portal...</p>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-base)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+          <img src="/logo-mark.png" alt="" width={44} height={44} style={{ borderRadius: '50%', animation: 'pulseGlow 1.6s ease-in-out infinite' }} />
+          <div style={{ width: 120, height: 2, borderRadius: 2, overflow: 'hidden', background: 'var(--border-default)' }}>
+            <div className="skeleton" style={{ width: '100%', height: '100%', background: 'linear-gradient(90deg, transparent, var(--brand-primary), transparent)', backgroundSize: '200% 100%' }} />
+          </div>
         </div>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     )
   }
 
   if (!profile) return null
 
-  const canAccessLeads =
-    profile.role === 'admin' || profile.department?.toLowerCase() === 'sales'
+  const leadsAllowed = canAccessLeads(profile)
 
   const renderSection = () => {
     const props = { profile }
     switch (activeSection) {
-      case 'overview': return <OverviewSection {...props} onNavigate={setActiveSection} />
+      case 'overview': return <OverviewSection {...props} onNavigate={navigate} />
       case 'tasks': return <TasksSection {...props} initialTab="all" />
       case 'my-tasks': return <TasksSection {...props} initialTab="my-tasks" />
       case 'reports': return <ReportsSection {...props} />
-      case 'leads': return canAccessLeads
-        ? <LeadsSection {...props} />
-        : <OverviewSection {...props} onNavigate={setActiveSection} />
-      case 'sales': return canAccessLeads ? <SalesSection {...props} /> : null
+      case 'leads': return leadsAllowed ? <LeadsSection {...props} /> : <OverviewSection {...props} onNavigate={navigate} />
+      case 'sales': return leadsAllowed ? <SalesSection {...props} /> : null
       case 'performance': return <PerformanceSection {...props} />
       case 'employees': return profile.role === 'admin' ? <EmployeesSection {...props} /> : null
       case 'notifications': return <NotificationsSection {...props} onRead={fetchUnreadCount} />
@@ -284,60 +304,53 @@ export default function DashboardPage() {
       case 'settings': return <SettingsSection {...props} />
       case 'leaderboard': return <LeaderboardSection {...props} />
       case 'attendance': return <AttendanceSection {...props} />
-      default: return <OverviewSection {...props} onNavigate={setActiveSection} />
+      default: return <OverviewSection {...props} onNavigate={navigate} />
     }
   }
 
   return (
+    <ClickSpark sparkColor={['#3ee6a8', '#2fd0d8', '#4aa8ff']} sparkSize={8} sparkRadius={18} sparkCount={8} duration={420} style={{ isolation: 'auto' }}>
     <div className="page-layout">
-      {/* Mobile overlay */}
-      <div
-        className={`sidebar-overlay ${sidebarOpen ? 'visible' : ''}`}
-        onClick={() => setSidebarOpen(false)}
-      />
+      <div className={`sidebar-overlay ${sidebarOpen ? 'visible' : ''}`} onClick={() => setSidebarOpen(false)} />
 
       <Sidebar
         profile={profile}
         activeSection={activeSection}
-        onNavigate={(section) => {
-          setActiveSection(section as ActiveSection)
-          setSidebarOpen(false)
-        }}
+        onNavigate={navigate}
+        onOpenSearch={() => setPaletteOpen(true)}
         isOpen={sidebarOpen}
         collapsed={sidebarCollapsed}
         unreadCount={unreadCount}
+        badges={navBadges}
       />
 
       <div className={`main-content ${sidebarCollapsed ? 'expanded' : ''}`}>
         <Topbar
           profile={profile}
+          activeSection={activeSection}
           unreadCount={unreadCount}
-          sidebarCollapsed={sidebarCollapsed}
           onToggleSidebar={handleToggleSidebar}
-          onNotificationsClick={() => setActiveSection('notifications')}
+          onOpenSearch={() => setPaletteOpen(true)}
+          onNavigate={navigate}
         />
-        <div className="page-container animate-fade-in">
+        <main className="page-container animate-fade-in" key={activeSection}>
           {renderSection()}
-        </div>
+        </main>
       </div>
 
-      {/* Real-time Lead Audio Chime & Desktop Push Notification Listener */}
-      <RealtimeLeadAlert
-        onViewLead={() => setActiveSection('leads')}
-        userRole={profile.role}
-      />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} profile={profile} onNavigate={navigate} />
 
-      {/* PWA Mobile App Download & Install Prompt */}
+      <RealtimeLeadAlert onViewLead={() => navigate('leads')} userRole={profile.role} />
       <PWAInstallPrompt />
-
-      {/* Mobile App Bottom Navigation Bar */}
       <MobileBottomNav
         profile={profile}
         activeSection={activeSection}
-        onNavigate={section => setActiveSection(section)}
+        onNavigate={navigate}
         onToggleMenu={() => setSidebarOpen(prev => !prev)}
         unreadCount={unreadCount}
+        badges={navBadges}
       />
     </div>
+    </ClickSpark>
   )
 }

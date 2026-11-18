@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { istToday } from '@/lib/utils'
 import { query, queryOne, execute } from '@/lib/db'
 import { getUserFromRequest } from '@/lib/auth'
-import { getAiSensyApiKey } from '@/lib/aisensy'
+import { getAiSensyApiKey, postToAiSensy } from '@/lib/aisensy'
 
 // GET /api/reports                        → employee: own reports | admin: all
 // GET /api/reports?employee_id=xxx        → admin: specific employee reports
@@ -99,12 +100,7 @@ export async function POST(req: NextRequest) {
   }
 
   const targetEmployeeId = isAdmin && employee_id ? employee_id : user.userId
-  const today = (() => {
-    const d = new Date()
-    const offset = d.getTimezoneOffset() * 60000
-    const istTime = new Date(d.getTime() + offset + (330 * 60000))
-    return istTime.toISOString().slice(0, 10)
-  })()
+  const today = istToday()
 
   const cleanReportDate = String(report_date).slice(0, 10)
   if (!isAdmin && cleanReportDate < today) {
@@ -244,7 +240,7 @@ export async function POST(req: NextRequest) {
         const cleaned = admin.phone.replace(/\D/g, '')
         const e164 = cleaned.startsWith('91') ? cleaned : `91${cleaned}`
         try {
-          await fetch('https://backend.aisensy.com/campaign/t1/api/v2', {
+          await postToAiSensy({
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

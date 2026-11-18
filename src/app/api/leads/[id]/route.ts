@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { queryOne, execute } from '@/lib/db'
 import { getUserFromRequest } from '@/lib/auth'
+import { ensureVisitDoneColumn, visitDoneAtAssignment } from '@/lib/leads'
 import { handleLeadStatusChangeAiSensy, checkAndSendImmediateVisitReminder, checkAndSendImmediateWorkshopReminder } from '@/lib/aisensy'
 
 export async function PATCH(
@@ -91,6 +92,12 @@ export async function PATCH(
     if (updates.length === 0) {
       const existing = await queryOne('SELECT * FROM leads WHERE id = $1', [id])
       return NextResponse.json(existing)
+    }
+
+    if (body.status) {
+      await ensureVisitDoneColumn()
+      values.push(body.status)
+      updates.push(visitDoneAtAssignment(`$${values.length}::text`))
     }
 
     // Always touch updated_at

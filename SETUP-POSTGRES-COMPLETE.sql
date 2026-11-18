@@ -175,7 +175,7 @@ ALTER TABLE notifications ADD COLUMN IF NOT EXISTS task_id UUID REFERENCES tasks
 CREATE TABLE IF NOT EXISTS clients (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name            TEXT NOT NULL,
-  slug            TEXT,
+  slug            TEXT UNIQUE,
   color           TEXT DEFAULT '#6366f1',
   logo_url        TEXT,
   email           TEXT,

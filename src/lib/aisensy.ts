@@ -26,6 +26,7 @@ const DISALLOWED_STATUSES = new Set([
   'follow_up',
   'interested',
   'visit_scheduled',
+  'visit_done',
   'not_interested',
   'closed_won',
   'closed_lost',
@@ -76,9 +77,58 @@ export function formatStatusForTemplate(status: string): string {
   if (s === 'interested') return 'Interested'
   if (s === 'not_interested') return 'Not Interested'
   if (s === 'visit_scheduled') return 'Visit Scheduled'
+  if (s === 'visit_done') return 'Visit Done'
   if (s === 'closed_won') return 'Enrolled'
   return status.charAt(0).toUpperCase() + status.slice(1)
 }
+
+const AISENSY_URL = 'https://backend.aisensy.com/campaign/t1/api/v2'
+
+// AISENSY_DRY_RUN=true (set in .env.development.local) keeps local dev from messaging real phones.
+export async function postToAiSensy(init: RequestInit): Promise<Response> {
+  if (process.env.AISENSY_DRY_RUN === 'true') {
+    console.log('[AiSensy dry-run] suppressed send:', init.body)
+    return Response.json({ success: true, dryRun: true })
+  }
+  return fetch(AISENSY_URL, init)
+}
+
+// ─── Per-lead WhatsApp delivery log (what the Leads page shows) ─────────────
+export type WhatsAppKind = 'status' | 'visit_reminder' | 'workshop_reminder'
+
+let waLogReady: Promise<unknown> | null = null
+export function ensureWhatsAppLog(): Promise<unknown> {
+  waLogReady ??= execute(
+    `CREATE TABLE IF NOT EXISTS lead_whatsapp_log (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      campaign TEXT,
+      detail TEXT,
+      status TEXT NOT NULL,
+      error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`
+  )
+    .then(() => execute('CREATE INDEX IF NOT EXISTS lead_whatsapp_log_lead_idx ON lead_whatsapp_log (lead_id, created_at DESC)'))
+    .catch(err => { waLogReady = null; throw err })
+  return waLogReady
+}
+
+async function logLeadWhatsApp(entry: { leadId: string; kind: WhatsAppKind; campaign?: string; detail?: string; ok: boolean; error?: string | null }) {
+  try {
+    await ensureWhatsAppLog()
+    await execute(
+      `INSERT INTO lead_whatsapp_log (lead_id, kind, campaign, detail, status, error) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [entry.leadId, entry.kind, entry.campaign ?? null, entry.detail ?? null, entry.ok ? 'sent' : 'failed', entry.ok ? null : (entry.error || 'Unknown error')]
+    )
+  } catch (err) {
+    console.error('[AiSensy] Failed to write lead_whatsapp_log:', err)
+  }
+}
+
+const aiSensyError = (res: Response, data: { message?: string; error?: string }) =>
+  data?.message || data?.error || `HTTP ${res.status}`
 
 export const VALID_WORKING_AISENSY_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY2NzJjOTQ5NmM3YjZlMTM5NWJkYmIzOSIsIm5hbWUiOiJSdXNoaVBhbmRpdCAtIERpZ2l0YWwgQWNhZGVteSIsImFwcE5hbWUiOiJBaVNlbnN5IiwiY2xpZW50SWQiOiI2NjcyYzk0ODZjN2I2ZTEzOTViZGJiMjciLCJhY3RpdmVQbGFuIjoiQkFTSUNfTU9OVEhMWSIsImlhdCI6MTc4NzczMzYwOX0.7z3K8tMpMK9YunrZ1WiICIwEXkgJP4RoRaMX0lm0Im8'
 
@@ -125,16 +175,17 @@ export async function sendAiSensyRingingSaleTemplate(
   try {
     const apiKey = getAiSensyApiKey()
 
+    const templateName = options?.templateName || 'ringing_sale'
+    const statusText = formatStatusForTemplate(options?.status || lead.status || 'Ringing')
     const destination = normalizePhoneForWhatsApp(lead.phone)
     if (!destination) {
       const msg = `Invalid phone number: "${lead.phone}"`
       console.warn(`[AiSensy] ${msg}`)
+      await logLeadWhatsApp({ leadId: lead.id, kind: 'status', campaign: templateName, detail: statusText, ok: false, error: msg })
       return { success: false, error: msg }
     }
 
     const fullName = (lead.client_name || lead.name || 'Friend').trim()
-    const templateName = options?.templateName || 'ringing_sale'
-    const statusText = formatStatusForTemplate(options?.status || lead.status || 'Ringing')
     const salesPhone = formatSalesRepPhone(options?.salesRepPhone)
 
     // Exactly 3 variables matching template: [Lead Name] [Status] [Sales Phone]
@@ -152,7 +203,7 @@ export async function sendAiSensyRingingSaleTemplate(
 
     console.log(`[AiSensy] Sending '${templateName}' to ${destination} | params:`, templateParams)
 
-    const res = await fetch('https://backend.aisensy.com/campaign/t1/api/v2', {
+    const res = await postToAiSensy({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -161,8 +212,11 @@ export async function sendAiSensyRingingSaleTemplate(
     const resData = await res.json().catch(() => ({}))
     console.log(`[AiSensy] Response status: ${res.status}`, resData)
 
-    if (!res.ok || resData.success === false) {
-      const errMsg = resData.message || resData.error || `HTTP ${res.status}`
+    const ok = res.ok && resData.success !== false
+    await logLeadWhatsApp({ leadId: lead.id, kind: 'status', campaign: templateName, detail: statusText, ok, error: ok ? null : aiSensyError(res, resData) })
+
+    if (!ok) {
+      const errMsg = aiSensyError(res, resData)
       console.error('[AiSensy] API Error:', errMsg, resData)
       try {
         await execute(
@@ -331,6 +385,7 @@ export async function sendAiSensyVisitReminder(params: VisitReminderParams): Pro
     if (!destination) {
       const msg = `Invalid phone number for visit reminder: "${params.phone}"`
       console.warn(`[AiSensy Visit] ${msg}`)
+      await logLeadWhatsApp({ leadId: params.leadId, kind: 'visit_reminder', detail: params.reminderType, ok: false, error: msg })
       return { success: false, error: msg }
     }
 
@@ -374,7 +429,7 @@ export async function sendAiSensyVisitReminder(params: VisitReminderParams): Pro
 
     console.log(`[AiSensy Visit] Sending '${campaignName}' (${params.reminderType}) to ${destination} | params:`, templateParams)
 
-    const res = await fetch('https://backend.aisensy.com/campaign/t1/api/v2', {
+    const res = await postToAiSensy({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -384,6 +439,10 @@ export async function sendAiSensyVisitReminder(params: VisitReminderParams): Pro
     console.log(`[AiSensy Visit] Response status: ${res.status}`, resData)
 
     const isSuccess = res.ok && resData.success !== false
+    await logLeadWhatsApp({
+      leadId: params.leadId, kind: 'visit_reminder', campaign: campaignName, detail: params.reminderType,
+      ok: isSuccess, error: isSuccess ? null : aiSensyError(res, resData),
+    })
 
     // Record into visit_reminder_log
     const visitDateStr = getVisitDateStrIST(params.visitDateTime)
@@ -661,7 +720,10 @@ export async function sendAiWorkshopReminder(params: {
 }): Promise<{ success: boolean; error?: string }> {
   const apiKey = getAiSensyApiKey()
   const destination = normalizePhoneForWhatsApp(params.phone)
-  if (!destination) return { success: false, error: 'Invalid phone' }
+  if (!destination) {
+    await logLeadWhatsApp({ leadId: params.leadId, kind: 'workshop_reminder', detail: params.reminderType, ok: false, error: `Invalid phone number: "${params.phone}"` })
+    return { success: false, error: 'Invalid phone' }
+  }
 
   const fullName = (params.name || 'Friend').trim()
   const timing = AI_WORKSHOP_TIMING
@@ -692,13 +754,18 @@ export async function sendAiWorkshopReminder(params: {
   console.log(`[AiSensy Workshop] Sending '${campaignName}' (${params.reminderType}) to ${destination}`)
 
   try {
-    const res = await fetch('https://backend.aisensy.com/campaign/t1/api/v2', {
+    const res = await postToAiSensy({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
     const resData = await res.json().catch(() => ({}))
     console.log(`[AiSensy Workshop] Response ${res.status}:`, resData)
+    const ok = res.ok && resData.success !== false
+    await logLeadWhatsApp({
+      leadId: params.leadId, kind: 'workshop_reminder', campaign: campaignName, detail: params.reminderType,
+      ok, error: ok ? null : aiSensyError(res, resData),
+    })
 
     // Log to DB for deduplication
     const satDateStr = getVisitDateStrIST(getNextSaturdayIST())
@@ -720,10 +787,10 @@ export async function sendAiWorkshopReminder(params: {
       `INSERT INTO ai_workshop_reminder_log (lead_id, workshop_date, reminder_type, campaign_name, phone, status)
        VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (lead_id, workshop_date, reminder_type) DO UPDATE SET sent_at = NOW(), status = EXCLUDED.status`,
-      [params.leadId, satDateStr, params.reminderType, campaignName, destination, res.ok ? 'sent' : 'failed']
+      [params.leadId, satDateStr, params.reminderType, campaignName, destination, ok ? 'sent' : 'failed']
     ).catch(() => {})
 
-    return { success: res.ok }
+    return ok ? { success: true } : { success: false, error: aiSensyError(res, resData) }
   } catch (err: any) {
     console.error('[AiSensy Workshop] Exception:', err)
     return { success: false, error: err.message }

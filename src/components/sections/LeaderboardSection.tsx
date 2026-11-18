@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { getInitials } from '@/lib/utils'
 import type { Profile } from '@/lib/database.types'
+import PageHeader from '@/components/ui/PageHeader'
+import Avatar from '@/components/ui/Avatar'
 import { Trophy, Star, ChevronLeft, ChevronRight, Medal, Crown, Zap } from 'lucide-react'
 
 interface LeaderRow {
@@ -100,67 +101,20 @@ export default function LeaderboardSection({ profile }: Props) {
   const isCurrentMonth = selectedMonth === MONTHS[0]
 
   return (
-    <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div style={{
-              width: '44px', height: '44px', borderRadius: '12px',
-              background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 4px 15px rgba(245,158,11,0.3)'
-            }}>
-              <Trophy size={22} color="white" />
-            </div>
-            <div>
-              <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>Leaderboard</h1>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>Employee points &amp; top performers</p>
-            </div>
+    <div style={{ maxWidth: '960px', margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      <PageHeader
+        live={isCurrentMonth}
+        eyebrow={isCurrentMonth ? 'Live standings' : monthLabel(selectedMonth)}
+        title="Leaderboard"
+        description="Points earned from daily reports and targets hit."
+        actions={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button className="icon-btn bordered" onClick={() => setSelectedMonth(MONTHS[Math.min(monthIdx + 1, MONTHS.length - 1)])} disabled={monthIdx >= MONTHS.length - 1} aria-label="Previous month"><ChevronLeft size={16} /></button>
+            <span className="badge" style={{ height: 34, padding: '0 0.9rem', fontSize: '0.8125rem', color: 'var(--text-primary)' }}>{monthLabel(selectedMonth)}</span>
+            <button className="icon-btn bordered" onClick={() => setSelectedMonth(MONTHS[Math.max(monthIdx - 1, 0)])} disabled={monthIdx <= 0} aria-label="Next month"><ChevronRight size={16} /></button>
           </div>
-        </div>
-
-        {/* Month Switcher */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <button
-            onClick={() => setSelectedMonth(MONTHS[Math.min(monthIdx + 1, MONTHS.length - 1)])}
-            disabled={monthIdx >= MONTHS.length - 1}
-            style={{
-              width: '32px', height: '32px', borderRadius: '8px', border: '1px solid var(--border-default)',
-              background: 'var(--bg-elevated)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'var(--text-muted)', opacity: monthIdx >= MONTHS.length - 1 ? 0.4 : 1
-            }}
-          >
-            <ChevronLeft size={16} />
-          </button>
-
-          <div style={{
-            padding: '0.4rem 1rem', background: 'var(--bg-elevated)',
-            border: '1px solid var(--border-default)', borderRadius: '8px',
-            fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', minWidth: '140px', textAlign: 'center'
-          }}>
-            {monthLabel(selectedMonth)}
-            {isCurrentMonth && (
-              <span style={{
-                marginLeft: '6px', fontSize: '0.6rem', background: '#10b981',
-                color: 'white', padding: '1px 5px', borderRadius: '99px', fontWeight: 700
-              }}>LIVE</span>
-            )}
-          </div>
-
-          <button
-            onClick={() => setSelectedMonth(MONTHS[Math.max(monthIdx - 1, 0)])}
-            disabled={monthIdx <= 0}
-            style={{
-              width: '32px', height: '32px', borderRadius: '8px', border: '1px solid var(--border-default)',
-              background: 'var(--bg-elevated)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'var(--text-muted)', opacity: monthIdx <= 0 ? 0.4 : 1
-            }}
-          >
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      </div>
+        }
+      />
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}>
@@ -196,19 +150,7 @@ export default function LeaderboardSection({ profile }: Props) {
                       {rank === 0 && <Crown size={22} color="#f59e0b" fill="#f59e0b" />}
 
                       {/* Avatar */}
-                      {row.employee.avatar_url ? (
-                        <img src={row.employee.avatar_url} alt={row.employee.full_name}
-                          style={{ width: isTop ? '64px' : '52px', height: isTop ? '64px' : '52px', borderRadius: '50%', objectFit: 'cover', border: `3px solid ${rankColors[rank]}` }} />
-                      ) : (
-                        <div style={{
-                          width: isTop ? '64px' : '52px', height: isTop ? '64px' : '52px', borderRadius: '50%',
-                          background: `${rankColors[rank]}25`, border: `3px solid ${rankColors[rank]}`,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: isTop ? '1.1rem' : '0.9rem', fontWeight: 800, color: rankColors[rank]
-                        }}>
-                          {getInitials(row.employee.full_name)}
-                        </div>
-                      )}
+                      <Avatar name={row.employee.full_name} src={row.employee.avatar_url} px={isTop ? 64 : 52} ring={rankColors[rank]} />
 
                       <span style={{ fontSize: isTop ? '0.9rem' : '0.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                         {row.employee.full_name.split(' ')[0]}
@@ -265,20 +207,7 @@ export default function LeaderboardSection({ profile }: Props) {
                     </div>
 
                     {/* Avatar */}
-                    {row.employee.avatar_url ? (
-                      <img src={row.employee.avatar_url} alt={row.employee.full_name}
-                        style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: i < 3 ? `2px solid ${rankColors[i]}` : '2px solid var(--border-default)' }} />
-                    ) : (
-                      <div style={{
-                        width: '38px', height: '38px', borderRadius: '50%', flexShrink: 0,
-                        background: i < 3 ? `${rankColors[i]}20` : 'rgba(99,102,241,0.1)',
-                        border: i < 3 ? `2px solid ${rankColors[i]}` : '2px solid var(--border-default)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '0.7rem', fontWeight: 800, color: i < 3 ? rankColors[i] : 'var(--brand-primary)'
-                      }}>
-                        {getInitials(row.employee.full_name)}
-                      </div>
-                    )}
+                    <Avatar name={row.employee.full_name} src={row.employee.avatar_url} px={38} ring={i < 3 ? rankColors[i] : undefined} />
 
                     {/* Name & Designation */}
                     <div style={{ flex: 1 }}>
@@ -347,19 +276,7 @@ export default function LeaderboardSection({ profile }: Props) {
                             border: `1px solid ${rankBorder[p.rank - 1] || 'var(--border-subtle)'}`,
                           }}>
                             <span style={{ fontSize: '1rem' }}>{rankEmojis[p.rank - 1] || `#${p.rank}`}</span>
-                            {p.employee.avatar_url ? (
-                              <img src={p.employee.avatar_url} alt={p.employee.full_name}
-                                style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }} />
-                            ) : (
-                              <div style={{
-                                width: '24px', height: '24px', borderRadius: '50%',
-                                background: `${rankColors[p.rank - 1] || '#6366f1'}20`,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: '0.55rem', fontWeight: 800, color: rankColors[p.rank - 1] || '#6366f1'
-                              }}>
-                                {getInitials(p.employee.full_name)}
-                              </div>
-                            )}
+                            <Avatar name={p.employee.full_name} src={p.employee.avatar_url} px={24} />
                             <div>
                               <p style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
                                 {p.employee.full_name.split(' ')[0]}

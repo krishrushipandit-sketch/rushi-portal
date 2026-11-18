@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
+import PageHeader from '@/components/ui/PageHeader'
 import { getInitials } from '@/lib/utils'
 import { Lock, Eye, EyeOff, CheckCircle, AlertCircle, User, Phone, Mail, Camera, Loader2, Plus, Trash2, ClipboardList, Pencil, Check, X } from 'lucide-react'
 
@@ -24,6 +25,7 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
   const [pwdError, setPwdError]         = useState('')
 
   // ── Profile update state ───────────────────────────────────────────────────
+  const [tab, setTab] = useState<'profile' | 'security' | 'work'>('profile')
   const [phone, setPhone]               = useState(profile.phone || '')
   const [avatarUrl, setAvatarUrl]       = useState(profile.avatar_url || '')
   const [avatarLoading, setAvatarLoading] = useState(false)
@@ -85,12 +87,16 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
       const newAvatarUrl = upData.url
       setAvatarUrl(newAvatarUrl)
 
-      // Save to employee profile
-      await fetch(`/api/employees/${profile.id}`, {
+      const saveRes = await fetch(`/api/employees/${profile.id}`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ avatar_url: newAvatarUrl })
       })
+      if (!saveRes.ok) {
+        const d = await saveRes.json().catch(() => ({}))
+        throw new Error(d.error || 'Photo uploaded but could not be saved to your profile')
+      }
+      window.dispatchEvent(new Event('rp:profile-updated'))
 
       // Update user in localStorage
       try {
@@ -281,17 +287,18 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
   }
 
   return (
-    <div style={{ maxWidth: '640px', margin: '0 auto', padding: '0 0.5rem' }}>
-      {/* Page header */}
-      <div style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-          Account Settings
-        </h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-          Manage your profile and security preferences
-        </p>
+    <div style={{ maxWidth: '760px', margin: '0 auto', width: '100%' }}>
+      <div style={{ marginBottom: '1.5rem' }}>
+        <PageHeader eyebrow="Account" title="Settings" description="Your profile, contact details, password and daily responsibilities." />
       </div>
 
+      <div className="segmented" role="tablist" style={{ marginBottom: '1.25rem' }}>
+        {([['profile', 'Profile'], ['security', 'Password & security'], ['work', 'Daily report format']] as const).map(([id, label]) => (
+          <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>{label}</button>
+        ))}
+      </div>
+
+      {tab === 'profile' && (<>
       {/* ── Profile info card ───────────────────────────────────────────────── */}
       <div className="card" style={{ marginBottom: '1.5rem', padding: '1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
@@ -327,7 +334,7 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
               type="file"
               ref={fileInputRef}
               onChange={handleAvatarFile}
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp,image/gif"
               style={{ display: 'none' }}
             />
 
@@ -445,6 +452,9 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
         </div>
       </div>
 
+      </>)}
+
+      {tab === 'security' && (<>
       {/* ── Change Password card ─────────────────────────────────────────────── */}
       <div className="card" style={{ padding: '1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
@@ -619,6 +629,9 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
         </form>
       </div>
 
+      </>)}
+
+      {tab === 'work' && (<>
       {/* ── Daily Report Format & Tasks card ──────────────────────────────────────────── */}
       <div className="card" style={{ marginBottom: '1.5rem', padding: '1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '1rem' }}>
@@ -820,6 +833,7 @@ export default function SettingsSection({ profile }: SettingsSectionProps) {
           </div>
         )}
       </div>
+      </>)}
     </div>
   )
 }

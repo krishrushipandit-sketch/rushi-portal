@@ -2,6 +2,11 @@ import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { format, formatDistanceToNow, isAfter, isBefore, addHours } from 'date-fns'
 
+/** Today's date in India (YYYY-MM-DD), correct regardless of the device's or server's timezone. */
+export function istToday(): string {
+  return new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
@@ -30,28 +35,29 @@ export function isOverdue(deadline: string | null): boolean {
 
 export function getPriorityColor(priority: string) {
   const map: Record<string, string> = {
-    low: 'text-emerald-400 bg-emerald-400/10',
-    medium: 'text-amber-400 bg-amber-400/10',
-    high: 'text-orange-400 bg-orange-400/10',
-    urgent: 'text-red-400 bg-red-400/10',
+    low: 'tone-neutral',
+    medium: 'tone-warning',
+    high: 'tone-orange',
+    urgent: 'tone-danger',
   }
-  return map[priority] ?? 'text-slate-400 bg-slate-400/10'
+  return map[priority] ?? 'tone-neutral'
 }
 
 export function getStatusColor(status: string) {
   const map: Record<string, string> = {
-    pending: 'text-slate-300 bg-slate-700',
-    in_progress: 'text-blue-400 bg-blue-400/10',
-    completed: 'text-emerald-400 bg-emerald-400/10',
-    overdue: 'text-red-400 bg-red-400/10',
-    cancelled: 'text-slate-500 bg-slate-800',
-    new: 'text-blue-400 bg-blue-400/10',
-    follow_up: 'text-amber-400 bg-amber-400/10',
-    negotiation: 'text-purple-400 bg-purple-400/10',
-    closed_won: 'text-emerald-400 bg-emerald-400/10',
-    closed_lost: 'text-red-400 bg-red-400/10',
+    pending: 'tone-neutral',
+    in_progress: 'tone-info',
+    completed: 'tone-success',
+    overdue: 'tone-danger',
+    cancelled: 'tone-neutral',
+    new: 'tone-info',
+    follow_up: 'tone-warning',
+    negotiation: 'tone-violet',
+    visit_done: 'tone-success',
+    closed_won: 'tone-success',
+    closed_lost: 'tone-danger',
   }
-  return map[status] ?? 'text-slate-400 bg-slate-400/10'
+  return map[status] ?? 'tone-neutral'
 }
 
 export function getInitials(name: string) {

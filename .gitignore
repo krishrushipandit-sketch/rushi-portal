@@ -60,3 +60,6 @@ add-vercel-envs.js
 resync-clients.js
 setup-kedar.js
 setup-windows-scheduler.ps1
+
+# runtime uploads (profile photos) live on the server, not in git
+/public/uploads/

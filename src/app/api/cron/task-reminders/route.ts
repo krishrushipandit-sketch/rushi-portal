@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, queryOne, execute } from '@/lib/db'
-import { getAiSensyApiKey } from '@/lib/aisensy'
+import { getAiSensyApiKey, postToAiSensy } from '@/lib/aisensy'
 import { getUserFromRequest } from '@/lib/auth'
 
 const CRON_SECRET = process.env.CRON_SECRET || 'rushipandit-cron-2026'
-const AISENSY_URL = 'https://backend.aisensy.com/campaign/t1/api/v2'
 
 // ── Default test numbers (used when no phone is saved on the profile) ────────
 const DEFAULT_EMPLOYEE_PHONE = '9768726006'
@@ -37,7 +36,7 @@ async function sendWhatsApp(
 
   for (const cName of campaignsToTry) {
     try {
-      const res = await fetch(AISENSY_URL, {
+      const res = await postToAiSensy({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

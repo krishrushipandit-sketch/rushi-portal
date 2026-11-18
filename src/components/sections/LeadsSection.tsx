@@ -1,18 +1,23 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { Fragment, useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
 import { formatDate } from '@/lib/utils'
 import { useTheme } from '@/lib/ThemeContext'
 import {
-  Plus, Search, X, Loader2, Phone, Mail, Edit2, Trash2,
-  MessageSquare, PhoneCall, Clock, ChevronDown, ChevronRight,
-  User, Layers, CircleDot, TrendingUp, CheckCircle, XCircle,
-  PhoneOff, PhoneMissed, Voicemail, Zap, Calendar, Activity,
-  BarChart2, Filter, ClipboardList, Send, RefreshCw, CalendarDays, BellRing,
-  CalendarClock, CalendarCheck, Check
+  Plus, X, Loader2, Phone, Edit2, Trash2, PhoneCall, ChevronDown, ChevronRight,
+  CircleDot, TrendingUp, CheckCircle, XCircle, PhoneMissed, Voicemail, Zap, Calendar,
+  BarChart2, Send, RefreshCw, CalendarDays, BellRing, CalendarClock,
+  CalendarCheck, Check, MapPinCheck, GraduationCap, Search, StickyNote, ClipboardList,
 } from 'lucide-react'
+import KpiCard from '@/components/ui/KpiCard'
+import PageHeader from '@/components/ui/PageHeader'
+import GlowButton from '@/components/ui/GlowButton'
+import Reveal from '@/components/ui/Reveal'
+import Avatar from '@/components/ui/Avatar'
+import Pill from '@/components/ui/Pill'
+import SidePanel, { KeyValues, PanelSection } from '@/components/ui/SidePanel'
 
 interface Props { profile: Profile }
 
@@ -29,14 +34,27 @@ interface Lead {
   source: string | null
   notes: string | null
   follow_up_date: string | null
-  qualification_answers?: Record<string, any> | null
+  qualification_answers?: Record<string, unknown> | null
   followup_count?: number
   last_followup_at?: string | null
   next_followup_at?: string | null
   created_at: string
-  assigned_to_profile?: { id: string; full_name: string; email?: string }
+  assigned_to_profile?: { id: string; full_name: string; email?: string; avatar_url?: string | null }
   whatsapp_ringing_sent?: boolean | null
   whatsapp_msg_status?: string | null
+  visit_done_at?: string | null
+  wa_last?: WaEvent | null
+  _waPending?: boolean
+}
+
+interface WaEvent {
+  id?: string
+  kind: 'status' | 'visit_reminder' | 'workshop_reminder'
+  detail: string | null
+  status: 'sent' | 'failed'
+  error: string | null
+  at?: string
+  created_at?: string
 }
 
 interface FollowupRecord {
@@ -50,824 +68,457 @@ interface FollowupRecord {
 }
 
 const INDUSTRIES = ['Digital Marketing', 'Share Market', 'AI Course', 'Amazon', 'BBA/MBA', 'Other']
-const SOURCES = ['facebook_lead_ad', 'instagram_lead_ad', 'walk_in', 'referral', 'social_media', 'website', 'cold_call', 'other']
+const WHATSAPP_STATUSES = ['ringing', 'callback', 'busy_callback', 'switched_off', 'busy', 'not_connected']
+const CLOSED = ['closed_won', 'closed_lost']
 
-// ─── 9 Call Status Definitions ──────────────────────────────────────────
-const STATUS_CONFIG: {
-  id: string; label: string; color: string; bg: string;
-  icon: React.ReactNode; group: 'active' | 'hot' | 'closed'
-  requiresDate?: boolean   // prompts for a follow-up / visit datetime
-}[] = [
-  { id: 'new',                    label: 'New Lead',            color: '#4f46e5', bg: 'rgba(79,70,229,0.1)',   icon: <CircleDot size={12} />,   group: 'active' },
-  { id: 'ringing',                label: 'Ringing',             color: '#d97706', bg: 'rgba(217,119,6,0.1)',   icon: <Phone size={12} />,       group: 'active' },
-  { id: 'connected',              label: 'Connected',           color: '#0891b2', bg: 'rgba(8,145,178,0.1)',   icon: <PhoneCall size={12} />,   group: 'active' },
-  { id: 'callback',               label: 'Call Back',           color: '#7c3aed', bg: 'rgba(124,58,237,0.1)',  icon: <Voicemail size={12} />,   group: 'active', requiresDate: true },
-  { id: 'follow_up',              label: 'Follow Up',           color: '#f59e0b', bg: 'rgba(245,158,11,0.1)',  icon: <CalendarClock size={12} />, group: 'active', requiresDate: true },
-  { id: 'interested',             label: 'Interested',          color: '#0284c7', bg: 'rgba(2,132,199,0.1)',   icon: <Zap size={12} />,         group: 'hot'    },
-  { id: 'switched_off',           label: 'Switch Off',          color: '#475569', bg: 'rgba(71,85,105,0.1)',   icon: <PhoneMissed size={12} />, group: 'active' },
-  { id: 'not_interested',         label: 'Not Interested',      color: '#b91c1c', bg: 'rgba(185,28,28,0.1)',   icon: <XCircle size={12} />,     group: 'closed' },
-  { id: 'visit_scheduled',        label: 'Visit Schedule',      color: '#db2777', bg: 'rgba(219,39,119,0.1)',  icon: <CalendarCheck size={12} />, group: 'hot', requiresDate: true },
-  { id: 'ai_workshop_saturday',   label: 'AI Workshop Saturday',color: '#7c3aed', bg: 'rgba(124,58,237,0.12)', icon: <BellRing size={12} />,    group: 'hot'    },
-  { id: 'closed_won',             label: 'Enrolled',            color: '#16a34a', bg: 'rgba(22,163,74,0.1)',   icon: <CheckCircle size={12} />, group: 'closed' },
+const STATUS_CONFIG: { id: string; label: string; color: string; icon: React.ReactNode; requiresDate?: boolean }[] = [
+  { id: 'new',                  label: 'New Lead',             color: '#7c83ff', icon: <CircleDot size={13} /> },
+  { id: 'ringing',              label: 'Ringing',              color: '#f5a524', icon: <Phone size={13} /> },
+  { id: 'connected',            label: 'Connected',            color: '#22b8cf', icon: <PhoneCall size={13} /> },
+  { id: 'callback',             label: 'Call Back',            color: '#9b6dff', icon: <Voicemail size={13} />, requiresDate: true },
+  { id: 'follow_up',            label: 'Follow Up',            color: '#f59f00', icon: <CalendarClock size={13} />, requiresDate: true },
+  { id: 'interested',           label: 'Interested',           color: '#2f9bff', icon: <Zap size={13} /> },
+  { id: 'switched_off',         label: 'Switch Off',           color: '#8592a3', icon: <PhoneMissed size={13} /> },
+  { id: 'not_interested',       label: 'Not Interested',       color: '#ef4757', icon: <XCircle size={13} /> },
+  { id: 'visit_scheduled',      label: 'Visit Schedule',       color: '#e8509a', icon: <CalendarCheck size={13} />, requiresDate: true },
+  { id: 'visit_done',           label: 'Visit Done',           color: '#14b8a0', icon: <MapPinCheck size={13} /> },
+  { id: 'ai_workshop_saturday', label: 'AI Workshop Saturday', color: '#8b5cf6', icon: <BellRing size={13} /> },
+  { id: 'closed_won',           label: 'Enrolled',             color: '#22c55e', icon: <CheckCircle size={13} /> },
 ]
 
-const statusMap = STATUS_CONFIG.reduce((a, s) => ({ ...a, [s.id]: s }), {} as Record<string, typeof STATUS_CONFIG[0]>)
+const statusMap: Record<string, typeof STATUS_CONFIG[number]> = Object.fromEntries(STATUS_CONFIG.map(s => [s.id, s]))
+const statusOf = (id: string) => statusMap[id] ?? { id, label: id.replace(/_/g, ' '), color: '#8592a3', icon: <CircleDot size={13} /> }
+const leadName = (l: Lead) => l.client_name || l.name || 'Lead'
 
-// ─── Platform Brand Badges (FB / IG / WEB) ─────────────────────────────────
-function PlatformBadge({ platform }: { platform?: string | null }) {
+function platformKey(platform?: string | null): 'fb' | 'ig' | 'web' {
   const p = (platform || 'Facebook').toLowerCase()
-
-  if (p.includes('fb') || p.includes('facebook')) {
-    return (
-      <span style={{
-        display: 'inline-flex', alignItems: 'center', gap: '4px',
-        padding: '3px 8px', borderRadius: '6px',
-        background: 'rgba(24, 119, 242, 0.12)', color: '#1877F2',
-        border: '1px solid rgba(24, 119, 242, 0.35)',
-        fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.04em'
-      }}>
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-        </svg>
-        FB
-      </span>
-    )
-  }
-
-  if (p.includes('ig') || p.includes('instagram')) {
-    return (
-      <span style={{
-        display: 'inline-flex', alignItems: 'center', gap: '4px',
-        padding: '3px 8px', borderRadius: '6px',
-        background: 'rgba(228, 64, 95, 0.12)', color: '#E4405F',
-        border: '1px solid rgba(228, 64, 95, 0.35)',
-        fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.04em'
-      }}>
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
-        </svg>
-        IG
-      </span>
-    )
-  }
-
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: '4px',
-      padding: '3px 8px', borderRadius: '6px',
-      background: 'var(--bg-surface)', color: 'var(--text-secondary)',
-      border: '1px solid var(--border-default)',
-      fontSize: '0.72rem', fontWeight: 800
-    }}>
-      {platform?.toUpperCase() || 'WEB'}
-    </span>
-  )
+  if (p.includes('ig') || p.includes('instagram')) return 'ig'
+  if (p.includes('fb') || p.includes('facebook')) return 'fb'
+  return 'web'
 }
 
-// ─── Inline Quick Status Selector ──────────────────────────────────────────
-function InlineStatusSelector({
-  currentStatus,
-  onSelect
-}: {
-  currentStatus: string
-  onSelect: (status: string) => void
-}) {
-  const cfg = statusMap[currentStatus] || { label: currentStatus, color: 'var(--text-primary)', bg: 'var(--bg-surface)', icon: <CircleDot size={12} /> }
-
-  return (
-    <div style={{ position: 'relative', display: 'inline-block' }}>
-      <select
-        value={currentStatus}
-        onChange={e => onSelect(e.target.value)}
-        style={{
-          appearance: 'none',
-          WebkitAppearance: 'none',
-          padding: '4px 22px 4px 10px',
-          borderRadius: '99px',
-          background: 'var(--bg-surface)',
-          color: cfg.color,
-          fontSize: '0.75rem',
-          fontWeight: 700,
-          border: '1px solid var(--border-default)',
-          cursor: 'pointer',
-          outline: 'none',
-          textAlign: 'left'
-        }}
-      >
-        {STATUS_CONFIG.map(s => (
-          <option key={s.id} value={s.id} style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>
-            {s.label}
-          </option>
-        ))}
-      </select>
-      <ChevronDown
-        size={11}
-        style={{ position: 'absolute', right: '7px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }}
-      />
-    </div>
-  )
+function PlatformBadge({ platform, full }: { platform?: string | null; full?: boolean }) {
+  const k = platformKey(platform)
+  if (k === 'fb') return <Pill color="#1877F2">{full ? 'Facebook' : 'FB'}</Pill>
+  if (k === 'ig') return <Pill color="#E4405F">{full ? 'Instagram' : 'IG'}</Pill>
+  const label = (platform || 'Website').replace(/_/g, ' ')
+  return <Pill color="var(--text-secondary)">{label.charAt(0).toUpperCase() + label.slice(1, 16)}</Pill>
 }
 
-// ─── Dynamic Questionnaire Answers Panel ───────────────────────────────────
-function QualificationPanel({ answers }: { answers: Record<string, any> }) {
-  const entries = Object.entries(answers)
-  if (entries.length === 0) return null
+function WhatsAppIcon({ size = 14 }: { size?: number }) {
   return (
-    <div style={{
-      borderRadius: '10px', border: '1px solid var(--border-default)',
-      background: 'var(--bg-surface)', overflow: 'hidden', marginTop: '6px'
-    }}>
-      <div style={{
-        padding: '0.625rem 0.875rem', background: 'var(--bg-elevated)',
-        borderBottom: '1px solid var(--border-default)',
-        display: 'flex', alignItems: 'center', gap: '0.5rem'
-      }}>
-        <ClipboardList size={13} style={{ color: 'var(--brand-primary)' }} />
-        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          Form Responses & Qualification Answers
-        </span>
-        <span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-          {entries.length} field{entries.length !== 1 ? 's' : ''} captured
-        </span>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
-        {entries.map(([key, val]) => (
-          <div key={key} style={{
-            padding: '0.625rem 0.875rem',
-            borderRight: '1px solid var(--border-default)',
-            borderBottom: '1px solid var(--border-default)',
-            background: 'var(--bg-card)'
-          }}>
-            <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0 }}>
-              {key}
-            </p>
-            <p style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', margin: '3px 0 0', wordBreak: 'break-word' }}>
-              {String(val) || '—'}
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function WhatsAppIcon({ size = 13, color = '#25D366' }: { size?: number; color?: string }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill={color}
-      xmlns="http://www.w3.org/2000/svg"
-      style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 }}
-    >
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
       <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
     </svg>
   )
 }
 
-// ─── Lead Table Row ────────────────────────────────────────────────────────
-function LeadRow({
-  lead, isAdmin,
-  onFollowup, onEdit, onDelete, onWhatsapp, onStatusChange
-}: {
-  lead: Lead; isAdmin: boolean
-  onFollowup: () => void; onEdit: () => void
-  onDelete: () => void; onWhatsapp: () => void
-  onStatusChange: (newStatus: string) => void
-}) {
-  const [expanded, setExpanded] = useState(false)
-  const qual = lead.qualification_answers || {}
-  const qualCount = Object.keys(qual).length
-  const industry = lead.industry || lead.category || '—'
-  const cfg = statusMap[lead.status] || statusMap['new']
+// Meta lead-form answers arrive as raw keys/values (e.g. "where_do_you_live": "start_freelancing")
+const humanize = (v: unknown) => {
+  const raw = v !== null && typeof v === 'object' ? (Array.isArray(v) ? v.join(', ') : JSON.stringify(v)) : String(v ?? '')
+  const t = raw.replace(/_/g, ' ').trim()
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : '—'
+}
+const formAnswers = (l: Lead) => Object.entries(l.qualification_answers || {}).filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== '')
 
+function FormAnswers({ lead }: { lead: Lead }) {
+  const entries = formAnswers(lead)
+  if (!entries.length) return <div className="empty-inline">Standard form — no extra questions answered</div>
   return (
-    <>
-      <tr style={{ borderTop: '1px solid var(--border-default)', transition: 'background 0.1s' }}>
-        {/* 1. Lead Identity & Contact */}
-        <td style={{ padding: '0.875rem 1rem' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-              background: 'var(--bg-surface)', color: 'var(--text-primary)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.75rem', fontWeight: 800, border: '1px solid var(--border-default)'
-            }}>
-              {(lead.client_name || lead.name || 'L').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <p style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', margin: 0, whiteSpace: 'nowrap' }}>
-                {lead.client_name || lead.name}
-              </p>
-              <div style={{ display: 'flex', gap: '0.625rem', marginTop: '3px', flexWrap: 'wrap' }}>
-                <a href={`tel:${lead.phone}`} style={{
-                  fontSize: '0.78rem', color: '#4f46e5', textDecoration: 'none',
-                  display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 700
-                }}>
-                  <Phone size={11} /> {lead.phone}
-                </a>
-                {lead.email && (
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                    <Mail size={10} /> {lead.email}
-                  </span>
-                )}
-              </div>
-              {lead.notes && (
-                <div style={{
-                  fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '4px',
-                  background: 'var(--bg-surface)', padding: '2px 6px', borderRadius: '4px',
-                  border: '1px solid var(--border-default)', maxWidth: '280px',
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-                }} title={lead.notes}>
-                  💬 {lead.notes}
-                </div>
-              )}
-            </div>
-          </div>
-        </td>
-
-        {/* 2. Platform (FB / IG / WEB) */}
-        <td style={{ padding: '0.875rem 0.75rem' }}>
-          <PlatformBadge platform={lead.platform || lead.source} />
-        </td>
-
-        {/* 3. Inbound Date & Time */}
-        <td style={{ padding: '0.875rem 0.75rem', whiteSpace: 'nowrap' }}>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              {formatDate(lead.created_at, 'dd MMM yyyy')}
-            </span>
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '3px', marginTop: '2px' }}>
-              <Clock size={10} /> {formatDate(lead.created_at, 'hh:mm a')}
-            </span>
-          </div>
-        </td>
-
-        {/* 4. Course / Industry */}
-        <td style={{ padding: '0.875rem 0.75rem' }}>
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: '4px',
-            fontSize: '0.75rem', fontWeight: 700, padding: '3px 9px',
-            borderRadius: '6px', background: 'var(--bg-surface)', color: 'var(--text-primary)',
-            border: '1px solid var(--border-default)', whiteSpace: 'nowrap'
-          }}>
-            <Layers size={11} /> {industry}
-          </span>
-        </td>
-
-        {/* 5. Dynamic Form Responses */}
-        <td style={{ padding: '0.875rem 0.75rem' }}>
-          {qualCount === 0 ? (
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Standard Form</span>
-          ) : (
-            <button
-              onClick={() => setExpanded(e => !e)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '5px',
-                fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px',
-                borderRadius: '6px', background: 'rgba(2, 132, 199, 0.12)', color: '#0284c7',
-                border: '1px solid rgba(2, 132, 199, 0.35)', cursor: 'pointer'
-              }}
-            >
-              <ClipboardList size={11} />
-              {qualCount} response{qualCount !== 1 ? 's' : ''}
-              <ChevronRight size={11} style={{ transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />
-            </button>
-          )}
-        </td>
-
-        {/* 6. Call Status Dropdown */}
-        <td style={{ padding: '0.875rem 0.75rem' }}>
-          <InlineStatusSelector
-            currentStatus={lead.status}
-            onSelect={onStatusChange}
-          />
-          {lead.whatsapp_ringing_sent && (
-            <div style={{ marginTop: '3px' }}>
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', gap: '3px',
-                fontSize: '0.65rem', fontWeight: 700,
-                color: '#16a34a', background: 'rgba(22,163,74,0.1)',
-                padding: '1px 6px', borderRadius: '4px', border: '1px solid rgba(22,163,74,0.25)'
-              }} title="AiSensy 'ringing_sale' WhatsApp template delivered">
-                ✓ WhatsApp Sent
-              </span>
-            </div>
-          )}
-        </td>
-
-        {/* 7. Followups & Scheduled Reminders */}
-        <td style={{ padding: '0.875rem 0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.82rem', color: 'var(--text-primary)', fontWeight: 700 }}>
-            <Activity size={12} color="var(--text-muted)" />
-            {lead.followup_count || 0} calls
-          </div>
-          {(lead.next_followup_at || lead.follow_up_date) && (() => {
-            const fDate = lead.next_followup_at || lead.follow_up_date
-            const fTime = new Date(fDate!).getTime()
-            const now = new Date()
-            const tStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-            const tEnd = tStart + 86400000
-            const isOverdue = fTime < tStart && !['closed_won', 'closed_lost'].includes(lead.status)
-            const isToday = fTime >= tStart && fTime < tEnd
-
-            return (
-              <div style={{
-                fontSize: '0.68rem', fontWeight: 800, marginTop: '4px', display: 'inline-flex', alignItems: 'center', gap: '3px',
-                padding: '2px 6px', borderRadius: '5px',
-                background: isOverdue ? 'rgba(239, 68, 68, 0.12)' : isToday ? 'rgba(245, 158, 11, 0.15)' : 'rgba(99, 102, 241, 0.1)',
-                color: isOverdue ? '#ef4444' : isToday ? '#d97706' : '#6366f1',
-                border: `1px solid ${isOverdue ? '#ef444435' : isToday ? '#d9770635' : '#6366f125'}`
-              }}>
-                <Calendar size={10} />
-                {isOverdue ? 'Overdue: ' : isToday ? 'Due Today: ' : ''}
-                {formatDate(fDate!, isToday ? 'hh:mm a' : 'dd MMM, hh:mm a')}
-              </div>
-            )
-          })()}
-        </td>
-
-        {/* 8. Assigned To (Admin only) */}
-        {isAdmin && (
-          <td style={{ padding: '0.875rem 0.75rem' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              {lead.assigned_to_profile?.full_name || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Unassigned</span>}
-            </span>
-          </td>
-        )}
-
-        {/* 9. Actions */}
-        <td style={{ padding: '0.875rem 1rem' }}>
-          <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
-            <button
-              onClick={onFollowup}
-              title="Log Followup"
-              className="btn btn-secondary btn-sm"
-              style={{ padding: '4px 8px', fontSize: '0.75rem' }}
-            >
-              <PhoneCall size={12} /> Call
-            </button>
-            <button
-              onClick={onWhatsapp}
-              title="Send WhatsApp Message"
-              style={{
-                padding: '5px 8px', borderRadius: '7px', border: '1px solid #16a34a', cursor: 'pointer',
-                background: 'rgba(22,163,74,0.1)', color: '#16a34a', display: 'flex', alignItems: 'center'
-              }}
-            >
-              <WhatsAppIcon size={14} color="#16a34a" />
-            </button>
-            <button
-              onClick={onEdit}
-              title="Edit Lead"
-              className="btn btn-ghost btn-sm"
-              style={{ padding: '5px 8px' }}
-            >
-              <Edit2 size={13} />
-            </button>
-            {isAdmin && (
-              <button
-                onClick={onDelete}
-                title="Delete Lead"
-                className="btn btn-danger btn-sm"
-                style={{ padding: '5px 8px' }}
-              >
-                <Trash2 size={13} />
-              </button>
-            )}
-          </div>
-        </td>
-      </tr>
-
-      {/* Expandable row for dynamic questionnaire */}
-      {expanded && qualCount > 0 && (
-        <tr>
-          <td colSpan={isAdmin ? 9 : 8} style={{ padding: '0 1rem 0.875rem', background: 'var(--bg-surface)' }}>
-            <QualificationPanel answers={qual} />
-          </td>
-        </tr>
-      )}
-    </>
+    <dl className="form-answers">
+      {entries.map(([k, v]) => (
+        <div key={k}><dt>{humanize(k)}</dt><dd>{humanize(v)}</dd></div>
+      ))}
+    </dl>
   )
 }
 
-// ─── Followup Slide-Over Drawer ────────────────────────────────────────────
-function FollowupPanel({
-  lead,
-  onClose,
-  onSaved
-}: {
+// AiSensy error text → short reason the sales team can act on
+function waReason(error?: string | null): string {
+  const e = (error || '').toLowerCase()
+  if (/credit|balance|insufficient|wallet|recharge/.test(e)) return 'Credits exhausted'
+  if (/invalid phone|invalid number|destination|not a valid|whatsapp number/.test(e)) return 'Invalid number'
+  if (/campaign|template/.test(e)) return 'Template issue'
+  if (/api ?key|unauthori|forbidden/.test(e)) return 'API key issue'
+  if (/opt.?out|block/.test(e)) return 'Number opted out'
+  return error ? error.slice(0, 40) : 'Not delivered'
+}
+
+function waLabel(ev: Pick<WaEvent, 'kind' | 'detail'>): string {
+  const window = ev.detail === 'today' ? 'today' : ev.detail ? ev.detail.replace('hr', 'h') : ''
+  if (ev.kind === 'visit_reminder') return `Visit reminder${window ? ` · ${window}` : ''}`
+  if (ev.kind === 'workshop_reminder') return `Workshop reminder${window ? ` · ${window}` : ''}`
+  return 'WhatsApp'
+}
+
+function waTag(lead: Lead): { color: string; label: string; title: string; failed?: boolean; pending?: boolean } | null {
+  if (lead._waPending) return { color: '#f5a524', label: 'WhatsApp sending…', title: 'Waiting for AiSensy to confirm delivery', pending: true }
+  const ev = lead.wa_last
+  if (ev) {
+    const when = ev.at || ev.created_at
+    const at = when ? formatDate(when, 'dd MMM, hh:mm a') : ''
+    if (ev.status === 'failed') {
+      return { color: '#ef4757', label: `${waLabel(ev)} failed · ${waReason(ev.error)}`, title: `${ev.error || 'Failed'}${at ? ` — ${at}` : ''}`, failed: true }
+    }
+    return { color: '#22c55e', label: `${waLabel(ev)} sent`, title: `Delivered to AiSensy${ev.detail && ev.kind === 'status' ? ` (status: ${ev.detail})` : ''}${at ? ` — ${at}` : ''}` }
+  }
+  // Leads messaged before the delivery log existed
+  if (lead.whatsapp_msg_status?.startsWith('aisensy_error')) {
+    const err = lead.whatsapp_msg_status.replace(/^aisensy_error:\s*/, '')
+    return { color: '#ef4757', label: `WhatsApp failed · ${waReason(err)}`, title: err, failed: true }
+  }
+  if (lead.whatsapp_ringing_sent || lead.whatsapp_msg_status === 'aisensy_ringing_sent') {
+    return { color: '#22c55e', label: 'WhatsApp sent', title: 'Status message delivered to AiSensy' }
+  }
+  return null
+}
+
+function WhatsAppTag({ lead }: { lead: Lead }) {
+  const t = waTag(lead)
+  if (!t) return null
+  return (
+    <span className={`wa-tag ${t.pending ? 'pending' : ''}`} style={{ '--tone': t.color } as React.CSSProperties} title={t.title}>
+      {t.pending ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : t.failed ? <XCircle size={11} /> : <WhatsAppIcon size={11} />}
+      <span className="truncate-1">{t.label}</span>
+    </span>
+  )
+}
+
+function StatusSelect({ value, onChange }: { value: string; onChange: (s: string) => void }) {
+  const cfg = statusOf(value)
+  return (
+    <div className="status-select" style={{ '--tone': cfg.color } as React.CSSProperties} onClick={e => e.stopPropagation()}>
+      <select value={value} onChange={e => onChange(e.target.value)} aria-label="Change call status">
+        {!statusMap[value] && <option value={value}>{cfg.label}</option>}
+        {STATUS_CONFIG.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+      </select>
+      <ChevronDown size={12} />
+    </div>
+  )
+}
+
+function followupInfo(lead: Lead, todayStart: number) {
+  const d = lead.next_followup_at || lead.follow_up_date
+  if (!d) return null
+  const t = new Date(d).getTime()
+  const closed = CLOSED.includes(lead.status)
+  return {
+    date: d,
+    overdue: t < todayStart && !closed,
+    today: t >= todayStart && t < todayStart + 86400000,
+  }
+}
+
+const toLocalInput = (iso?: string | null) => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+}
+
+// ─── Lead detail panel ────────────────────────────────────────────────────
+function LeadPanel({ lead, isAdmin, onClose, onSaved, onEdit, onDelete }: {
   lead: Lead
+  isAdmin: boolean
   onClose: () => void
-  onSaved: (updatedLead: any) => void
+  onSaved: (updated: Partial<Lead> & { id?: string }, whatsappQueued?: boolean) => void
+  onEdit: () => void
+  onDelete: () => void
 }) {
   const { theme } = useTheme()
-  const isLight = theme === 'light'
   const [history, setHistory] = useState<FollowupRecord[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loadingHistory, setLoadingHistory] = useState(true)
   const [callStatus, setCallStatus] = useState(lead.status || 'new')
   const [notes, setNotes] = useState(lead.notes || '')
-  const [scheduledAt, setScheduledAt] = useState(
-    lead.next_followup_at
-      ? new Date(lead.next_followup_at).toISOString().slice(0, 16)
-      : lead.follow_up_date
-        ? new Date(lead.follow_up_date).toISOString().slice(0, 16)
-        : ''
-  )
-  const [showSurvey, setShowSurvey] = useState(false)
+  const [scheduledAt, setScheduledAt] = useState(toLocalInput(lead.next_followup_at || lead.follow_up_date))
   const [saving, setSaving] = useState(false)
   const [savedSuccess, setSavedSuccess] = useState(false)
+  const [waHistory, setWaHistory] = useState<WaEvent[] | null>(null)
+  const [resending, setResending] = useState(false)
 
-  const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
+  const token = () => localStorage.getItem('rushi_token') || ''
+
+  const loadWhatsApp = useCallback(() => {
+    fetch(`/api/leads/${lead.id}/whatsapp`, { headers: { Authorization: `Bearer ${localStorage.getItem('rushi_token') || ''}` } })
+      .then(r => r.json())
+      .then(d => setWaHistory(Array.isArray(d) ? d : []))
+      .catch(() => setWaHistory([]))
+  }, [lead.id])
+
+  const waStamp = lead.wa_last?.at || lead.wa_last?.created_at || ''
+  useEffect(() => { loadWhatsApp() }, [loadWhatsApp, waStamp])
+
+  const resendWhatsApp = async () => {
+    setResending(true)
+    try {
+      await fetch(`/api/leads/${lead.id}/aisensy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({}),
+      })
+      loadWhatsApp()
+      onSaved({ id: lead.id })
+    } finally {
+      setResending(false)
+    }
+  }
+
+  const loadHistory = useCallback(() => {
+    fetch(`/api/leads/${lead.id}/followups`, { headers: { Authorization: `Bearer ${token()}` } })
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setHistory(d) })
+      .catch(console.error)
+      .finally(() => setLoadingHistory(false))
+  }, [lead.id])
+
+  useEffect(() => { loadHistory() }, [loadHistory])
 
   useEffect(() => {
     setCallStatus(lead.status || 'new')
     setNotes(lead.notes || '')
-    setScheduledAt(
-      lead.next_followup_at
-        ? new Date(lead.next_followup_at).toISOString().slice(0, 16)
-        : lead.follow_up_date
-          ? new Date(lead.follow_up_date).toISOString().slice(0, 16)
-          : ''
-    )
+    setScheduledAt(toLocalInput(lead.next_followup_at || lead.follow_up_date))
+    setSavedSuccess(false)
   }, [lead.id, lead.status, lead.notes, lead.next_followup_at, lead.follow_up_date])
 
-  useEffect(() => {
-    const token = getToken()
-    if (!token) return
-    fetch(`/api/leads/${lead.id}/followups`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setHistory(d) })
-      .catch(console.error)
-      .finally(() => setLoading(false))
-  }, [lead.id])
-
-  // Save followup and update lead in DB
-  const executeSave = async (selectedStatus: string) => {
+  const save = async () => {
     setSaving(true)
     setSavedSuccess(false)
-    const token = getToken()
+    const iso = scheduledAt ? new Date(scheduledAt).toISOString() : null
     try {
-      // 1. Post to followups API
       const res = await fetch(`/api/leads/${lead.id}/followups`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          call_status: selectedStatus,
-          notes: notes.trim() || undefined,
-          scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null
-        })
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ call_status: callStatus, notes: notes.trim() || undefined, scheduled_at: iso }),
       })
-
-      // 2. Also patch lead directly to guarantee all columns are in sync
       const patchRes = await fetch(`/api/leads/${lead.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          status: selectedStatus,
-          notes: notes.trim(),
-          follow_up_date: scheduledAt ? new Date(scheduledAt).toISOString() : null,
-          next_followup_at: scheduledAt ? new Date(scheduledAt).toISOString() : null
-        })
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ status: callStatus, notes: notes.trim(), follow_up_date: iso, next_followup_at: iso }),
       })
-
       const data = await res.json().catch(() => ({}))
       const patchData = await patchRes.json().catch(() => ({}))
+      if (!res.ok || !patchRes.ok) throw new Error(patchData.error || data.error || 'Save failed')
 
-      // Refresh local history
-      const updatedHistory = await fetch(`/api/leads/${lead.id}/followups`, { headers: { Authorization: `Bearer ${token}` } })
-      const hData = await updatedHistory.json()
-      if (Array.isArray(hData)) setHistory(hData)
-
-      const isWhatsAppEligible = ['ringing', 'callback', 'busy_callback', 'switched_off', 'busy', 'not_connected'].includes(selectedStatus)
-
-      // Optimistic update object
-      const updatedLeadObj = {
+      loadHistory()
+      const waEligible = WHATSAPP_STATUSES.includes(callStatus)
+      const optimistic: Partial<Lead> = {
         ...lead,
-        status: selectedStatus,
+        status: callStatus,
         notes: notes.trim(),
-        follow_up_date: scheduledAt ? new Date(scheduledAt).toISOString() : lead.follow_up_date,
-        next_followup_at: scheduledAt ? new Date(scheduledAt).toISOString() : lead.next_followup_at,
+        follow_up_date: iso ?? lead.follow_up_date,
+        next_followup_at: iso ?? lead.next_followup_at,
         followup_count: (lead.followup_count || 0) + 1,
         last_followup_at: new Date().toISOString(),
-        whatsapp_ringing_sent: isWhatsAppEligible ? true : lead.whatsapp_ringing_sent,
-        whatsapp_msg_status: isWhatsAppEligible ? 'aisensy_ringing_sent' : lead.whatsapp_msg_status,
       }
-
-      onSaved(patchData?.id ? { ...updatedLeadObj, ...patchData } : (data.lead || updatedLeadObj))
-      setCallStatus(selectedStatus)
+      onSaved({ ...(patchData?.id ? { ...optimistic, ...patchData } : (data.lead || optimistic)), _waPending: waEligible }, waEligible)
       setSavedSuccess(true)
-
-      // Auto-close after 1.2s to confirm success and prevent double-submitting
-      setTimeout(() => {
-        onClose()
-      }, 1200)
-    } catch (err: any) {
-      alert('Error updating lead: ' + err.message)
+      setTimeout(() => setSavedSuccess(false), 2500)
+    } catch (err) {
+      alert('Error updating lead: ' + (err as Error).message)
     } finally {
       setSaving(false)
     }
   }
 
-  const handleStatusClick = (statusId: string) => {
-    setCallStatus(statusId)
-  }
-
-  const qual = lead.qualification_answers || {}
-  const qualEntries = Object.entries(qual)
-  const currentCfg = statusMap[callStatus] || statusMap[lead.status] || statusMap['new']
+  const qualEntries = formAnswers(lead)
+  const current = statusOf(lead.status)
+  const selected = statusOf(callStatus)
+  const dateLabel =
+    callStatus === 'visit_scheduled' ? 'Visit date & time' :
+    callStatus === 'visit_done' ? 'Next follow-up after visit (optional)' :
+    callStatus === 'follow_up' ? 'Follow-up date & time' :
+    callStatus === 'callback' ? 'Call back at' : 'Next follow-up (optional)'
+  const fmtWhen = (v: string) => `${new Date(v).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })} at ${new Date(v).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`
 
   return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 999,
-        background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
-        display: 'flex', justifyContent: 'flex-end'
-      }}
-      onClick={e => e.target === e.currentTarget && onClose()}
-    >
-      <div
-        style={{
-          width: '100%', maxWidth: 'min(520px, 100vw)', height: '100%',
-          background: 'var(--bg-elevated)', display: 'flex', flexDirection: 'column',
-          boxShadow: '-20px 0 60px rgba(0,0,0,0.5)',
-          borderLeft: '1px solid var(--border-default)'
-        }}
-      >
-        {/* Top Header */}
-        <div style={{
-          padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-default)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          background: 'var(--bg-card)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div style={{
-              width: 38, height: 38, borderRadius: '10px', flexShrink: 0,
-              background: 'var(--bg-surface)', color: 'var(--text-primary)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.8rem', fontWeight: 800, border: '1px solid var(--border-default)'
-            }}>
-              {(lead.client_name || lead.name || 'L').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <h3 style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)', margin: 0 }}>
-                  {lead.client_name || lead.name}
-                </h3>
-                <PlatformBadge platform={lead.platform || lead.source} />
-              </div>
-              <div style={{ display: 'flex', gap: '0.625rem', marginTop: '2px' }}>
-                <a href={`tel:${lead.phone}`} style={{ fontSize: '0.75rem', color: '#4f46e5', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 700 }}>
-                  <Phone size={11} /> {lead.phone}
-                </a>
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                  {formatDate(lead.created_at, 'dd MMM, hh:mm a')}
-                </span>
-              </div>
-            </div>
-          </div>
-          <button onClick={onClose} className="btn btn-ghost btn-sm" style={{ padding: '4px' }}>
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* Scrollable Form Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-
-          {/* Current Status Pill */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.875rem', borderRadius: '10px', background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Selected Status:</span>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: '5px',
-              padding: '3px 10px', borderRadius: '99px',
-              background: currentCfg.bg, color: currentCfg.color,
-              fontSize: '0.75rem', fontWeight: 800,
-              border: `1px solid ${currentCfg.color}40`
-            }}>
-              {currentCfg.icon} {currentCfg.label}
+    <SidePanel
+      open
+      onClose={onClose}
+      width={600}
+      leading={<Avatar name={leadName(lead)} size="md" />}
+      title={<>{leadName(lead)} <Pill color={current.color} icon={current.icon}>{current.label}</Pill></>}
+      subtitle={<>
+        <a href={`tel:${lead.phone}`} className="link-strong"><Phone size={12} /> {lead.phone}</a>
+        <PlatformBadge platform={lead.platform || lead.source} />
+        <span>Added {formatDate(lead.created_at, 'dd MMM yyyy, hh:mm a')}</span>
+      </>}
+      footer={
+        savedSuccess ? (
+          <span className="badge tone-success" style={{ height: 36, padding: '0 0.9rem', fontSize: '0.8125rem' }}>
+            <Check size={15} /> Saved{WHATSAPP_STATUSES.includes(callStatus) ? ' · WhatsApp queued' : ''}
+          </span>
+        ) : (
+          <>
+            <span style={{ marginRight: 'auto', fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              Saving as <Pill color={selected.color} icon={selected.icon}>{selected.label}</Pill>
             </span>
-          </div>
-
-          {/* Form Responses Accordion */}
-          {qualEntries.length > 0 && (
-            <div style={{ borderRadius: '10px', border: '1px solid var(--border-default)', overflow: 'hidden' }}>
-              <button
-                onClick={() => setShowSurvey(s => !s)}
-                style={{
-                  width: '100%', padding: '0.5rem 0.75rem', background: 'var(--bg-surface)',
-                  border: 'none', borderBottom: showSurvey ? '1px solid var(--border-default)' : 'none',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <ClipboardList size={13} style={{ color: 'var(--brand-primary)' }} />
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    Form Responses ({qualEntries.length} items)
-                  </span>
-                </div>
-                <ChevronDown size={13} style={{ transform: showSurvey ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', color: 'var(--text-muted)' }} />
-              </button>
-
-              {showSurvey && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', background: 'var(--bg-card)' }}>
-                  {qualEntries.map(([key, val]) => (
-                    <div key={key} style={{ padding: '0.5rem 0.75rem', borderRight: '1px solid var(--border-default)', borderBottom: '1px solid var(--border-default)' }}>
-                      <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', margin: 0 }}>{key}</p>
-                      <p style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0 0', wordBreak: 'break-word' }}>{String(val) || '—'}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Call Status Selector Grid (Click to Select) */}
-          <div style={{ borderRadius: '12px', border: '1px solid var(--border-default)', background: 'var(--bg-card)', padding: '1rem' }}>
-            <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span>Select Call Status</span>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Click to select, then save below</span>
-            </label>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-              {STATUS_CONFIG.map(s => {
-                const isSelected = callStatus === s.id
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => handleStatusClick(s.id)}
-                    style={{
-                      padding: '9px 10px', borderRadius: '8px', cursor: 'pointer', textAlign: 'left',
-                      border: `1.5px solid ${isSelected ? s.color : 'var(--border-default)'}`,
-                      background: isSelected ? s.bg : 'var(--bg-surface)',
-                      display: 'flex', alignItems: 'center', gap: '6px',
-                      color: isSelected ? s.color : 'var(--text-primary)',
-                      fontSize: '0.78rem', fontWeight: isSelected ? 800 : 600,
-                      boxShadow: isSelected ? `0 0 0 2px ${s.color}25` : 'none',
-                      transition: 'all 0.15s'
-                    }}
-                  >
-                    {s.icon} {s.label}
-                    {isSelected && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: s.color }}>✓</span>}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Notes and Date section */}
-          <div style={{ borderRadius: '12px', border: '1px solid var(--border-default)', background: 'var(--bg-card)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-            <div>
-              <label className="form-label" style={{ display: 'block', marginBottom: '4px' }}>
-                Followup Remarks / Internal Notes
-              </label>
-              <textarea
-                className="form-textarea"
-                rows={3}
-                placeholder="Enter remarks regarding student needs, course fee discussion, callback time..."
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                style={{ fontSize: '0.82rem' }}
-              />
-            </div>
-
-            <div>
-              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                {callStatus === 'visit_scheduled'
-                  ? <><CalendarCheck size={14} color="#db2777" /> Visit Schedule Date &amp; Time <span style={{ color: '#db2777', fontWeight: 800 }}>*</span></>
-                  : callStatus === 'follow_up'
-                  ? <><CalendarClock size={14} color="#f59e0b" /> Follow Up Date &amp; Time</>
-                  : callStatus === 'callback'
-                  ? <><Voicemail size={14} color="#7c3aed" /> Callback Scheduled At</>
-                  : <><Calendar size={14} /> Next Followup Date &amp; Time</>
-                }
-              </label>
-              <input
-                type="datetime-local"
-                value={scheduledAt}
-                onChange={e => setScheduledAt(e.target.value)}
-                className="form-input"
-                style={{
-                  fontSize: '0.82rem',
-                  colorScheme: isLight ? 'light' : 'dark',
-                  background: isLight ? '#ffffff' : 'var(--bg-surface)',
-                  color: isLight ? '#0f172a' : 'var(--text-primary)',
-                  borderColor: callStatus === 'visit_scheduled' ? '#db2777'
-                    : callStatus === 'follow_up' ? '#f59e0b'
-                    : callStatus === 'callback' ? '#7c3aed'
-                    : isLight ? '#cbd5e1' : undefined,
-                }}
-              />
-
-              {callStatus === 'visit_scheduled' && scheduledAt && (
-                <div style={{ marginTop: '8px', padding: '8px 12px', borderRadius: '8px', background: 'rgba(219,39,119,0.08)', border: '1px solid rgba(219,39,119,0.3)', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-                  <BellRing size={13} color="#db2777" style={{ marginTop: '1px', flexShrink: 0 }} />
-                  <div>
-                    <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#db2777', margin: 0 }}>Visit Reminder Set</p>
-                    <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: '2px 0 0' }}>
-                      Reminder on {new Date(scheduledAt).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })} at {new Date(scheduledAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {(callStatus === 'follow_up' || callStatus === 'callback') && scheduledAt && (
-                <div style={{ marginTop: '8px', padding: '8px 12px', borderRadius: '8px', background: callStatus === 'callback' ? 'rgba(124,58,237,0.08)' : 'rgba(245,158,11,0.08)', border: callStatus === 'callback' ? '1px solid rgba(124,58,237,0.3)' : '1px solid rgba(245,158,11,0.3)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <BellRing size={13} color={callStatus === 'callback' ? '#7c3aed' : '#f59e0b'} style={{ flexShrink: 0 }} />
-                  <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: 0 }}>
-                    Reminder: <strong style={{ color: 'var(--text-primary)' }}>{new Date(scheduledAt).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })} at {new Date(scheduledAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</strong>
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {savedSuccess ? (
-              <div
-                style={{
-                  width: '100%', height: '42px', borderRadius: '8px',
-                  background: 'rgba(22, 163, 74, 0.12)', border: '1px solid #16a34a',
-                  color: '#16a34a', fontWeight: 800, fontSize: '0.85rem',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
-                }}
-              >
-                <Check size={18} />
-                <span>
-                  ✓ Saved {['ringing', 'callback', 'busy_callback', 'switched_off', 'busy', 'not_connected'].includes(callStatus) ? '& WhatsApp Initiated!' : 'Successfully!'}
-                </span>
-              </div>
-            ) : (
-              <button
-                onClick={() => executeSave(callStatus)}
-                disabled={saving}
-                className="btn btn-primary"
-                style={{ width: '100%', justifyContent: 'center', height: '42px', fontWeight: 800, fontSize: '0.85rem', background: '#0e3d35', borderColor: '#0e3d35', color: '#ffffff', boxShadow: '0 4px 14px rgba(14, 61, 53, 0.25)' }}
-              >
-                {saving ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={16} />}
-                {saving ? 'Saving & Triggering WhatsApp...' : 'Save & Update Lead'}
-              </button>
-            )}
-          </div>
-
-          {/* Followup History Timeline */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-              <Activity size={13} color="var(--text-muted)" />
-              <h4 style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
-                Followup Activity History
-              </h4>
-              {history.length > 0 && (
-                <span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                  {history.length} call{history.length !== 1 ? 's' : ''} logged
-                </span>
-              )}
-            </div>
-
-            {loading ? (
-              <div style={{ height: '60px', borderRadius: '10px', background: 'var(--bg-surface)' }} />
-            ) : history.length === 0 ? (
-              <div style={{ padding: '1rem', textAlign: 'center', borderRadius: '10px', border: '1px dashed var(--border-default)', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-                No previous followups recorded
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {history.map(item => {
-                  const s = statusMap[item.call_status] || { color: 'var(--text-primary)', bg: 'var(--bg-surface)', label: item.call_status, icon: <CircleDot size={12} /> }
-                  return (
-                    <div
-                      key={item.id}
-                      style={{
-                        padding: '0.625rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-default)',
-                        background: 'var(--bg-card)'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '2px' }}>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 7px', borderRadius: '99px', background: s.bg, color: s.color, border: `1px solid ${s.color}35` }}>
-                          {s.label}
-                        </span>
-                        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-                          {formatDate(item.completed_at, 'dd MMM, hh:mm a')}
-                        </span>
-                      </div>
-                      {item.notes && (
-                        <p style={{ fontSize: '0.78rem', color: 'var(--text-primary)', margin: '4px 0 0', lineHeight: '1.4' }}>{item.notes}</p>
-                      )}
-                      <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', margin: '3px 0 0', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                        <User size={9} /> {item.sales_rep?.full_name || 'Sales Rep'} &nbsp;·&nbsp; Followup #{item.followup_number}
-                      </p>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        </div>
+            <button className="btn btn-primary" onClick={save} disabled={saving}>
+              {saving ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={15} />}
+              {saving ? 'Saving…' : 'Save update'}
+            </button>
+          </>
+        )
+      }
+    >
+      <div className="quick-actions">
+        <a className="btn btn-secondary" href={`tel:${lead.phone}`}><PhoneCall size={15} /> Call</a>
+        <a
+          className="btn btn-secondary"
+          style={{ color: '#16a34a' }}
+          target="_blank"
+          rel="noreferrer"
+          href={`https://api.whatsapp.com/send?phone=${encodeURIComponent(lead.phone)}&text=${encodeURIComponent(`Hello ${leadName(lead)}, thank you for contacting RushiPandit Institute for our ${lead.industry || 'Digital Marketing'} program! How can we assist you with your career goals?`)}`}
+        >
+          <WhatsAppIcon /> WhatsApp
+        </a>
+        <button className="btn btn-secondary" onClick={onEdit}><Edit2 size={15} /> Edit</button>
+        {isAdmin && <button className="btn btn-danger" onClick={onDelete}><Trash2 size={15} /> Delete</button>}
       </div>
-    </div>
+
+      <KeyValues items={[
+        { label: 'Program', value: lead.industry || lead.category || '—' },
+        { label: 'Email', value: lead.email || '—' },
+        { label: 'Calls made', value: `${lead.followup_count || 0}` },
+        { label: 'Next follow-up', value: (lead.next_followup_at || lead.follow_up_date) ? formatDate(lead.next_followup_at || lead.follow_up_date, 'dd MMM, hh:mm a') : '—' },
+        { label: 'Visit done', value: lead.visit_done_at ? formatDate(lead.visit_done_at, 'dd MMM yyyy') : '—' },
+        { label: isAdmin ? 'Assigned to' : 'Email', value: isAdmin ? (lead.assigned_to_profile ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Avatar name={lead.assigned_to_profile.full_name} src={lead.assigned_to_profile.avatar_url} size="xs" />{lead.assigned_to_profile.full_name}</span> : 'Unassigned') : (lead.email || '—') },
+      ]} />
+
+      <PanelSection title={`Form responses${qualEntries.length ? ` · ${qualEntries.length}` : ''}`} aside={<span style={{ fontSize: '0.72rem', color: 'var(--text-faint)' }}>From the {platformKey(lead.platform || lead.source) === 'ig' ? 'Instagram' : platformKey(lead.platform || lead.source) === 'fb' ? 'Facebook' : 'lead'} form</span>}>
+        <FormAnswers lead={lead} />
+      </PanelSection>
+
+      {lead.notes && (
+        <div className="note-box"><StickyNote size={14} /> <span>{lead.notes}</span></div>
+      )}
+
+      <PanelSection title="Update call status" aside={<span style={{ fontSize: '0.72rem', color: 'var(--text-faint)' }}>Pick one, then save</span>}>
+        <div className="status-grid">
+          {STATUS_CONFIG.map(s => (
+            <button
+              key={s.id}
+              type="button"
+              className={`status-option ${callStatus === s.id ? 'selected' : ''}`}
+              style={{ '--tone': s.color } as React.CSSProperties}
+              onClick={() => setCallStatus(s.id)}
+            >
+              {s.icon}<span className="truncate-1">{s.label}</span>
+              {callStatus === s.id && <Check size={14} style={{ marginLeft: 'auto' }} />}
+            </button>
+          ))}
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Remarks</label>
+          <textarea className="form-textarea" rows={3} value={notes} onChange={e => setNotes(e.target.value)} placeholder="What did the student say? Fees discussed, preferred batch, callback time…" />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Calendar size={13} style={{ color: selected.color }} /> {dateLabel}
+            {callStatus === 'visit_scheduled' && <span style={{ color: selected.color }}>*</span>}
+          </label>
+          <input
+            type="datetime-local"
+            className="form-input"
+            value={scheduledAt}
+            onChange={e => setScheduledAt(e.target.value)}
+            style={{ colorScheme: theme, borderColor: selected.requiresDate ? `color-mix(in srgb, ${selected.color} 55%, transparent)` : undefined }}
+          />
+        </div>
+
+        {callStatus === 'visit_done' && (
+          <div className="hint-box" style={{ '--tone': selected.color } as React.CSSProperties}>
+            <MapPinCheck size={15} />
+            <div>
+              <strong>{lead.visit_done_at ? `Visit recorded on ${formatDate(lead.visit_done_at, 'dd MMM yyyy')}` : 'Visit will be recorded now'}</strong>
+              <p>{lead.visit_done_at
+                ? 'Already counted in that month’s visits — saving again won’t count it twice.'
+                : `Counts toward ${new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })} visits in Sales Analytics.`}</p>
+            </div>
+          </div>
+        )}
+        {callStatus === 'visit_scheduled' && scheduledAt && (
+          <div className="hint-box" style={{ '--tone': selected.color } as React.CSSProperties}>
+            <BellRing size={15} />
+            <div><strong>Visit reminder set</strong><p>{fmtWhen(scheduledAt)}</p></div>
+          </div>
+        )}
+        {(callStatus === 'follow_up' || callStatus === 'callback') && scheduledAt && (
+          <div className="hint-box" style={{ '--tone': selected.color } as React.CSSProperties}>
+            <BellRing size={15} />
+            <div><strong>Reminder</strong><p>{fmtWhen(scheduledAt)}</p></div>
+          </div>
+        )}
+      </PanelSection>
+
+      <PanelSection
+        title="WhatsApp messages"
+        aside={WHATSAPP_STATUSES.includes(lead.status) && (
+          <button className="btn btn-ghost btn-sm" onClick={resendWhatsApp} disabled={resending}>
+            {resending ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={13} />} Resend status message
+          </button>
+        )}
+      >
+        {waHistory === null ? (
+          <div className="skeleton" style={{ height: 44 }} />
+        ) : waHistory.length === 0 ? (
+          (() => {
+            const legacy = waTag({ ...lead, _waPending: false, wa_last: null })
+            return legacy
+              ? <div className="wa-event" style={{ '--tone': legacy.color } as React.CSSProperties}><WhatsAppTag lead={{ ...lead, _waPending: false, wa_last: null }} /><span className="wa-event-meta">{legacy.title}</span></div>
+              : <div className="empty-inline">No automatic WhatsApp messages yet. Ringing, Call Back and Switch Off send one; Visit Schedule and AI Workshop send reminders.</div>
+          })()
+        ) : (
+          <ul className="wa-list">
+            {waHistory.map(ev => {
+              const failed = ev.status === 'failed'
+              return (
+                <li key={ev.id} className="wa-event" style={{ '--tone': failed ? '#ef4757' : '#22c55e' } as React.CSSProperties}>
+                  <span className="wa-event-icon">{failed ? <XCircle size={14} /> : <Check size={14} />}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {waLabel(ev)}{ev.kind === 'status' && ev.detail ? ` · ${ev.detail}` : ''} — {failed ? 'failed' : 'sent'}
+                    </div>
+                    {failed && <div style={{ fontSize: '0.75rem', color: 'var(--status-danger)' }}>{waReason(ev.error)} · <span style={{ color: 'var(--text-muted)' }}>{ev.error}</span></div>}
+                  </div>
+                  <span className="wa-event-meta tabular">{formatDate(ev.created_at || ev.at || '', 'dd MMM, hh:mm a')}</span>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </PanelSection>
+
+      <PanelSection title="Activity" aside={history.length > 0 && <span style={{ fontSize: '0.72rem', color: 'var(--text-faint)' }}>{history.length} logged</span>}>
+        {loadingHistory ? (
+          <div className="skeleton" style={{ height: 64 }} />
+        ) : history.length === 0 ? (
+          <div className="empty-inline">No calls logged yet</div>
+        ) : (
+          <ul className="timeline">
+            {history.map(item => {
+              const s = statusOf(item.call_status)
+              return (
+                <li key={item.id} style={{ '--tone': s.color } as React.CSSProperties}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <Pill color={s.color}>{s.label}</Pill>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{formatDate(item.completed_at, 'dd MMM, hh:mm a')}</span>
+                  </div>
+                  {item.notes && <p style={{ fontSize: '0.8125rem', color: 'var(--text-primary)', marginTop: 5, lineHeight: 1.45 }}>{item.notes}</p>}
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text-faint)', marginTop: 3 }}>
+                    {item.sales_rep?.full_name || 'Sales rep'} · Call #{item.followup_number}
+                  </p>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </PanelSection>
+    </SidePanel>
   )
 }
 
-// ─── Main LeadsSection Component ──────────────────────────────────────────
+// ─── Main ─────────────────────────────────────────────────────────────────
 export default function LeadsSection({ profile }: Props) {
   const router = useRouter()
   const [leads, setLeads] = useState<Lead[]>([])
@@ -878,30 +529,26 @@ export default function LeadsSection({ profile }: Props) {
   const [filterPlatform, setFilterPlatform] = useState('all')
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'>('all')
   const [followupTab, setFollowupTab] = useState<'all' | 'due_today' | 'overdue' | 'upcoming'>('all')
+  const [visitsThisMonthOnly, setVisitsThisMonthOnly] = useState(false)
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
-
   const [showModal, setShowModal] = useState(false)
   const [editLead, setEditLead] = useState<Lead | null>(null)
   const [saving, setSaving] = useState(false)
+  const [openLeadId, setOpenLeadId] = useState<string | null>(null)
+  const [expandedForm, setExpandedForm] = useState<string | null>(null)
 
-  const [followupLead, setFollowupLead] = useState<Lead | null>(null)
+  const emptyForm = { client_name: '', phone: '', email: '', industry: 'Digital Marketing', category: 'Digital Marketing', status: 'new', source: 'facebook_lead_ad', notes: '', follow_up_date: '', platform: 'Facebook' }
+  const [form, setForm] = useState(emptyForm)
 
-  const [form, setForm] = useState({
-    client_name: '', phone: '', email: '',
-    industry: 'Digital Marketing', category: 'Digital Marketing',
-    status: 'new', source: 'facebook_lead_ad', notes: '', follow_up_date: '', platform: 'Facebook'
-  })
-
-  const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
+  const isAdmin = profile.role === 'admin'
+  const getToken = () => localStorage.getItem('rushi_token') || ''
 
   const fetchLeads = useCallback(async () => {
-    const token = getToken()
+    const token = localStorage.getItem('rushi_token')
     if (!token) { router.push('/'); return }
     try {
-      const res = await fetch('/api/leads', {
-        headers: { Authorization: `Bearer ${token}` }
-      })
+      const res = await fetch('/api/leads', { headers: { Authorization: `Bearer ${token}` } })
       if (!res.ok) {
         if (res.status === 401) router.push('/')
         return
@@ -917,47 +564,42 @@ export default function LeadsSection({ profile }: Props) {
 
   useEffect(() => { fetchLeads() }, [fetchLeads])
 
-  // Direct quick status change handler
+  // The WhatsApp send runs in the background after a status change; re-read the real result.
+  const confirmWhatsApp = useCallback(() => {
+    setTimeout(fetchLeads, 3500)
+    setTimeout(fetchLeads, 9000)
+  }, [fetchLeads])
+
+  const openLead = leads.find(l => l.id === openLeadId) || null
+
   const handleQuickStatusChange = async (leadId: string, newStatus: string) => {
-    const isWhatsAppEligible = ['ringing', 'callback', 'busy_callback', 'switched_off', 'busy', 'not_connected'].includes(newStatus)
-
-    setLeads(prev => prev.map(l => l.id === leadId ? {
-      ...l,
-      status: newStatus,
-      whatsapp_ringing_sent: isWhatsAppEligible ? true : l.whatsapp_ringing_sent,
-      whatsapp_msg_status: isWhatsAppEligible ? 'aisensy_ringing_sent' : l.whatsapp_msg_status
-    } : l))
-
-    const token = getToken()
+    const wa = WHATSAPP_STATUSES.includes(newStatus)
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status: newStatus, _waPending: wa } : l))
     try {
       const res = await fetch(`/api/leads/${leadId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status: newStatus })
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ status: newStatus }),
       })
-      if (!res.ok) {
-        fetchLeads()
-      } else {
-        const data = await res.json().catch(() => null)
-        if (data?.id) {
-          setLeads(prev => prev.map(l => l.id === leadId ? { ...l, ...data } : l))
-        }
-      }
-    } catch (err) {
+      if (!res.ok) return fetchLeads()
+      const data = await res.json().catch(() => null)
+      if (data?.id) setLeads(prev => prev.map(l => l.id === leadId ? { ...l, ...data } : l))
+      if (wa) confirmWhatsApp()
+    } catch {
       fetchLeads()
     }
   }
 
   const openCreate = () => {
     setEditLead(null)
-    setForm({ client_name: '', phone: '', email: '', industry: 'Digital Marketing', category: 'Digital Marketing', status: 'new', source: 'facebook_lead_ad', notes: '', follow_up_date: '', platform: 'Facebook' })
+    setForm(emptyForm)
     setShowModal(true)
   }
 
   const openEdit = (lead: Lead) => {
     setEditLead(lead)
     setForm({
-      client_name: lead.client_name || lead.name || '',
+      client_name: leadName(lead),
       phone: lead.phone,
       email: lead.email || '',
       industry: lead.industry || lead.category || 'Digital Marketing',
@@ -965,8 +607,8 @@ export default function LeadsSection({ profile }: Props) {
       status: lead.status,
       source: lead.source || 'facebook_lead_ad',
       notes: lead.notes || '',
-      follow_up_date: lead.follow_up_date || '',
-      platform: lead.platform || 'Facebook'
+      follow_up_date: lead.follow_up_date ? lead.follow_up_date.slice(0, 10) : '',
+      platform: lead.platform || 'Facebook',
     })
     setShowModal(true)
   }
@@ -974,600 +616,394 @@ export default function LeadsSection({ profile }: Props) {
   const handleSubmit = async () => {
     if (!form.client_name || !form.phone) return
     setSaving(true)
-    const token = getToken()
     try {
+      const body = { ...form, follow_up_date: form.follow_up_date || null }
       if (editLead) {
-        // Optimistic UI update
         setLeads(prev => prev.map(l => l.id === editLead.id ? { ...l, ...form, name: form.client_name } : l))
         await fetch(`/api/leads/${editLead.id}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify(form)
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify(body),
         })
       } else {
         await fetch('/api/leads', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify(form)
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify(body),
         })
       }
       setShowModal(false)
       fetchLeads()
-    } catch (err: any) {
-      alert('Error saving lead: ' + err.message)
+    } catch (err) {
+      alert('Error saving lead: ' + (err as Error).message)
     } finally {
       setSaving(false)
     }
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Permanently delete this lead and its followup records?')) return
-    const token = getToken()
-    await fetch(`/api/leads/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+    if (!confirm('Permanently delete this lead and its follow-up records?')) return
+    await fetch(`/api/leads/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${getToken()}` } })
+    setOpenLeadId(null)
     fetchLeads()
   }
 
-  const handleWhatsapp = (lead: Lead) => {
-    const name = lead.client_name || lead.name || 'Student'
-    const msg = `Hello ${name}, thank you for contacting RushiPandit Institute for our ${lead.industry || 'Digital Marketing'} program! How can we assist you with your career goals?`
-    window.open(`https://api.whatsapp.com/send?phone=${encodeURIComponent(lead.phone)}&text=${encodeURIComponent(msg)}`, '_blank')
-  }
-
-  // Followup counts computation
   const now = new Date()
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
   const todayEnd = todayStart + 86400000
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
 
-  const overdueCount = useMemo(() => {
-    return leads.filter(l => {
-      const d = l.next_followup_at || l.follow_up_date
-      if (!d) return false
-      const time = new Date(d).getTime()
-      return time < todayStart && !['closed_won', 'closed_lost'].includes(l.status)
-    }).length
-  }, [leads, todayStart])
+  const isDueToday = useCallback((l: Lead) => {
+    if (l.status === 'busy_callback') return true
+    const d = l.next_followup_at || l.follow_up_date
+    if (!d) return false
+    const t = new Date(d).getTime()
+    return t >= todayStart && t < todayEnd && !CLOSED.includes(l.status)
+  }, [todayStart, todayEnd])
+  const isOverdue = useCallback((l: Lead) => {
+    const d = l.next_followup_at || l.follow_up_date
+    return !!d && new Date(d).getTime() < todayStart && !CLOSED.includes(l.status)
+  }, [todayStart])
+  const isUpcoming = useCallback((l: Lead) => {
+    const d = l.next_followup_at || l.follow_up_date
+    return !!d && new Date(d).getTime() >= todayEnd && !CLOSED.includes(l.status)
+  }, [todayEnd])
 
-  const dueTodayCount = useMemo(() => {
-    return leads.filter(l => {
-      const d = l.next_followup_at || l.follow_up_date
-      let isDue = l.status === 'busy_callback'
-      if (d) {
-        const time = new Date(d).getTime()
-        if (time >= todayStart && time < todayEnd && !['closed_won', 'closed_lost'].includes(l.status)) isDue = true
-      }
-      return isDue
-    }).length
-  }, [leads, todayStart, todayEnd])
+  const dueTodayCount = leads.filter(isDueToday).length
+  const overdueCount = leads.filter(isOverdue).length
+  const upcomingCount = leads.filter(isUpcoming).length
 
-  const upcomingCount = useMemo(() => {
-    return leads.filter(l => {
-      const d = l.next_followup_at || l.follow_up_date
-      if (!d) return false
-      const time = new Date(d).getTime()
-      return time >= todayEnd && !['closed_won', 'closed_lost'].includes(l.status)
-    }).length
-  }, [leads, todayEnd])
-
-  // Filter leads with Date & Multi-attribute filtering
   const filtered = useMemo(() => {
+    const q = search.toLowerCase()
     const yesterdayStart = todayStart - 86400000
     const weekStart = todayStart - 7 * 86400000
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
-
     return leads.filter(l => {
-      const nameToMatch = (l.client_name || l.name || '').toLowerCase()
-      const matchSearch = nameToMatch.includes(search.toLowerCase()) || l.phone.includes(search) || (l.email || '').toLowerCase().includes(search.toLowerCase())
-      const matchStatus = filterStatus === 'all' || l.status === filterStatus
-      const leadInd = (l.industry || l.category || '').toLowerCase().trim()
-      const matchIndustry = filterIndustry === 'all' ||
-        (l.industry || l.category) === filterIndustry ||
-        (filterIndustry === 'AI Course' && ['ai', 'ai course', 'artificial intelligence', 'ai program'].includes(leadInd))
-      
-      const p = (l.platform || l.source || '').toLowerCase()
-      let matchPlatform = true
-      if (filterPlatform === 'fb') matchPlatform = p.includes('fb') || p.includes('facebook')
-      else if (filterPlatform === 'ig') matchPlatform = p.includes('ig') || p.includes('instagram')
-      else if (filterPlatform === 'web') matchPlatform = p.includes('web') || p.includes('site')
-
-      // Date Filtering
-      const leadTime = new Date(l.created_at).getTime()
-      let matchDate = true
-      if (dateFilter === 'today') {
-        matchDate = leadTime >= todayStart
-      } else if (dateFilter === 'yesterday') {
-        matchDate = leadTime >= yesterdayStart && leadTime < todayStart
-      } else if (dateFilter === 'week') {
-        matchDate = leadTime >= weekStart
-      } else if (dateFilter === 'month') {
-        matchDate = leadTime >= monthStart
-      } else if (dateFilter === 'custom') {
-        if (customStartDate) {
-          matchDate = matchDate && leadTime >= new Date(customStartDate).getTime()
-        }
+      if (q && !(leadName(l).toLowerCase().includes(q) || l.phone.includes(search) || (l.email || '').toLowerCase().includes(q))) return false
+      if (filterStatus !== 'all' && l.status !== filterStatus) return false
+      if (filterIndustry !== 'all') {
+        const ind = (l.industry || l.category || '').toLowerCase().trim()
+        const ok = (l.industry || l.category) === filterIndustry ||
+          (filterIndustry === 'AI Course' && ['ai', 'ai course', 'artificial intelligence', 'ai program'].includes(ind))
+        if (!ok) return false
+      }
+      if (filterPlatform !== 'all') {
+        const p = (l.platform || l.source || '').toLowerCase()
+        if (filterPlatform === 'fb' && !(p.includes('fb') || p.includes('facebook'))) return false
+        if (filterPlatform === 'ig' && !(p.includes('ig') || p.includes('instagram'))) return false
+        if (filterPlatform === 'web' && !(p.includes('web') || p.includes('site'))) return false
+      }
+      const t = new Date(l.created_at).getTime()
+      if (dateFilter === 'today' && t < todayStart) return false
+      if (dateFilter === 'yesterday' && !(t >= yesterdayStart && t < todayStart)) return false
+      if (dateFilter === 'week' && t < weekStart) return false
+      if (dateFilter === 'month' && t < monthStart) return false
+      if (dateFilter === 'custom') {
+        if (customStartDate && t < new Date(customStartDate).getTime()) return false
         if (customEndDate) {
-          const endD = new Date(customEndDate)
-          endD.setHours(23, 59, 59, 999)
-          matchDate = matchDate && leadTime <= endD.getTime()
+          const end = new Date(customEndDate)
+          end.setHours(23, 59, 59, 999)
+          if (t > end.getTime()) return false
         }
       }
-
-      // Followup Tab filtering
-      let matchFollowupTab = true
-      if (followupTab === 'due_today') {
-        const d = l.next_followup_at || l.follow_up_date
-        let isDue = l.status === 'busy_callback'
-        if (d) {
-          const time = new Date(d).getTime()
-          if (time >= todayStart && time < todayEnd && !['closed_won', 'closed_lost'].includes(l.status)) isDue = true
-        }
-        matchFollowupTab = isDue
-      } else if (followupTab === 'overdue') {
-        const d = l.next_followup_at || l.follow_up_date
-        if (!d) return false
-        const time = new Date(d).getTime()
-        matchFollowupTab = time < todayStart && !['closed_won', 'closed_lost'].includes(l.status)
-      } else if (followupTab === 'upcoming') {
-        const d = l.next_followup_at || l.follow_up_date
-        if (!d) return false
-        const time = new Date(d).getTime()
-        matchFollowupTab = time >= todayEnd && !['closed_won', 'closed_lost'].includes(l.status)
-      }
-
-      return matchSearch && matchStatus && matchIndustry && matchPlatform && matchDate && matchFollowupTab
+      if (followupTab === 'due_today' && !isDueToday(l)) return false
+      if (followupTab === 'overdue' && !isOverdue(l)) return false
+      if (followupTab === 'upcoming' && !isUpcoming(l)) return false
+      if (visitsThisMonthOnly && !(l.visit_done_at && new Date(l.visit_done_at).getTime() >= monthStart)) return false
+      return true
     })
-  }, [leads, search, filterStatus, filterIndustry, filterPlatform, dateFilter, customStartDate, customEndDate, followupTab, todayStart, todayEnd])
+  }, [leads, search, filterStatus, filterIndustry, filterPlatform, dateFilter, customStartDate, customEndDate, followupTab, visitsThisMonthOnly, todayStart, monthStart, isDueToday, isOverdue, isUpcoming])
 
-  // Computed metrics
   const total = leads.length
   const enrolled = leads.filter(l => l.status === 'closed_won').length
-  const pipeline = leads.filter(l => ['interested', 'visit_scheduled', 'busy_callback'].includes(l.status)).length
+  const pipeline = leads.filter(l => ['interested', 'visit_scheduled', 'visit_done', 'ai_workshop_saturday', 'callback', 'follow_up', 'busy_callback'].includes(l.status)).length
   const convRate = total > 0 ? Math.round((enrolled / total) * 100) : 0
+  const visitsThisMonth = leads.filter(l => l.visit_done_at && new Date(l.visit_done_at).getTime() >= monthStart).length
+  const visitsScheduled = leads.filter(l => l.status === 'visit_scheduled').length
+  const monthName = now.toLocaleDateString('en-IN', { month: 'long' })
+  const filtersActive = filterStatus !== 'all' || filterIndustry !== 'all' || filterPlatform !== 'all' || dateFilter !== 'all' || followupTab !== 'all' || visitsThisMonthOnly || !!search
 
-  const isAdmin = profile.role === 'admin'
+  const cols = isAdmin
+    ? 'minmax(170px, 1.6fr) 104px 96px minmax(110px, 1fr) 100px 164px minmax(112px, 1fr) 76px 14px'
+    : 'minmax(170px, 1.6fr) 104px 96px minmax(110px, 1fr) 100px 164px minmax(112px, 1fr) 14px'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      <PageHeader
+        live
+        eyebrow="Live pipeline"
+        title={isAdmin ? 'Leads & Pipeline' : 'My Leads'}
+        description="Click any lead to open its full profile, log a call or mark a visit."
+        actions={<>
+          <button onClick={fetchLeads} className="icon-btn bordered" aria-label="Refresh leads"><RefreshCw size={15} /></button>
+          <GlowButton onClick={openCreate}><Plus size={15} /> Add lead</GlowButton>
+        </>}
+      />
 
-      {/* ── Header ── */}
-      <div className="page-header" style={{ marginBottom: 0 }}>
-        <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em', margin: 0 }}>
-            {isAdmin ? 'Inbound Leads & Pipeline' : 'My Assigned Leads'}
-          </h1>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Real-time lead capture, dynamic questionnaire answers, and scheduled follow-up tracking
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '0.625rem' }}>
-          <button
-            onClick={fetchLeads}
-            className="btn btn-secondary btn-sm"
-          >
-            <RefreshCw size={13} /> Refresh
-          </button>
-          <button
-            onClick={openCreate}
-            className="btn btn-primary btn-sm"
-          >
-            <Plus size={15} /> Add Lead
-          </button>
-        </div>
-      </div>
+      <Reveal className="grid-4">
+        <KpiCard label="Total leads" value={total} icon={BarChart2} foot={`${leads.filter(l => l.status === 'new').length} still new`} />
+        <KpiCard label="Active pipeline" value={pipeline} icon={TrendingUp} tone="info" foot={`${visitsScheduled} visits scheduled`} />
+        <KpiCard
+          label={`Visits done · ${monthName}`}
+          value={visitsThisMonth}
+          icon={MapPinCheck}
+          tone="brand"
+          active={visitsThisMonthOnly}
+          foot={visitsThisMonthOnly ? 'Filter on · click to clear' : 'Click to see who visited'}
+          onClick={() => setVisitsThisMonthOnly(v => !v)}
+        />
+        <KpiCard label="Enrolled" value={enrolled} icon={GraduationCap} tone="warning" foot={`All time · ${convRate}% conversion`} />
+      </Reveal>
 
-      {/* ── Metric Summary Bar ── */}
-      <div className="grid-4" style={{ gap: '1rem' }}>
-        {[
-          { label: 'Total Inbound Leads', value: total,    color: '#4f46e5', icon: <BarChart2 size={16} /> },
-          { label: 'Active Pipeline',     value: pipeline, color: '#0284c7', icon: <TrendingUp size={16} /> },
-          { label: 'Enrolled (Won)',      value: enrolled,  color: '#16a34a', icon: <CheckCircle size={16} /> },
-          { label: 'Conversion Rate',     value: `${convRate}%`, color: '#d97706', icon: <Activity size={16} /> },
-        ].map(({ label, value, color, icon }) => (
-          <div key={label} className="stat-card" style={{ padding: '1.25rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                {label}
-              </span>
-              <div style={{ width: 28, height: 28, borderRadius: '8px', background: 'var(--bg-surface)', color, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-default)' }}>
-                {icon}
-              </div>
-            </div>
-            <div style={{ fontSize: '1.85rem', fontWeight: 800, color, lineHeight: 1 }}>
-              {value}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* ── Urgent Follow-ups Callback Banner ── */}
       {(dueTodayCount > 0 || overdueCount > 0) && (
-        <div style={{
-          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(239, 68, 68, 0.08))',
-          border: '1.5px solid rgba(245, 158, 11, 0.35)',
-          borderRadius: '12px',
-          padding: '0.875rem 1.25rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '0.75rem'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div style={{
-              width: 34, height: 34, borderRadius: '10px',
-              background: '#d97706', color: 'white',
-              display: 'flex', alignItems: 'center', justifyContent: 'center'
-            }}>
-              <BellRing size={18} />
-            </div>
-            <div>
-              <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                ⚡ Scheduled Follow-ups Alert: {dueTodayCount} Due Today {overdueCount > 0 ? `(${overdueCount} Overdue)` : ''}
-              </h4>
-              <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                Candidates are waiting for your callback today. Don&apos;t let warm leads turn cold!
-              </p>
-            </div>
+        <div className="alert-strip tone-warning">
+          <span className="alert-strip-icon"><BellRing size={16} /></span>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <p style={{ fontSize: '0.875rem', fontWeight: 600 }}>
+              {dueTodayCount} follow-up{dueTodayCount === 1 ? '' : 's'} due today{overdueCount > 0 ? ` · ${overdueCount} overdue` : ''}
+            </p>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Warm leads cool fast — call them back while they remember you.</p>
           </div>
-
-          <button
-            onClick={() => setFollowupTab('due_today')}
-            style={{
-              padding: '6px 14px', borderRadius: '8px', border: 'none',
-              background: '#d97706', color: 'white', fontWeight: 800, fontSize: '0.78rem',
-              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px'
-            }}
-          >
-            <PhoneCall size={13} /> Focus on Due Follow-ups ({dueTodayCount})
+          <button onClick={() => setFollowupTab(overdueCount > 0 && dueTodayCount === 0 ? 'overdue' : 'due_today')} className="btn btn-sm btn-secondary">
+            <PhoneCall size={13} /> Show them
           </button>
         </div>
       )}
 
-      {/* ── Followup View Tabs (All / Due Today / Overdue / Upcoming) ── */}
-      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        {[
-          { id: 'all', label: '📋 All Leads', count: total, color: 'var(--text-primary)', bg: 'var(--bg-surface)' },
-          { id: 'due_today', label: '⏰ Due Today / Callbacks', count: dueTodayCount, color: '#d97706', bg: 'rgba(245, 158, 11, 0.15)' },
-          { id: 'overdue', label: '🚨 Overdue Follow-ups', count: overdueCount, color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' },
-          { id: 'upcoming', label: '📅 Upcoming Scheduled', count: upcomingCount, color: '#4f46e5', bg: 'rgba(79, 70, 229, 0.15)' },
-        ].map(tab => {
-          const isActive = followupTab === tab.id
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setFollowupTab(tab.id as any)}
-              style={{
-                padding: '6px 14px', borderRadius: '10px', cursor: 'pointer',
-                border: `1.5px solid ${isActive ? (tab.color === 'var(--text-primary)' ? 'var(--brand-primary)' : tab.color) : 'var(--border-default)'}`,
-                background: isActive ? (tab.bg) : 'var(--bg-card)',
-                color: isActive ? (tab.color) : 'var(--text-secondary)',
-                fontWeight: isActive ? 800 : 600,
-                fontSize: '0.8rem',
-                display: 'flex', alignItems: 'center', gap: '6px',
-                transition: 'all 0.15s'
-              }}
-            >
-              <span>{tab.label}</span>
-              <span style={{
-                fontSize: '0.68rem', fontWeight: 800, padding: '1px 6px',
-                borderRadius: '99px', background: isActive ? 'rgba(0,0,0,0.15)' : 'var(--bg-surface)',
-                color: tab.color
-              }}>
-                {tab.count}
-              </span>
-            </button>
-          )
-        })}
-      </div>
-
-      {/* ── Date Segregation & Quick Filter Pills ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', background: 'var(--bg-card)', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid var(--border-default)' }}>
-        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '4px', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: '0.25rem' }}>
-          <CalendarDays size={13} style={{ color: 'var(--brand-primary)' }} /> Inbound Date:
-        </span>
-
-        {[
-          { id: 'all', label: 'All Dates' },
-          { id: 'today', label: 'Today' },
-          { id: 'yesterday', label: 'Yesterday' },
-          { id: 'week', label: 'Last 7 Days' },
-          { id: 'month', label: 'This Month' },
-          { id: 'custom', label: 'Custom Range' },
-        ].map(pill => (
-          <button
-            key={pill.id}
-            onClick={() => setDateFilter(pill.id as any)}
-            style={{
-              padding: '4px 12px', borderRadius: '8px', cursor: 'pointer',
-              border: dateFilter === pill.id ? '1px solid var(--brand-primary)' : '1px solid var(--border-default)',
-              background: dateFilter === pill.id ? 'var(--bg-surface)' : 'transparent',
-              color: dateFilter === pill.id ? 'var(--text-primary)' : 'var(--text-secondary)',
-              fontSize: '0.75rem', fontWeight: dateFilter === pill.id ? 800 : 500,
-              transition: 'all 0.15s'
-            }}
-          >
-            {pill.label}
-          </button>
-        ))}
-
-        {/* Custom date range picker if 'custom' is selected */}
-        {dateFilter === 'custom' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
-            <input
-              type="date"
-              value={customStartDate}
-              onChange={e => setCustomStartDate(e.target.value)}
-              className="form-input"
-              style={{ height: '30px', fontSize: '0.75rem', padding: '2px 8px', width: 'auto' }}
-            />
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>to</span>
-            <input
-              type="date"
-              value={customEndDate}
-              onChange={e => setCustomEndDate(e.target.value)}
-              className="form-input"
-              style={{ height: '30px', fontSize: '0.75rem', padding: '2px 8px', width: 'auto' }}
-            />
+      <Reveal delay={0.08}>
+      <section className="card list">
+        <div className="list-toolbar">
+          <div className="segmented" role="tablist" style={{ overflowX: 'auto', maxWidth: '100%' }}>
+            {([
+              { id: 'all', label: 'All', count: total, tone: '' },
+              { id: 'due_today', label: 'Due today', count: dueTodayCount, tone: 'var(--status-warning)' },
+              { id: 'overdue', label: 'Overdue', count: overdueCount, tone: 'var(--status-danger)' },
+              { id: 'upcoming', label: 'Upcoming', count: upcomingCount, tone: 'var(--status-info)' },
+            ] as const).map(tab => (
+              <button key={tab.id} role="tab" aria-selected={followupTab === tab.id} className={followupTab === tab.id ? 'active' : ''} onClick={() => setFollowupTab(tab.id)}>
+                {tab.tone && <span style={{ width: 6, height: 6, borderRadius: '50%', background: tab.tone }} />}
+                {tab.label}
+                <span className="tabular" style={{ color: 'var(--text-faint)', fontWeight: 500 }}>{tab.count}</span>
+              </button>
+            ))}
           </div>
-        )}
-      </div>
-
-      {/* ── Search & Filter Controls ── */}
-      <div style={{ display: 'flex', gap: '0.625rem', flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: '220px' }}>
-          <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-          <input
-            placeholder="Search by student name, phone or email..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="form-input"
-            style={{ paddingLeft: '34px', height: '36px', fontSize: '0.82rem' }}
-          />
+          <div className="segmented" style={{ overflowX: 'auto', maxWidth: '100%', marginLeft: 'auto' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', padding: '0 0.35rem 0 0.5rem', color: 'var(--text-faint)' }}><CalendarDays size={13} /></span>
+            {([
+              ['all', 'All time'], ['today', 'Today'], ['yesterday', 'Yesterday'], ['week', '7 days'], ['month', 'This month'], ['custom', 'Custom'],
+            ] as const).map(([id, label]) => (
+              <button key={id} className={dateFilter === id ? 'active' : ''} onClick={() => setDateFilter(id)}>{label}</button>
+            ))}
+          </div>
         </div>
 
-        {/* Platform Filter (All / FB / IG) */}
-        <div style={{ position: 'relative' }}>
-          <select
-            value={filterPlatform}
-            onChange={e => setFilterPlatform(e.target.value)}
-            className="form-select"
-            style={{ height: '36px', fontSize: '0.82rem', minWidth: '130px' }}
-          >
-            <option value="all">All Sources</option>
-            <option value="fb">FB (Facebook)</option>
-            <option value="ig">IG (Instagram)</option>
+        <div className="list-toolbar">
+          <div className="input-icon">
+            <Search size={14} />
+            <input className="form-input" placeholder="Search name, phone or email…" value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <select value={filterPlatform} onChange={e => setFilterPlatform(e.target.value)} className="form-select" style={{ width: 'auto' }} aria-label="Source">
+            <option value="all">All sources</option>
+            <option value="fb">Facebook</option>
+            <option value="ig">Instagram</option>
             <option value="web">Website</option>
           </select>
-        </div>
-
-        {/* Call Status Filter */}
-        <div style={{ position: 'relative' }}>
-          <Filter size={13} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-          <select
-            value={filterStatus}
-            onChange={e => setFilterStatus(e.target.value)}
-            className="form-select"
-            style={{ paddingLeft: '28px', height: '36px', fontSize: '0.82rem', minWidth: '150px' }}
-          >
-            <option value="all">All Statuses</option>
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="form-select" style={{ width: 'auto' }} aria-label="Status">
+            <option value="all">All statuses</option>
             {STATUS_CONFIG.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
-        </div>
-
-        {/* Industry / Course Filter */}
-        <div style={{ position: 'relative' }}>
-          <Layers size={13} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-          <select
-            value={filterIndustry}
-            onChange={e => setFilterIndustry(e.target.value)}
-            className="form-select"
-            style={{ paddingLeft: '28px', height: '36px', fontSize: '0.82rem', minWidth: '150px' }}
-          >
-            <option value="all">All Courses</option>
+          <select value={filterIndustry} onChange={e => setFilterIndustry(e.target.value)} className="form-select" style={{ width: 'auto' }} aria-label="Program">
+            <option value="all">All programs</option>
             {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
           </select>
-        </div>
-      </div>
-
-      {/* ── Leads Data Table ── */}
-      {loading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4rem', gap: '0.75rem', color: 'var(--text-muted)' }}>
-          <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} />
-          <span>Loading leads...</span>
-        </div>
-      ) : (
-        <div className="glass-card" style={{ overflow: 'hidden' }}>
-          {filtered.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-state-icon">
-                <TrendingUp size={24} />
-              </div>
-              <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                {total === 0 ? 'No leads received yet' : 'No leads match your filter criteria'}
-              </p>
-            </div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Lead Name & Contact</th>
-                    <th>Source</th>
-                    <th>Date & Time</th>
-                    <th>Program</th>
-                    <th>Form Responses</th>
-                    <th>Call Status</th>
-                    <th>Followups</th>
-                    {isAdmin && <th>Assigned To</th>}
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map(lead => (
-                    <LeadRow
-                      key={lead.id}
-                      lead={lead}
-                      isAdmin={isAdmin}
-                      onFollowup={() => setFollowupLead(lead)}
-                      onEdit={() => openEdit(lead)}
-                      onDelete={() => handleDelete(lead.id)}
-                      onWhatsapp={() => handleWhatsapp(lead)}
-                      onStatusChange={(newStatus) => handleQuickStatusChange(lead.id, newStatus)}
-                    />
-                  ))}
-                </tbody>
-              </table>
+          {dateFilter === 'custom' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <input type="date" value={customStartDate} onChange={e => setCustomStartDate(e.target.value)} className="form-input" style={{ width: 'auto' }} aria-label="From" />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>to</span>
+              <input type="date" value={customEndDate} onChange={e => setCustomEndDate(e.target.value)} className="form-input" style={{ width: 'auto' }} aria-label="To" />
             </div>
           )}
-          {filtered.length > 0 && (
-            <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid var(--border-default)', background: 'var(--bg-surface)' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                Showing {filtered.length} of {total} total leads ({dateFilter === 'all' ? 'All Dates' : dateFilter.toUpperCase()})
-              </span>
-            </div>
+          {visitsThisMonthOnly && (
+            <span className="badge tone-success" style={{ height: 30 }}>
+              <MapPinCheck size={12} /> Visited in {monthName}
+              <button onClick={() => setVisitsThisMonthOnly(false)} aria-label="Clear visit filter" className="badge-x"><X size={12} /></button>
+            </span>
           )}
         </div>
-      )}
 
-      {/* ── Followup Slide-Over Drawer ── */}
-      {followupLead && (
-        <FollowupPanel
-          lead={followupLead}
-          onClose={() => setFollowupLead(null)}
-          onSaved={(updatedLead) => {
-            setFollowupLead(prev => prev ? { ...prev, ...updatedLead } : null)
-            setLeads(prev => prev.map(l => l.id === (updatedLead.id || followupLead.id) ? { ...l, ...updatedLead } : l))
-            fetchLeads()
+        {loading ? (
+          <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {[1, 2, 3, 4, 5].map(i => <div key={i} className="skeleton" style={{ height: 52 }} />)}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon"><TrendingUp size={20} /></div>
+            <p style={{ fontWeight: 550, color: 'var(--text-secondary)' }}>{total === 0 ? 'No leads yet' : 'No leads match these filters'}</p>
+            {filtersActive && total > 0 && (
+              <button className="btn btn-secondary btn-sm" onClick={() => {
+                setSearch(''); setFilterStatus('all'); setFilterIndustry('all'); setFilterPlatform('all'); setDateFilter('all'); setFollowupTab('all'); setVisitsThisMonthOnly(false)
+              }}>Clear filters</button>
+            )}
+          </div>
+        ) : (
+          <div role="list">
+            <div className="list-head" style={{ '--cols': cols } as React.CSSProperties}>
+              <span>Lead</span><span>Received</span><span>Source</span><span>Program</span><span>Form</span><span>Status</span><span>Follow-up</span>{isAdmin && <span>Owner</span>}<span />
+            </div>
+            {filtered.map(lead => {
+              const f = followupInfo(lead, todayStart)
+              const answers = formAnswers(lead)
+              return (
+                <Fragment key={lead.id}>
+                <div
+                  role="listitem"
+                  tabIndex={0}
+                  className={`list-row ${openLeadId === lead.id ? 'selected' : ''}`}
+                  style={{ '--cols': cols } as React.CSSProperties}
+                  onClick={() => setOpenLeadId(lead.id)}
+                  onKeyDown={e => { if (e.key === 'Enter') setOpenLeadId(lead.id) }}
+                >
+                  <div className="row-main">
+                    <Avatar name={leadName(lead)} size="sm" />
+                    <div style={{ minWidth: 0 }}>
+                      <div className="row-title">{leadName(lead)}</div>
+                      <div className="row-sub tabular">{lead.phone}</div>
+                      <div className="row-sub show-sm">{formatDate(lead.created_at, 'dd MMM, hh:mm a')} · {lead.industry || lead.category || '—'}</div>
+                    </div>
+                  </div>
+                  <div className="col-hide-sm tabular" style={{ minWidth: 0, lineHeight: 1.3 }}>
+                    <div style={{ fontSize: '0.8125rem', fontWeight: 550, color: 'var(--text-primary)' }}>{formatDate(lead.created_at, 'dd MMM yyyy')}</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{formatDate(lead.created_at, 'hh:mm a')}</div>
+                  </div>
+                  <div className="col-hide-sm"><PlatformBadge platform={lead.platform || lead.source} full /></div>
+                  <span className="row-cell col-hide-sm" style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{lead.industry || lead.category || '—'}</span>
+                  <span className="col-hide-sm" onClick={e => e.stopPropagation()}>
+                    {answers.length > 0 ? (
+                      <button className={`form-chip ${expandedForm === lead.id ? 'open' : ''}`} onClick={() => setExpandedForm(expandedForm === lead.id ? null : lead.id)} aria-expanded={expandedForm === lead.id}>
+                        <ClipboardList size={12} /> {answers.length} answer{answers.length === 1 ? '' : 's'} <ChevronDown size={12} />
+                      </button>
+                    ) : <span className="row-cell" style={{ color: 'var(--text-faint)', fontStyle: 'italic', fontSize: '0.75rem' }}>Standard</span>}
+                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, alignItems: 'flex-start' }}>
+                    <StatusSelect value={lead.status} onChange={s => handleQuickStatusChange(lead.id, s)} />
+                    <WhatsAppTag lead={lead} />
+                  </div>
+                  <div className="col-hide-sm" style={{ minWidth: 0 }}>
+                    {f ? (
+                      <span className="row-cell" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: f.overdue ? 'var(--status-danger)' : f.today ? 'var(--status-warning)' : 'var(--text-secondary)', fontWeight: f.overdue || f.today ? 600 : 400 }}>
+                        <Calendar size={12} />
+                        {f.overdue ? 'Overdue · ' : f.today ? 'Today · ' : ''}{formatDate(f.date, f.today ? 'hh:mm a' : 'dd MMM, hh:mm a')}
+                      </span>
+                    ) : (
+                      <span className="row-cell" style={{ color: 'var(--text-faint)' }}>{lead.followup_count || 0} call{lead.followup_count === 1 ? '' : 's'}</span>
+                    )}
+                  </div>
+                  {isAdmin && (
+                    <span className="row-cell col-hide-sm" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {lead.assigned_to_profile ? <><Avatar name={lead.assigned_to_profile.full_name} src={lead.assigned_to_profile.avatar_url} size="xs" />{lead.assigned_to_profile.full_name.split(' ')[0]}</> : <em style={{ color: 'var(--text-faint)' }}>Unassigned</em>}
+                    </span>
+                  )}
+                  <ChevronRight size={16} className="row-chevron col-hide-sm" />
+                </div>
+                {expandedForm === lead.id && (
+                  <div className="row-expand">
+                    <div className="eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}><ClipboardList size={13} /> Form responses &amp; qualification answers</div>
+                    <FormAnswers lead={lead} />
+                  </div>
+                )}
+                </Fragment>
+              )
+            })}
+            <div className="list-foot">
+              <span>Showing {filtered.length} of {total} leads</span>
+              <span className="hidden-mobile">Tip: press Enter on a row to open it</span>
+            </div>
+          </div>
+        )}
+      </section>
+      </Reveal>
+
+      {openLead && (
+        <LeadPanel
+          lead={openLead}
+          isAdmin={isAdmin}
+          onClose={() => setOpenLeadId(null)}
+          onSaved={(updated, waQueued) => {
+            setLeads(prev => prev.map(l => l.id === (updated.id || openLead.id) ? { ...l, ...updated } as Lead : l))
+            if (waQueued) confirmWhatsApp()
+            else fetchLeads()
           }}
+          onEdit={() => openEdit(openLead)}
+          onDelete={() => handleDelete(openLead.id)}
         />
       )}
 
-      {/* ── Create / Edit Modal ── */}
       {showModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
-          <div className="modal-content" style={{ maxWidth: '580px' }}>
+        <div className="modal-overlay" style={{ zIndex: 1150 }} onMouseDown={e => e.target === e.currentTarget && setShowModal(false)}>
+          <div className="modal-content" style={{ maxWidth: 580 }}>
             <div className="modal-header">
-              <h3 style={{ fontWeight: 700, fontSize: '1.05rem', margin: 0, color: 'var(--text-primary)' }}>
-                {editLead ? 'Edit Lead Details' : 'Add Inbound Lead'}
-              </h3>
-              <button onClick={() => setShowModal(false)} className="btn btn-ghost btn-sm">
-                <X size={18} />
-              </button>
+              <h3>{editLead ? 'Edit lead' : 'Add lead'}</h3>
+              <button onClick={() => setShowModal(false)} className="icon-btn" aria-label="Close"><X size={18} /></button>
             </div>
-
             <div className="modal-body">
               <div className="grid-2">
                 <div className="form-group">
-                  <label className="form-label">Full Name *</label>
-                  <input
-                    className="form-input"
-                    value={form.client_name}
-                    onChange={e => setForm({ ...form, client_name: e.target.value })}
-                    placeholder="Candidate name"
-                  />
+                  <label className="form-label">Full name *</label>
+                  <input className="form-input" value={form.client_name} onChange={e => setForm({ ...form, client_name: e.target.value })} placeholder="Candidate name" />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Phone Number *</label>
-                  <input
-                    className="form-input"
-                    value={form.phone}
-                    onChange={e => setForm({ ...form, phone: e.target.value })}
-                    placeholder="+91 98765 43210"
-                  />
+                  <label className="form-label">Phone *</label>
+                  <input className="form-input" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+91 98765 43210" />
                 </div>
               </div>
-
               <div className="form-group">
-                <label className="form-label">Email Address</label>
-                <input
-                  className="form-input"
-                  type="email"
-                  value={form.email}
-                  onChange={e => setForm({ ...form, email: e.target.value })}
-                  placeholder="candidate@email.com"
-                />
+                <label className="form-label">Email</label>
+                <input className="form-input" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="candidate@email.com" />
               </div>
-
               <div className="grid-2">
                 <div className="form-group">
-                  <label className="form-label">Program / Course</label>
-                  <select
-                    className="form-select"
-                    value={form.industry}
-                    onChange={e => setForm({ ...form, industry: e.target.value, category: e.target.value })}
-                  >
+                  <label className="form-label">Program</label>
+                  <select className="form-select" value={form.industry} onChange={e => setForm({ ...form, industry: e.target.value, category: e.target.value })}>
                     {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Call Status</label>
-                  <select
-                    className="form-select"
-                    value={form.status}
-                    onChange={e => setForm({ ...form, status: e.target.value })}
-                  >
+                  <label className="form-label">Call status</label>
+                  <select className="form-select" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
                     {STATUS_CONFIG.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                   </select>
                 </div>
               </div>
-
               <div className="grid-2">
                 <div className="form-group">
-                  <label className="form-label">Lead Platform</label>
-                  <select
-                    className="form-select"
-                    value={form.platform}
-                    onChange={e => setForm({ ...form, platform: e.target.value, source: e.target.value })}
-                  >
-                    <option value="Facebook">FB (Facebook)</option>
-                    <option value="Instagram">IG (Instagram)</option>
+                  <label className="form-label">Platform</label>
+                  <select className="form-select" value={form.platform} onChange={e => setForm({ ...form, platform: e.target.value, source: e.target.value })}>
+                    <option value="Facebook">Facebook</option>
+                    <option value="Instagram">Instagram</option>
                     <option value="Website">Website</option>
-                    <option value="Walk In">Walk In</option>
+                    <option value="Walk In">Walk in</option>
                     <option value="Referral">Referral</option>
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Follow-up Date</label>
-                  <input
-                    type="date"
-                    className="form-input"
-                    value={form.follow_up_date}
-                    onChange={e => setForm({ ...form, follow_up_date: e.target.value })}
-                  />
+                  <label className="form-label">Follow-up date</label>
+                  <input type="date" className="form-input" value={form.follow_up_date} onChange={e => setForm({ ...form, follow_up_date: e.target.value })} />
                 </div>
               </div>
-
               <div className="form-group">
-                <label className="form-label">Internal Notes</label>
-                <textarea
-                  className="form-textarea"
-                  rows={3}
-                  value={form.notes}
-                  onChange={e => setForm({ ...form, notes: e.target.value })}
-                  placeholder="Internal remarks regarding this student..."
-                />
+                <label className="form-label">Notes</label>
+                <textarea className="form-textarea" rows={3} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Internal remarks about this student…" />
               </div>
             </div>
-
             <div className="modal-footer">
-              <button onClick={() => setShowModal(false)} className="btn btn-secondary">
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={saving || !form.client_name || !form.phone}
-                className="btn btn-primary"
-              >
+              <button onClick={() => setShowModal(false)} className="btn btn-secondary">Cancel</button>
+              <button onClick={handleSubmit} disabled={saving || !form.client_name || !form.phone} className="btn btn-primary">
                 {saving && <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />}
-                {editLead ? 'Update Lead' : 'Create Lead'}
+                {editLead ? 'Update lead' : 'Create lead'}
               </button>
             </div>
           </div>
         </div>
       )}
-
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-      `}</style>
     </div>
   )
 }

@@ -1,6 +1,10 @@
 import type { Metadata, Viewport } from 'next'
+import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import { ThemeProvider } from '@/lib/ThemeContext'
+
+const geist = Geist({ subsets: ['latin'], variable: '--font-geist', display: 'swap' })
+const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono', display: 'swap' })
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -8,7 +12,10 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
-  themeColor: '#0e3d35',
+  themeColor: [
+    { media: '(prefers-color-scheme: dark)', color: '#08090a' },
+    { media: '(prefers-color-scheme: light)', color: '#f6f7f6' },
+  ],
 }
 
 export const metadata: Metadata = {
@@ -24,33 +31,16 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className={`${geist.variable} ${geistMono.variable}`}>
       <head>
         <meta name="mobile-web-app-capable" content="yes" />
         <link rel="manifest" href="/manifest.json" />
-        <link rel="apple-touch-icon" href="/logo.png" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* Google Fonts: Plus Jakarta Sans (Headings/Display) + Inter (Body/UI Data) */}
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap"
-          rel="stylesheet"
-        />
+        <link rel="apple-touch-icon" href="/logo-mark.png" />
         <link rel="icon" href="/favicon.ico" />
-
-        {/* Prevent flash of wrong theme on initial load */}
+        {/* Apply saved theme before paint to avoid a flash */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                try {
-                  var saved = localStorage.getItem('rp-theme');
-                  document.documentElement.setAttribute('data-theme', saved || 'dark');
-                } catch(e) {
-                  document.documentElement.setAttribute('data-theme', 'dark');
-                }
-              })();
-            `,
+            __html: `(function(){try{var t=localStorage.getItem('rp-theme');document.documentElement.setAttribute('data-theme',t||'dark')}catch(e){document.documentElement.setAttribute('data-theme','dark')}})();`,
           }}
         />
       </head>

@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
+import PageHeader from '@/components/ui/PageHeader'
+import GlowButton from '@/components/ui/GlowButton'
 import {
   Video, PlayCircle, Grid3x3, Plus, CheckCircle2, AlertCircle,
   Pencil, Trash2, X, UserPlus, Edit2, Upload, Calendar,
@@ -361,82 +363,22 @@ export default function StrategySection({ profile }: { profile: Profile }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       
-      {/* ── Page Header ── */}
-      <div className="page-header" style={{ marginBottom: 0 }}>
-        <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em', margin: 0 }}>
-            {isAdmin ? 'Strategy & Production Panel' : 'My Client Deliverables'}
-          </h1>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            {isAdmin ? 'Track monthly social media video, reel, and graphic production targets per client' : 'Log your completed content and editing deliverables'}
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '0.625rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          {canManageClients && (
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => setAddClientModal(true)}
-            >
-              <UserPlus size={15} /> Add Client
-            </button>
-          )}
-          <input
-            type="month"
-            className="form-input"
-            value={month}
-            max={new Date().toISOString().slice(0, 7)}
-            onChange={e => setMonth(e.target.value)}
-            style={{ width: 'auto', height: '36px', fontSize: '0.82rem', padding: '0 0.75rem' }}
-          />
-        </div>
-      </div>
+      <PageHeader
+        eyebrow={isAdmin ? 'Content production' : 'My deliverables'}
+        title={isAdmin ? 'Strategy & Production' : 'My Client Deliverables'}
+        description={isAdmin ? 'Monthly video, reel and graphic targets per client. Click a client to log work or review history.' : 'Log your completed content and editing deliverables.'}
+        actions={<>
+          <input type="month" className="form-input" value={month} max={new Date().toISOString().slice(0, 7)} onChange={e => setMonth(e.target.value)} style={{ width: 'auto' }} aria-label="Month" />
+          {canManageClients && <GlowButton onClick={() => setAddClientModal(true)}><UserPlus size={15} /> Add client</GlowButton>}
+        </>}
+      />
 
-
-
-      {/* ── Sub Navigation Tabs: External Clients vs Internal Brands ── */}
-      <div style={{ display: 'flex', gap: '0.625rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.75rem', flexWrap: 'wrap' }}>
-        <button
-          type="button"
-          onClick={() => setActiveTab('external')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '8px 18px',
-            borderRadius: '99px',
-            border: activeTab === 'external' ? '1.5px solid #10b981' : '1px solid var(--border-default)',
-            background: activeTab === 'external' ? 'rgba(16,185,129,0.15)' : 'var(--bg-card)',
-            color: activeTab === 'external' ? '#10b981' : 'var(--text-secondary)',
-            fontWeight: 800,
-            fontSize: '0.875rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            boxShadow: activeTab === 'external' ? '0 2px 10px rgba(16,185,129,0.2)' : 'none'
-          }}
-        >
-          <Globe size={16} /> 🌐 External Clients ({clients.filter(c => (c.client_type || 'external') === 'external').length})
+      <div className="segmented" role="tablist" style={{ alignSelf: 'flex-start' }}>
+        <button role="tab" aria-selected={activeTab === 'external'} className={activeTab === 'external' ? 'active' : ''} onClick={() => setActiveTab('external')}>
+          <Globe size={14} /> External clients <span className="tabular" style={{ color: 'var(--text-faint)' }}>{clients.filter(c => (c.client_type || 'external') === 'external').length}</span>
         </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('internal')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '8px 18px',
-            borderRadius: '99px',
-            border: activeTab === 'internal' ? '1.5px solid #ffffff' : '1px solid var(--border-default)',
-            background: activeTab === 'internal' ? 'rgba(255, 255, 255, 0.12)' : 'var(--bg-card)',
-            color: activeTab === 'internal' ? '#ffffff' : 'var(--text-secondary)',
-            fontWeight: 800,
-            fontSize: '0.875rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            boxShadow: activeTab === 'internal' ? '0 2px 10px rgba(255, 255, 255, 0.1)' : 'none'
-          }}
-        >
-          <Sparkles size={16} /> 🌟 Internal Brands &amp; Media ({clients.filter(c => c.client_type === 'internal').length})
+        <button role="tab" aria-selected={activeTab === 'internal'} className={activeTab === 'internal' ? 'active' : ''} onClick={() => setActiveTab('internal')}>
+          <Sparkles size={14} /> Internal brands &amp; media <span className="tabular" style={{ color: 'var(--text-faint)' }}>{clients.filter(c => c.client_type === 'internal').length}</span>
         </button>
       </div>
 

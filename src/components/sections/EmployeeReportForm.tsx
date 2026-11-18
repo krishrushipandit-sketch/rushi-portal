@@ -1,9 +1,12 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { istToday } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 import { useTheme } from '@/lib/ThemeContext'
-import { Mic, MicOff, Loader2, Plus, Trash2, X, SendHorizonal, Search, Building2, ChevronDown } from 'lucide-react'
+import { Mic, MicOff, Loader2, Plus, Minus, Trash2, X, SendHorizonal, Search, Building2, ChevronDown, Check, CheckCircle2, ClipboardList, Lock, LogIn, LogOut } from 'lucide-react'
+import SidePanel, { PanelSection } from '@/components/ui/SidePanel'
+import Pill from '@/components/ui/Pill'
 
 interface Row { responsibility: string; daily_target: number | null; description: string; count: string; isCustom?: boolean; clientId?: string; contentType?: string }
 
@@ -28,21 +31,16 @@ function SearchableClientDropdown({ clients, selectedId, disabled, onSelect }: S
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   const selectedClient = clients.find(c => c.id === selectedId)
-
   const filteredClients = useMemo(() => {
     if (!search.trim()) return clients
     return clients.filter(c => c.name.toLowerCase().includes(search.toLowerCase()))
   }, [clients, search])
-
   const internalList = useMemo(() => filteredClients.filter(c => c.client_type === 'internal'), [filteredClients])
   const externalList = useMemo(() => filteredClients.filter(c => (c.client_type || 'external') === 'external'), [filteredClients])
 
-  // Click outside to close
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setOpen(false)
     }
     if (open) {
       document.addEventListener('mousedown', handleClickOutside)
@@ -51,247 +49,47 @@ function SearchableClientDropdown({ clients, selectedId, disabled, onSelect }: S
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [open])
 
+  const option = (c: ClientItem) => (
+    <button key={c.id} type="button" className={`client-option ${selectedId === c.id ? 'selected' : ''}`} onClick={() => { onSelect(c.id); setOpen(false) }}>
+      <span className="client-dot" style={{ background: c.color || 'var(--brand-primary)' }} />
+      <span className="truncate-1">{c.name}</span>
+      {selectedId === c.id && <Check size={12} style={{ marginLeft: 'auto' }} />}
+    </button>
+  )
+
   return (
-    <div ref={dropdownRef} style={{ position: 'relative', display: 'inline-block' }}>
+    <div ref={dropdownRef} style={{ position: 'relative', display: 'inline-flex' }}>
       {selectedClient ? (
-        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => setOpen(!open)}
-            style={{
-              fontSize: '0.7rem',
-              padding: '3px 8px',
-              borderRadius: '6px 0 0 6px',
-              background: selectedClient.client_type === 'internal' ? 'rgba(99,102,241,0.18)' : 'rgba(16,185,129,0.18)',
-              color: selectedClient.client_type === 'internal' ? '#818cf8' : '#10b981',
-              border: `1px solid ${selectedClient.client_type === 'internal' ? 'rgba(99,102,241,0.45)' : 'rgba(16,185,129,0.45)'}`,
-              borderRight: 'none',
-              outline: 'none',
-              cursor: disabled ? 'not-allowed' : 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '5px',
-              maxWidth: '150px',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              fontWeight: 700,
-            }}
-            title="Click to switch company"
-          >
-            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: selectedClient.color || '#6366f1', flexShrink: 0 }} />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {selectedClient.client_type === 'internal' ? '🌟 ' : '🌐 '}
-              {selectedClient.name}
-            </span>
-            <ChevronDown size={10} style={{ flexShrink: 0, opacity: 0.7 }} />
+        <span className="client-tag" style={{ '--tone': selectedClient.color || 'var(--brand-primary)' } as React.CSSProperties}>
+          <button type="button" disabled={disabled} onClick={() => setOpen(!open)} title="Switch company">
+            <span className="client-dot" style={{ background: selectedClient.color || 'var(--brand-primary)' }} />
+            <span className="truncate-1" style={{ maxWidth: 130 }}>{selectedClient.name}</span>
+            <ChevronDown size={11} />
           </button>
-          {!disabled && (
-            <button
-              type="button"
-              onClick={() => onSelect('')}
-              style={{
-                fontSize: '0.7rem',
-                padding: '3px 6px',
-                borderRadius: '0 6px 6px 0',
-                background: selectedClient.client_type === 'internal' ? 'rgba(99,102,241,0.18)' : 'rgba(16,185,129,0.18)',
-                color: 'var(--text-muted)',
-                border: `1px solid ${selectedClient.client_type === 'internal' ? 'rgba(99,102,241,0.45)' : 'rgba(16,185,129,0.45)'}`,
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-              title="Untag company"
-            >
-              <X size={11} />
-            </button>
-          )}
-        </div>
+          {!disabled && <button type="button" onClick={() => onSelect('')} title="Untag company" aria-label="Untag company"><X size={11} /></button>}
+        </span>
       ) : (
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => setOpen(!open)}
-          style={{
-            fontSize: '0.68rem',
-            padding: '3px 8px',
-            borderRadius: '6px',
-            background: 'var(--bg-surface)',
-            color: 'var(--text-muted)',
-            border: '1px dashed var(--border-default)',
-            outline: 'none',
-            cursor: disabled ? 'not-allowed' : 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '4px',
-            fontWeight: 600,
-            transition: 'all 0.15s'
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.borderColor = 'var(--brand-primary)'
-            e.currentTarget.style.color = 'var(--text-primary)'
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.borderColor = 'var(--border-default)'
-            e.currentTarget.style.color = 'var(--text-muted)'
-          }}
-        >
-          <Building2 size={11} style={{ flexShrink: 0, opacity: 0.7 }} />
-          <span>Tag a client / brand</span>
-          <ChevronDown size={9} style={{ flexShrink: 0, opacity: 0.5 }} />
+        <button type="button" className="client-tag-empty" disabled={disabled} onClick={() => setOpen(!open)}>
+          <Building2 size={12} /> Tag a client / brand <ChevronDown size={11} />
         </button>
       )}
 
       {open && (
-        <div style={{
-          position: 'absolute',
-          top: 'calc(100% + 4px)',
-          left: 0,
-          zIndex: 9999,
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-default)',
-          borderRadius: '8px',
-          boxShadow: '0 10px 28px rgba(0,0,0,0.4)',
-          width: '220px',
-          overflow: 'hidden'
-        }}>
-          {/* Search Bar */}
-          <div style={{
-            padding: '6px 8px',
-            borderBottom: '1px solid var(--border-subtle)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            background: 'var(--bg-surface)'
-          }}>
-            <Search size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Search client..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={{
-                width: '100%',
-                background: 'transparent',
-                border: 'none',
-                outline: 'none',
-                fontSize: '0.74rem',
-                color: 'var(--text-primary)',
-                fontFamily: 'inherit'
-              }}
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch('')}
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0 }}
-              >
-                <X size={10} />
-              </button>
-            )}
+        <div className="menu" style={{ top: 'calc(100% + 6px)', left: 0, width: 240, padding: 0, overflow: 'hidden' }}>
+          <div className="client-search">
+            <Search size={13} />
+            <input ref={searchInputRef} type="text" placeholder="Search client…" value={search} onChange={e => setSearch(e.target.value)} />
+            {search && <button type="button" onClick={() => setSearch('')} aria-label="Clear search"><X size={11} /></button>}
           </div>
-
-          {/* Client List */}
-          <div style={{ maxHeight: '170px', overflowY: 'auto', padding: '4px' }}>
-            <button
-              type="button"
-              onClick={() => { onSelect(''); setOpen(false) }}
-              style={{
-                width: '100%',
-                textAlign: 'left',
-                padding: '5px 8px',
-                fontSize: '0.72rem',
-                background: !selectedId ? 'rgba(255,255,255,0.08)' : 'transparent',
-                color: !selectedId ? '#ffffff' : 'var(--text-muted)',
-                border: 'none',
-                borderRadius: '5px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-            >
-              <span style={{ fontStyle: 'italic' }}>— No Client —</span>
+          <div style={{ maxHeight: 220, overflowY: 'auto', padding: 4 }}>
+            <button type="button" className={`client-option ${!selectedId ? 'selected' : ''}`} onClick={() => { onSelect(''); setOpen(false) }}>
+              <span style={{ fontStyle: 'italic', color: 'var(--text-muted)' }}>No client</span>
             </button>
-
-            {/* Internal Brands Group */}
-            {internalList.length > 0 && (
-              <div style={{ marginBottom: '4px' }}>
-                <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#e4e4e7', padding: '4px 6px 2px' }}>
-                  🌟 Internal Brands
-                </div>
-                {internalList.map(c => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => { onSelect(c.id); setOpen(false) }}
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '4px 8px',
-                      fontSize: '0.74rem',
-                      fontWeight: selectedId === c.id ? 700 : 500,
-                      background: selectedId === c.id ? 'rgba(255,255,255,0.14)' : 'transparent',
-                      color: selectedId === c.id ? '#ffffff' : 'var(--text-primary)',
-                      border: 'none',
-                      borderRadius: '5px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      transition: 'background 0.1s'
-                    }}
-                  >
-                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: c.color || '#ffffff', flexShrink: 0 }} />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* External Clients Group */}
-            {externalList.length > 0 && (
-              <div>
-                <div style={{ fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#10b981', padding: '4px 6px 2px', borderTop: internalList.length > 0 ? '1px solid var(--border-subtle)' : 'none', marginTop: internalList.length > 0 ? '4px' : '0' }}>
-                  🌐 External Clients
-                </div>
-                {externalList.map(c => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => { onSelect(c.id); setOpen(false) }}
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '4px 8px',
-                      fontSize: '0.74rem',
-                      fontWeight: selectedId === c.id ? 700 : 500,
-                      background: selectedId === c.id ? 'rgba(16,185,129,0.15)' : 'transparent',
-                      color: selectedId === c.id ? '#10b981' : 'var(--text-primary)',
-                      border: 'none',
-                      borderRadius: '5px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      transition: 'background 0.1s'
-                    }}
-                  >
-                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: c.color || '#10b981', flexShrink: 0 }} />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {filteredClients.length === 0 && (
-              <div style={{ padding: '8px', textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                No companies found
-              </div>
-            )}
+            {internalList.length > 0 && <div className="cmdk-group">Internal brands</div>}
+            {internalList.map(option)}
+            {externalList.length > 0 && <div className="cmdk-group">External clients</div>}
+            {externalList.map(option)}
+            {filteredClients.length === 0 && <div style={{ padding: 10, textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>No companies found</div>}
           </div>
         </div>
       )}
@@ -299,12 +97,7 @@ function SearchableClientDropdown({ clients, selectedId, disabled, onSelect }: S
   )
 }
 
-const todayDate = () => {
-  const d = new Date()
-  const offset = d.getTimezoneOffset() * 60000
-  const istTime = new Date(d.getTime() + offset + (330 * 60000))
-  return istTime.toISOString().slice(0, 10)
-}
+const todayDate = istToday
 const fmtDay = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('en-IN', {
   weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
 })
@@ -720,9 +513,9 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
 
     const valid = rows.filter(r => r.responsibility.trim() && (r.description.trim() || r.count.trim()))
     if (!valid.length) return
-    setSubmitting(true)
     const token = getToken()
     if (!token) return
+    setSubmitting(true)
     const entries = valid.map(r => {
       const matchedClient = clientsList.find(c => c.id === r.clientId)
       const determinedContentType = r.contentType || getRowContentType(r.responsibility)
@@ -736,337 +529,199 @@ export default function DailyReportForm({ onClose, onSaved, existingReport, isAd
         contentType: determinedContentType || undefined,
       }
     })
-    await fetch('/api/reports', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        report_date: reportDate, entries, note,
-        check_in_time: checkInTime || null,
-        check_out_time: checkOutTime || null,
-        ...(isAdmin && targetEmployeeId ? { employee_id: targetEmployeeId } : {}),
-      }),
-    })
-    onSaved()
-    setSubmitting(false)
+    try {
+      const res = await fetch('/api/reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          report_date: reportDate, entries, note,
+          check_in_time: checkInTime || null,
+          check_out_time: checkOutTime || null,
+          ...(isAdmin && targetEmployeeId ? { employee_id: targetEmployeeId } : {}),
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Server returned ${res.status}`)
+      }
+      onSaved()
+    } catch (err) {
+      alert('Your report was NOT saved: ' + (err as Error).message + '\nPlease try again.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const filled = rows.filter(r => r.responsibility.trim() && (r.description.trim() || r.count.trim())).length
+  const totalCount = rows.reduce((a, r) => a + (Number(r.count) || 0), 0)
+  const worked = (() => {
+    if (!checkInTime || !checkOutTime) return null
+    const [ih, im] = checkInTime.split(':').map(Number)
+    const [oh, om] = checkOutTime.split(':').map(Number)
+    const mins = oh * 60 + om - (ih * 60 + im)
+    return mins > 0 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : null
+  })()
+  const step = (i: number, delta: number) => update(i, 'count', String(Math.max(0, (Number(rows[i].count) || 0) + delta)))
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-content" style={{ maxWidth: '720px', maxHeight: '92vh', padding: 0, display: 'flex', flexDirection: 'column' }}>
-
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-default)' }}>
-          <div>
-            <h3 style={{ fontWeight: 700 }}>Daily Report — {fmtDay(reportDate)}</h3>
-            {isAdmin ? (
-              <p style={{ fontSize: '0.72rem', color: '#6366f1', marginTop: '2px' }}>Admin mode — can edit any date</p>
-            ) : isLocked ? (
-              <p style={{ fontSize: '0.72rem', color: '#ef4444', fontWeight: 700, marginTop: '2px' }}>
-                🔒 Past Report Locked (Read-Only after 12:00 AM midnight)
-              </p>
-            ) : null}
-          </div>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
+    <SidePanel
+      open
+      dismissible={false}
+      onClose={onClose}
+      width={720}
+      leading={<span className="drawer-icon" style={{ color: 'var(--brand-primary)', background: 'var(--brand-primary-soft)', boxShadow: '0 0 20px -6px var(--brand-primary)' }}><ClipboardList size={18} /></span>}
+      title={<>Daily report {isAdmin ? <Pill color="#8b5cf6">Admin mode</Pill> : isLocked ? <Pill color="#ef4757" icon={<Lock size={11} />}>Locked</Pill> : <Pill color="#22c55e" dot>Editable until midnight</Pill>}</>}
+      subtitle={fmtDay(reportDate)}
+      footer={isLocked ? (
+        <>
+          <span style={{ marginRight: 'auto', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Only an admin can edit a previous day’s report.</span>
+          <button className="btn btn-secondary" onClick={onClose}>Close</button>
+        </>
+      ) : (
+        <>
+          <span style={{ marginRight: 'auto', fontSize: '0.8125rem', color: filled ? 'var(--status-success)' : 'var(--text-muted)', fontWeight: filled ? 600 : 400 }}>
+            {filled ? `${filled} item${filled === 1 ? '' : 's'} logged · ${totalCount} total` : 'Fill at least one item'}
+          </span>
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting || filled === 0}>
+            {submitting ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Saving…</> : <><SendHorizonal size={14} /> {isAdmin ? 'Save report' : 'Submit report'}</>}
+          </button>
+        </>
+      )}
+    >
+      {isLocked && (
+        <div className="hint-box" style={{ '--tone': 'var(--status-danger)' } as React.CSSProperties}>
+          <Lock size={15} />
+          <div><strong>This report is locked</strong><p>Reports can only be edited on the same day, before 12:00 AM IST. Past reports stay locked for audit.</p></div>
         </div>
+      )}
 
-        {/* Locked Alert if viewing past date */}
-        {isLocked && (
-          <div style={{ padding: '0.75rem 1.25rem', background: 'rgba(239,68,68,0.1)', borderBottom: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>🔒</span>
-            <span><strong>Report Locked:</strong> Daily reports can only be edited on the same day before 12:00 AM midnight IST. Past reports are locked for audit integrity.</span>
-          </div>
-        )}
-
-        {/* Mic */}
-        {!isLocked && (
-          <div style={{ padding: '0.875rem 1.25rem', borderBottom: '1px solid var(--border-subtle)', background: micState === 'recording' ? 'rgba(239,68,68,0.06)' : 'var(--bg-elevated)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
-              <button
-                onClick={micState === 'idle' ? startRecording : micState === 'recording' ? stopRecording : undefined}
-                disabled={micState === 'processing'}
-                style={{
-                  width: '52px', height: '52px', borderRadius: '50%', border: 'none',
-                  cursor: micState === 'processing' ? 'wait' : 'pointer',
-                  background: micState === 'recording' ? '#ef4444' : 'var(--brand-primary)', color: 'white',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                  boxShadow: micState === 'recording' ? '0 0 0 10px rgba(239,68,68,0.15)' : '0 2px 10px rgba(14,61,53,0.3)',
-                  transition: 'all 0.2s', opacity: micState === 'processing' ? 0.7 : 1,
-                }}>
-                {micState === 'processing' ? <Loader2 size={21} style={{ animation: 'spin 1s linear infinite' }} />
-                  : micState === 'recording' ? <MicOff size={21} /> : <Mic size={21} />}
-              </button>
-              <div style={{ flex: 1 }}>
-                <p style={{ fontSize: '0.87rem', fontWeight: 600, color: micState === 'recording' ? '#ef4444' : 'var(--text-primary)' }}>
-                  {micState === 'idle' && '🎤 Tap mic and speak — AI fills the sheet instantly'}
-                  {micState === 'recording' && '🔴 Listening... speak clearly, tap stop when done'}
-                  {micState === 'processing' && '⏳ AI is processing and filling your sheet...'}
-                </p>
-                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  {micState === 'idle' && 'Say: "I edited 1 reel for CA, 1 reel for RushiPandit, and 1 YouTube video"'}
-                  {micState === 'recording' && 'Mention clients and counts: "1 reel for CA, 2 reels for Alpha"'}
-                  {micState === 'processing' && 'Matching your words to your responsibilities and clients...'}
-                </p>
-              </div>
+      {!isLocked && (
+        <section className={`voice-card ${micState}`}>
+          <button
+            className="voice-btn"
+            onClick={micState === 'idle' ? startRecording : micState === 'recording' ? stopRecording : undefined}
+            disabled={micState === 'processing'}
+            aria-label={micState === 'recording' ? 'Stop recording' : 'Start voice entry'}
+          >
+            {micState === 'processing' ? <Loader2 size={22} style={{ animation: 'spin 1s linear infinite' }} /> : micState === 'recording' ? <MicOff size={22} /> : <Mic size={22} />}
+          </button>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="voice-title">
+              {micState === 'idle' && <>Speak your report <span className="eyebrow" style={{ marginLeft: 6 }}>AI fills it in</span></>}
+              {micState === 'recording' && <><span className="rec-dot" /> Listening… tap again to stop</>}
+              {micState === 'processing' && 'Reading your narration…'}
             </div>
-
+            <p className="voice-hint">
+              {micState === 'recording' ? 'Mention clients and counts: “1 reel for CA, 2 reels for Alpha”' : 'Try: “I made 40 calls, 12 follow-ups, and edited 1 reel for CA”'}
+            </p>
             {micMsg && (
-              <p style={{ marginTop: '0.375rem', fontSize: '0.8rem', fontWeight: 600, color: micMsg.startsWith('✨') ? '#10b981' : micMsg.startsWith('Error') || micMsg.startsWith('Mic') || micMsg.startsWith('Nothing') ? '#ef4444' : '#f59e0b' }}>
-                {micMsg}
-              </p>
+              <p className="voice-msg" style={{ color: micMsg.startsWith('✨') ? 'var(--status-success)' : /^(Error|Mic|Could|Recording too)/.test(micMsg) ? 'var(--status-danger)' : 'var(--status-warning)' }}>{micMsg}</p>
             )}
+            {transcript && micState !== 'recording' && <p className="voice-transcript">“{transcript}”</p>}
           </div>
-        )}
+        </section>
+      )}
 
+      <div className="time-row">
+        <label className="time-field" style={{ '--tone': 'var(--status-success)' } as React.CSSProperties}>
+          <span><LogIn size={13} /> Check-in</span>
+          <input type="time" disabled={isLocked} value={checkInTime} onChange={e => setCheckInTime(e.target.value)} style={{ colorScheme: isLight ? 'light' : 'dark' }} />
+        </label>
+        <label className="time-field" style={{ '--tone': 'var(--status-danger)' } as React.CSSProperties}>
+          <span><LogOut size={13} /> Check-out</span>
+          <input type="time" disabled={isLocked} value={checkOutTime} onChange={e => setCheckOutTime(e.target.value)} style={{ colorScheme: isLight ? 'light' : 'dark' }} />
+        </label>
+        <div className="time-total">
+          <span>Worked</span>
+          <strong className="tabular">{worked || '—'}</strong>
+        </div>
+      </div>
 
-        {/* Sheet */}
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          {loading ? <div className="skeleton" style={{ height: '200px', borderRadius: 0 }} /> : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-                <tr style={{ background: 'var(--bg-elevated)', borderBottom: '2px solid var(--border-default)' }}>
-                  <th style={{ padding: '0.55rem 1rem', textAlign: 'left', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', width: '220px' }}>Responsibility / Client</th>
-                  <th style={{ padding: '0.55rem 0.75rem', textAlign: 'left', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>What I did today</th>
-                  <th style={{ padding: '0.55rem 0.75rem', textAlign: 'center', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', width: '80px' }}>Count</th>
-                  {!isLocked && <th style={{ width: '36px' }} />}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)', background: i % 2 === 0 ? 'transparent' : 'rgba(14,61,53,0.015)' }}>
-                    <td style={{ padding: '0.4rem 1rem', verticalAlign: 'middle' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
-                        <span style={{ fontSize: '0.83rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                          {row.responsibility || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>—</span>}
-                        </span>
-                        {row.isCustom && <span style={{ fontSize: '0.62rem', color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '1px 5px', borderRadius: '4px' }}>extra</span>}
+      <PanelSection title="Today’s work" aside={<span style={{ fontSize: '0.72rem', color: 'var(--text-faint)' }}>{filled} of {rows.length} filled</span>}>
+        {loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{[1, 2, 3].map(i => <div key={i} className="skeleton" style={{ height: 96 }} />)}</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {rows.map((row, i) => {
+              const n = Number(row.count) || 0
+              const target = row.daily_target ?? 0
+              const done = !!(row.description.trim() || row.count.trim())
+              return (
+                <div key={i} className={`work-card ${done ? 'done' : ''}`}>
+                  <div className="work-head">
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div className="work-title">
+                        {done && <CheckCircle2 size={14} style={{ color: 'var(--status-success)', flexShrink: 0 }} />}
+                        <span className="truncate-1">{row.responsibility || <em style={{ color: 'var(--text-faint)' }}>Untitled item</em>}</span>
+                        {row.isCustom && <Pill color="#8b5cf6">extra</Pill>}
                       </div>
-
-                      {(row.daily_target ?? 0) > 0 && (
-                        <span style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '1px' }}>
-                          Target: {row.daily_target}/day
-                        </span>
-                      )}
-
-                      {/* Client Tag Dropdown & Add Client Row Button — strictly for Suyog, Kedar, Rohan, and Admin */}
-                      {clientsList.length > 0 && (
-                        <div style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
-                          <SearchableClientDropdown
-                            clients={clientsList}
-                            selectedId={row.clientId || ''}
-                            disabled={isLocked}
-                            onSelect={id => update(i, 'clientId', id)}
-                          />
-
-                          {/* Row Type Indicator / Selector */}
-                          {row.clientId && isRohan && (
-                            <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', background: 'rgba(139,92,246,0.18)', color: '#8b5cf6', border: '1px solid rgba(139,92,246,0.35)' }}>
-                              🎨 Design
-                            </span>
-                          )}
-
-                          {row.clientId && !isRohan && (
-                            row.responsibility.toLowerCase().includes('shoot') ? (
-                              <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', background: 'rgba(245,158,11,0.18)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.35)' }}>
-                                📸 Shoot
-                              </span>
-                            ) : (
-                              <div style={{ display: 'inline-flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border-default)', fontSize: '0.65rem' }}>
-                                <button
-                                  type="button"
-                                  disabled={isLocked}
-                                  onClick={() => update(i, 'contentType', 'Reel')}
-                                  style={{
-                                    padding: '2px 6px',
-                                    background: (row.contentType || getRowContentType(row.responsibility)) === 'Reel' ? '#3b82f6' : 'var(--bg-surface)',
-                                    color: (row.contentType || getRowContentType(row.responsibility)) === 'Reel' ? '#fff' : 'var(--text-muted)',
-                                    border: 'none',
-                                    cursor: 'pointer',
-                                    fontWeight: 700
-                                  }}
-                                >
-                                  🎬 Reel
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={isLocked}
-                                  onClick={() => update(i, 'contentType', 'YouTube')}
-                                  style={{
-                                    padding: '2px 6px',
-                                    background: (row.contentType || getRowContentType(row.responsibility)) === 'YouTube' ? '#ef4444' : 'var(--bg-surface)',
-                                    color: (row.contentType || getRowContentType(row.responsibility)) === 'YouTube' ? '#fff' : 'var(--text-muted)',
-                                    border: 'none',
-                                    borderLeft: '1px solid var(--border-default)',
-                                    cursor: 'pointer',
-                                    fontWeight: 700
-                                  }}
-                                >
-                                  ▶️ YouTube
-                                </button>
-                              </div>
-                            )
-                          )}
-
-                          {!isLocked && (
-                            <button
-                              type="button"
-                              onClick={() => duplicateClientRow(i)}
-                              style={{
-                                fontSize: '0.65rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px',
-                                background: 'rgba(16,185,129,0.1)', color: '#047857', border: '1px solid rgba(16,185,129,0.25)',
-                                cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '2px'
-                              }}
-                              title="Add another row for another brand"
-                            >
-                              <Plus size={10} /> Client
-                            </button>
-                          )}
+                      {target > 0 && (
+                        <div className="work-target">
+                          <div className="progress-bar" style={{ height: 4, flex: 1 }}>
+                            <div className="progress-fill" style={{ width: `${Math.min(100, (n / target) * 100)}%`, background: n >= target ? 'var(--status-success)' : 'var(--brand-gradient)' }} />
+                          </div>
+                          <span className="tabular">{n}/{target} target</span>
                         </div>
                       )}
-                    </td>
-                    <td style={{ padding: '0.25rem 0.5rem', verticalAlign: 'middle' }}>
-                      <input disabled={isLocked}
-                        style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: row.description.trim() ? '1.5px solid var(--brand-primary)' : '1px solid var(--border-subtle)', padding: '0.35rem 0.25rem', outline: 'none', fontSize: '0.83rem', color: 'var(--text-primary)', fontFamily: 'inherit' }}
-                        placeholder={isLocked ? '—' : 'Describe what you did...'}
-                        value={row.description}
-                        onChange={e => update(i, 'description', e.target.value)}
-                      />
-                    </td>
-                    <td style={{ padding: '0.25rem 0.5rem', verticalAlign: 'middle' }}>
-                      <input disabled={isLocked} type="number" min="0"
-                        style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: row.count ? '1.5px solid var(--brand-primary)' : '1px solid var(--border-subtle)', padding: '0.35rem 0.5rem', outline: 'none', fontSize: '0.83rem', color: 'var(--text-primary)', fontFamily: 'inherit', textAlign: 'center' }}
-                        placeholder="0"
-                        value={row.count}
-                        onChange={e => update(i, 'count', e.target.value)}
-                      />
-                    </td>
+                    </div>
+                    <div className="stepper">
+                      <button type="button" disabled={isLocked || n === 0} onClick={() => step(i, -1)} aria-label="Decrease count"><Minus size={14} /></button>
+                      <input disabled={isLocked} type="number" min="0" inputMode="numeric" placeholder="0" value={row.count} onChange={e => update(i, 'count', e.target.value)} aria-label={`Count for ${row.responsibility}`} />
+                      <button type="button" disabled={isLocked} onClick={() => step(i, 1)} aria-label="Increase count"><Plus size={14} /></button>
+                    </div>
                     {!isLocked && (
-                      <td style={{ padding: '0.35rem 0.5rem', textAlign: 'center', verticalAlign: 'middle' }}>
-                        <button
-                          type="button"
-                          onClick={() => removeRow(i)}
-                          title="Remove this task row from today's report"
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            color: 'var(--text-muted)',
-                            padding: '4px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            transition: 'color 0.15s'
-                          }}
-                          onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
-                          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </td>
+                      <button type="button" className="icon-btn" onClick={() => removeRow(i)} title="Remove from today’s report" aria-label="Remove item"><Trash2 size={14} /></button>
                     )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          {/* Add extra row */}
-          {!isLocked && (
-            <div style={{ padding: '0.5rem 1rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <Plus size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-              <input
-                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '0.8rem', color: 'var(--text-muted)', fontFamily: 'inherit' }}
-                placeholder="Add extra work item (not in responsibilities)..."
-                value={customTask}
-                onChange={e => setCustomTask(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addCustom())}
-              />
-              {customTask.trim() && (
-                <button onClick={addCustom} style={{ padding: '0.2rem 0.6rem', fontSize: '0.72rem', background: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}>Add</button>
-              )}
-            </div>
-          )}
-
-          {/* ── Check-in / Check-out times ─────────────────────────────── */}
-          <div style={{ padding: '0.75rem 1.25rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap', background: 'var(--bg-elevated)', borderRadius: '0 0 8px 8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#10b981', whiteSpace: 'nowrap' }}>🕐 Check-In</span>
-              <input
-                type="time"
-                disabled={isLocked}
-                value={checkInTime}
-                onChange={e => setCheckInTime(e.target.value)}
-                style={{
-                  background: checkInTime ? 'rgba(16,185,129,0.1)' : 'var(--bg-surface)',
-                  border: checkInTime ? '1.5px solid #10b981' : '1.5px solid var(--border-default)',
-                  borderRadius: '6px',
-                  padding: '0.3rem 0.5rem', outline: 'none',
-                  fontSize: '0.85rem', fontWeight: 600,
-                  color: checkInTime ? '#10b981' : 'var(--text-primary)',
-                  fontFamily: 'inherit', cursor: isLocked ? 'not-allowed' : 'pointer',
-                  colorScheme: isLight ? 'light' : 'dark',
-                }}
-              />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#ef4444', whiteSpace: 'nowrap' }}>🕕 Check-Out</span>
-              <input
-                type="time"
-                disabled={isLocked}
-                value={checkOutTime}
-                onChange={e => setCheckOutTime(e.target.value)}
-                style={{
-                  background: checkOutTime ? 'rgba(239,68,68,0.1)' : 'var(--bg-surface)',
-                  border: checkOutTime ? '1.5px solid #ef4444' : '1.5px solid var(--border-default)',
-                  borderRadius: '6px',
-                  padding: '0.3rem 0.5rem', outline: 'none',
-                  fontSize: '0.85rem', fontWeight: 600,
-                  color: checkOutTime ? '#ef4444' : 'var(--text-primary)',
-                  fontFamily: 'inherit', cursor: isLocked ? 'not-allowed' : 'pointer',
-                  colorScheme: isLight ? 'light' : 'dark',
-                }}
-              />
-            </div>
-            {checkInTime && checkOutTime && (() => {
-              const [ih, im] = checkInTime.split(':').map(Number)
-              const [oh, om] = checkOutTime.split(':').map(Number)
-              const mins = (oh * 60 + om) - (ih * 60 + im)
-              if (mins > 0) {
-                const h = Math.floor(mins / 60), m = mins % 60
-                return <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', background: 'var(--bg-surface)', padding: '3px 8px', borderRadius: '6px', border: '1px solid var(--border-default)' }}>⏱ {h}h {m}m worked</span>
-              }
-              return null
-            })()}
-          </div>
-
-          <div style={{ padding: '0.625rem 1.25rem' }}>
-            <input disabled={isLocked}
-              style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '1px dashed var(--border-subtle)', padding: '0.3rem 0', outline: 'none', fontSize: '0.8rem', color: 'var(--text-secondary)', fontFamily: 'inherit' }}
-              placeholder="Any blocker or note for today? (optional)"
-              value={note} onChange={e => setNote(e.target.value)}
-            />
-          </div>
-        </div>
-
-        {/* Footer */}
-        {!isLocked ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.875rem 1.25rem', borderTop: '1px solid var(--border-default)' }}>
-            <p style={{ flex: 1, fontSize: '0.78rem', color: filled > 0 ? '#10b981' : 'var(--text-muted)', fontWeight: filled > 0 ? 600 : 400 }}>
-              {filled > 0 ? `✓ ${filled} responsibilities covered` : 'Fill at least one row'}
-            </p>
-            <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting || filled === 0}>
-              {submitting ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Saving...</> : isAdmin ? 'Save' : 'Submit Report'}
-            </button>
-          </div>
-        ) : (
-          <div style={{ padding: '0.875rem 1.25rem', borderTop: '1px solid var(--border-default)', textAlign: 'center', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-            Only admin can edit previous day reports. <button className="btn btn-ghost btn-sm" onClick={onClose}>Close</button>
+                  </div>
+                  <input
+                    className="form-input"
+                    disabled={isLocked}
+                    placeholder={isLocked ? '—' : 'What did you do? (optional details)'}
+                    value={row.description}
+                    onChange={e => update(i, 'description', e.target.value)}
+                  />
+                  {clientsList.length > 0 && (
+                    <div className="work-tags">
+                      <SearchableClientDropdown clients={clientsList} selectedId={row.clientId || ''} disabled={isLocked} onSelect={id => update(i, 'clientId', id)} />
+                      {row.clientId && isRohan && <Pill color="#8b5cf6">Design</Pill>}
+                      {row.clientId && !isRohan && (
+                        row.responsibility.toLowerCase().includes('shoot') ? <Pill color="#f5a524">Shoot</Pill> : (
+                          <div className="segmented" style={{ padding: 2 }}>
+                            {(['Reel', 'YouTube'] as const).map(t => (
+                              <button key={t} type="button" disabled={isLocked} style={{ height: 24 }} className={(row.contentType || getRowContentType(row.responsibility)) === t ? 'active' : ''} onClick={() => update(i, 'contentType', t)}>{t}</button>
+                            ))}
+                          </div>
+                        )
+                      )}
+                      {!isLocked && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => duplicateClientRow(i)} title="Add another row for another brand"><Plus size={12} /> Another client</button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
 
-        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      </div>
-    </div>
+        {!isLocked && (
+          <div className="add-item">
+            <Plus size={15} />
+            <input
+              placeholder="Add extra work item (not in your responsibilities)…"
+              value={customTask}
+              onChange={e => setCustomTask(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addCustom())}
+            />
+            <button className="btn btn-secondary btn-sm" onClick={addCustom} disabled={!customTask.trim()}>Add</button>
+          </div>
+        )}
+      </PanelSection>
+
+      <PanelSection title="Blockers or notes">
+        <textarea className="form-textarea" disabled={isLocked} rows={2} placeholder="Anything blocking you, or anything your manager should know? (optional)" value={note} onChange={e => setNote(e.target.value)} />
+      </PanelSection>
+    </SidePanel>
   )
 }

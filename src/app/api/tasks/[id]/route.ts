@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { istToday } from '@/lib/utils'
 import { queryOne, execute } from '@/lib/db'
 import { getUserFromRequest } from '@/lib/auth'
 
@@ -27,10 +28,7 @@ export async function PATCH(
           const newPoints = 20
           const addedReason = `Task "${task.title}" completed! 🏆 (+20)`
 
-          const d = new Date()
-          const offset = d.getTimezoneOffset() * 60000
-          const istTime = new Date(d.getTime() + offset + (330 * 60000))
-          const todayStr = istTime.toISOString().slice(0, 10)
+          const todayStr = istToday()
 
           const existingPoint = await queryOne<{ points: number; reason: string }>(
             'SELECT points, reason FROM employee_points WHERE employee_id = $1 AND report_date = $2',

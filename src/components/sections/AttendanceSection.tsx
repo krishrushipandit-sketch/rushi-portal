@@ -3,9 +3,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
-import { Calendar as CalendarIcon, CheckCircle2, ChevronLeft, ChevronRight, Home, Briefcase, CalendarOff, Palmtree, User } from 'lucide-react'
+import { CheckCircle2, ChevronLeft, ChevronRight, Home, Briefcase, CalendarOff, Palmtree, Users, Clock, Trash2, Check } from 'lucide-react'
+import PageHeader from '@/components/ui/PageHeader'
+import Reveal from '@/components/ui/Reveal'
+import KpiCard from '@/components/ui/KpiCard'
+import Avatar from '@/components/ui/Avatar'
+import Pill from '@/components/ui/Pill'
+import SidePanel, { KeyValues, PanelSection } from '@/components/ui/SidePanel'
 
-// Hardcoded 2026/2027 Indian National Holidays (can be expanded)
 const NATIONAL_HOLIDAYS: Record<string, string> = {
   '2026-01-26': 'Republic Day',
   '2026-05-01': 'Maharashtra Day',
@@ -17,53 +22,97 @@ const NATIONAL_HOLIDAYS: Record<string, string> = {
 }
 
 const ATTENDANCE_TYPES = [
-  { value: 'present', label: 'In Office', icon: <Briefcase size={16} />, color: '#10b981', short: 'P' },
-  { value: 'wfh', label: 'Work From Home', icon: <Home size={16} />, color: '#6366f1', short: 'W' },
-  { value: 'leave_pending', label: 'Leave (Pending)', icon: <CalendarOff size={16} />, color: '#f97316', short: 'LP' },
-  { value: 'leave', label: 'Leave (Approved)', icon: <CalendarOff size={16} />, color: '#ef4444', short: 'L' },
-  { value: 'sandwich_leave', label: 'Sandwich Leave', icon: <Palmtree size={16} />, color: '#ec4899', short: 'SL' },
-  { value: 'half_day', label: 'Half Day', icon: <CheckCircle2 size={16} />, color: '#f59e0b', short: 'HD' },
+  { value: 'present', label: 'In office', icon: <Briefcase size={15} />, color: '#22c55e', short: 'P' },
+  { value: 'wfh', label: 'Work from home', icon: <Home size={15} />, color: '#2f9bff', short: 'W' },
+  { value: 'half_day', label: 'Half day', icon: <CheckCircle2 size={15} />, color: '#f5a524', short: 'HD' },
+  { value: 'leave_pending', label: 'Leave (pending)', icon: <CalendarOff size={15} />, color: '#f0773a', short: 'LP' },
+  { value: 'leave', label: 'Leave (approved)', icon: <CalendarOff size={15} />, color: '#ef4757', short: 'L' },
+  { value: 'sandwich_leave', label: 'Sandwich leave', icon: <Palmtree size={15} />, color: '#e8509a', short: 'SL' },
 ]
-
+const typeOf = (v: string) => ATTENDANCE_TYPES.find(t => t.value === v)
 const EMPLOYEE_SELECTABLE = ['present', 'wfh', 'leave_pending']
+const ABSENT = '#ef4757'
+const HOLIDAY = '#a855f7'
+
+interface AttendanceRecord {
+  employee_id: string
+  date: string
+  status: string
+  check_in_time?: string | null
+  check_out_time?: string | null
+  attendance_mode?: string | null
+}
+interface Employee { id: string; full_name: string; designation?: string | null; avatar_url?: string | null; role: string; is_active: boolean }
+
+const shiftMonth = (month: string, delta: number) => {
+  const [y, m] = month.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1 + delta, 1)).toISOString().slice(0, 7)
+}
+
+function dayState(dStr: string, rec: AttendanceRecord | undefined, today: string) {
+  const holiday = NATIONAL_HOLIDAYS[dStr]
+  const sunday = new Date(`${dStr}T00:00:00Z`).getUTCDay() === 0
+  if (rec) {
+    const t = typeOf(rec.status)
+    if (t) return { short: t.short, label: t.label, color: t.color, kind: 'record' as const }
+  }
+  if (holiday) return { short: 'H', label: holiday, color: HOLIDAY, kind: 'holiday' as const }
+  if (sunday) return { short: 'S', label: 'Sunday', color: 'var(--text-faint)', kind: 'weekend' as const }
+  if (dStr < today) return { short: 'A', label: 'Absent', color: ABSENT, kind: 'absent' as const }
+  return { short: '', label: dStr === today ? 'Not marked yet' : '', color: 'var(--text-faint)', kind: 'empty' as const }
+}
+
+function MonthNav({ month, setMonth }: { month: string; setMonth: (m: string) => void }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <button className="icon-btn bordered" onClick={() => setMonth(shiftMonth(month, -1))} aria-label="Previous month"><ChevronLeft size={16} /></button>
+      <input type="month" className="form-input" value={month} onChange={e => setMonth(e.target.value)} style={{ width: 'auto' }} aria-label="Month" />
+      <button className="icon-btn bordered" onClick={() => setMonth(shiftMonth(month, 1))} aria-label="Next month"><ChevronRight size={16} /></button>
+    </div>
+  )
+}
+
+function StatusPicker({ options, current, onPick, onClear }: { options: typeof ATTENDANCE_TYPES; current?: string; onPick: (v: string) => void; onClear?: () => void }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className="status-grid">
+        {options.map(t => (
+          <button key={t.value} className={`status-option ${current === t.value ? 'selected' : ''}`} style={{ '--tone': t.color, height: 46 } as React.CSSProperties} onClick={() => onPick(t.value)}>
+            {t.icon}{t.label}{current === t.value && <Check size={14} style={{ marginLeft: 'auto' }} />}
+          </button>
+        ))}
+      </div>
+      {onClear && <button className="btn btn-ghost" style={{ color: 'var(--status-danger)', alignSelf: 'flex-start' }} onClick={onClear}><Trash2 size={14} /> Clear record (marks absent)</button>}
+    </div>
+  )
+}
 
 export default function AttendanceSection({ profile }: { profile: Profile }) {
   const router = useRouter()
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
-  const [records, setRecords] = useState<any[]>([])
-  const [employees, setEmployees] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [markingDate, setMarkingDate] = useState<string | null>(null)
-  const [markingAdmin, setMarkingAdmin] = useState<{ empId: string, empName: string, date: string } | null>(null)
-  
   const isAdmin = profile.role === 'admin'
-  const todayIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const todayIST = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10)
+  const [month, setMonth] = useState(todayIST.slice(0, 7))
+  const [records, setRecords] = useState<AttendanceRecord[]>([])
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [loading, setLoading] = useState(true)
+  const [editCell, setEditCell] = useState<{ empId?: string; empName?: string; date: string } | null>(null)
+  const [openEmpId, setOpenEmpId] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
     const token = localStorage.getItem('rushi_token')
     if (!token) { setLoading(false); return }
-    
     try {
-      // Fetch records
-      const res = await fetch(`/api/attendance?month=${month}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      const json = await res.json()
+      const json = await fetch(`/api/attendance?month=${month}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json())
       setRecords(Array.isArray(json) ? json : [])
-
-      // Fetch employees for admin view
       if (isAdmin) {
-        const empsRes = await fetch('/api/employees', {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-        const emps = await empsRes.json()
-        setEmployees(Array.isArray(emps) ? emps.filter((e: any) => e.role === 'employee' && e.is_active) : [])
+        const emps = await fetch('/api/employees', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json())
+        setEmployees(Array.isArray(emps) ? emps.filter((e: Employee) => e.role === 'employee' && e.is_active) : [])
       }
     } catch (err) {
       console.error('Error loading attendance:', err)
       setRecords([])
-      setEmployees([])
     } finally {
       setLoading(false)
     }
@@ -71,352 +120,245 @@ export default function AttendanceSection({ profile }: { profile: Profile }) {
 
   useEffect(() => { loadData() }, [loadData])
 
-  const markAttendance = async (status: string, targetEmpId?: string, targetDate?: string) => {
-    const dateToMark = targetDate || markingDate
-    if (!dateToMark) return
+  const markAttendance = async (status: string, date: string, empId?: string) => {
     const token = localStorage.getItem('rushi_token')
     if (!token) { router.push('/'); return }
-
-    await fetch('/api/attendance', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ 
-        date: dateToMark, 
-        status, 
-        employee_id: targetEmpId // Admin can specify employee_id
+    setSaving(true)
+    try {
+      await fetch('/api/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ date, status, employee_id: empId }),
       })
-    })
-    
-    setMarkingDate(null)
-    setMarkingAdmin(null)
-    loadData()
+      setEditCell(null)
+      await loadData()
+    } finally {
+      setSaving(false)
+    }
   }
 
-  // Generate calendar days for the current month
-  const [yearStr, monthStr] = month.split('-')
-  const y = parseInt(yearStr)
-  const m = parseInt(monthStr) - 1
-  
-  const firstDay = new Date(y, m, 1)
-  const lastDay = new Date(y, m + 1, 0)
-  const daysInMonth = lastDay.getDate()
-  const startDayOfWeek = firstDay.getDay() // 0 = Sunday
+  const [yy, mm] = month.split('-').map(Number)
+  const daysInMonth = new Date(Date.UTC(yy, mm, 0)).getUTCDate()
+  const dates = Array.from({ length: daysInMonth }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`)
+  const monthLabel = new Date(`${month}-01T00:00:00Z`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' })
 
-  const days = []
-  for (let i = 0; i < startDayOfWeek; i++) {
-    days.push(null) // Padding
-  }
-  for (let i = 1; i <= daysInMonth; i++) {
-    const dStr = `${yearStr}-${monthStr}-${i.toString().padStart(2, '0')}`
-    days.push(dStr)
+  const summarize = (empRecords: AttendanceRecord[]) => {
+    const counts: Record<string, number> = { present: 0, wfh: 0, half_day: 0, leave: 0, leave_pending: 0, sandwich_leave: 0, absent: 0 }
+    for (const d of dates) {
+      const s = dayState(d, empRecords.find(r => r.date === d), todayIST)
+      if (s.kind === 'record') {
+        const rec = empRecords.find(r => r.date === d)!
+        counts[rec.status] = (counts[rec.status] || 0) + 1
+      } else if (s.kind === 'absent') counts.absent++
+    }
+    return counts
   }
 
-  if (isAdmin) {
-    // ADMIN VIEW: Table Grid
+  const editPanel = editCell && (() => {
+    const rec = records.find(r => r.date === editCell.date && (!editCell.empId || r.employee_id === editCell.empId))
     return (
-      <div className="animate-fade-in">
-        <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-          <div>
-            <h1 style={{ fontSize: '1.35rem', marginBottom: '0.25rem' }}>Staff Attendance</h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-              Monthly overview of team attendance and leaves
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <input
-              type="month" className="form-input" value={month}
-              onChange={e => setMonth(e.target.value)}
-              style={{ width: 'auto', padding: '0.4rem 0.75rem' }}
-            />
-          </div>
-        </div>
+      <SidePanel
+        open
+        onClose={() => setEditCell(null)}
+        width={460}
+        leading={editCell.empName ? <Avatar name={editCell.empName} size="md" /> : <span className="drawer-icon" style={{ color: 'var(--brand-primary)', background: 'var(--brand-primary-soft)' }}><Clock size={18} /></span>}
+        title={editCell.empName ? `${editCell.empName}` : 'Mark attendance'}
+        subtitle={<>{new Date(`${editCell.date}T00:00:00Z`).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })}{saving && <span>· saving…</span>}</>}
+      >
+        {rec && (
+          <KeyValues items={[
+            { label: 'Current status', value: typeOf(rec.status)?.label || rec.status },
+            { label: 'Marked via', value: rec.attendance_mode || '—' },
+            { label: 'Check-in', value: rec.check_in_time?.slice(0, 5) || '—' },
+            { label: 'Check-out', value: rec.check_out_time?.slice(0, 5) || '—' },
+          ]} />
+        )}
+        <PanelSection title={isAdmin ? 'Set status' : 'How are you working today?'}>
+          <StatusPicker
+            options={isAdmin ? ATTENDANCE_TYPES : ATTENDANCE_TYPES.filter(t => EMPLOYEE_SELECTABLE.includes(t.value))}
+            current={rec?.status}
+            onPick={v => markAttendance(v, editCell.date, editCell.empId)}
+            onClear={isAdmin && rec ? () => markAttendance('DELETE', editCell.date, editCell.empId) : undefined}
+          />
+          {!isAdmin && <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Leave requests stay pending until an admin approves them.</p>}
+        </PanelSection>
+      </SidePanel>
+    )
+  })()
 
-        <div className="glass-card" style={{ overflowX: 'auto', padding: '1rem' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '1px solid var(--border-subtle)', minWidth: '150px' }}>Employee</th>
-                {Array.from({ length: daysInMonth }).map((_, i) => {
-                  const d = new Date(y, m, i + 1)
-                  const isSunday = d.getDay() === 0
-                  return (
-                    <th key={i} style={{ 
-                      padding: '0.5rem 0.25rem', 
-                      borderBottom: '1px solid var(--border-subtle)',
-                      background: isSunday ? 'rgba(255,255,255,0.02)' : 'transparent',
-                      color: isSunday ? 'var(--text-muted)' : 'inherit'
-                    }}>
-                      {i + 1}
-                    </th>
-                  )
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {employees.map(emp => {
-                const safeRecords = Array.isArray(records) ? records : []
-                const empRecords = safeRecords.filter(r => r.employee_id === emp.id)
-                return (
-                  <tr key={emp.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                    <td style={{ padding: '0.5rem', fontWeight: 600 }}>{emp.full_name}</td>
-                    {Array.from({ length: daysInMonth }).map((_, i) => {
-                      const dStr = `${yearStr}-${monthStr}-${(i + 1).toString().padStart(2, '0')}`
-                      const isSunday = new Date(y, m, i + 1).getDay() === 0
-                      const holiday = NATIONAL_HOLIDAYS[dStr]
-                      const rec = empRecords.find(r => r.date === dStr)
-                      
-                      let content = '-'
-                      let color = 'var(--text-muted)'
-                      
-                      if (holiday) {
-                        content = 'H'
-                        color = '#a855f7'
-                      } else if (isSunday) {
-                        content = 'S'
-                        color = 'var(--text-muted)'
-                      } else if (rec) {
-                        const tInfo = ATTENDANCE_TYPES.find(t => t.value === rec.status)
-                        if (tInfo) { content = tInfo.short || '-'; color = tInfo.color }
-                      } else if (dStr < todayIST) {
-                        content = 'A' // Absent if past date and no record
-                        color = '#ef4444'
-                      }
+  const legend = (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      {ATTENDANCE_TYPES.map(t => <Pill key={t.value} color={t.color}><b>{t.short}</b> {t.label}</Pill>)}
+      <Pill color={ABSENT}><b>A</b> Absent</Pill>
+      <Pill color={HOLIDAY}><b>H</b> Holiday</Pill>
+    </div>
+  )
 
+  /* ── Admin ── */
+  if (isAdmin) {
+    const todays = records.filter(r => r.date === todayIST)
+    const count = (s: string) => todays.filter(r => r.status === s).length
+    const pendingLeaves = records.filter(r => r.status === 'leave_pending').length
+    const openEmp = employees.find(e => e.id === openEmpId) || null
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <PageHeader eyebrow={monthLabel} title="Attendance" description="Click a cell to change a day, or a name to see that person’s month." actions={<MonthNav month={month} setMonth={setMonth} />} />
+
+        <Reveal className="grid-4">
+          <KpiCard label="In office today" value={count('present')} icon={Briefcase} tone="brand" foot={`of ${employees.length} employees`} />
+          <KpiCard label="WFH today" value={count('wfh')} icon={Home} tone="info" />
+          <KpiCard label="On leave today" value={count('leave') + count('sandwich_leave') + count('half_day')} icon={CalendarOff} tone="warning" />
+          <KpiCard label="Leave requests" value={pendingLeaves} icon={Users} tone={pendingLeaves ? 'danger' : 'default'} foot={pendingLeaves ? 'Pending approval this month' : 'Nothing pending'} />
+        </Reveal>
+
+        <Reveal delay={0.06}>
+          <section className="card" style={{ overflow: 'hidden' }}>
+            <div className="list-toolbar">{legend}</div>
+            {loading ? (
+              <div style={{ padding: '1rem' }}><div className="skeleton" style={{ height: 260 }} /></div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table className="att-grid">
+                  <thead>
+                    <tr>
+                      <th className="att-name">Employee</th>
+                      {dates.map(d => {
+                        const dt = new Date(`${d}T00:00:00Z`)
+                        return (
+                          <th key={d} className={`${dt.getUTCDay() === 0 ? 'sun' : ''} ${d === todayIST ? 'today' : ''}`}>
+                            <span>{['S', 'M', 'T', 'W', 'T', 'F', 'S'][dt.getUTCDay()]}</span>{dt.getUTCDate()}
+                          </th>
+                        )
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {employees.map(emp => {
+                      const empRecords = records.filter(r => r.employee_id === emp.id)
                       return (
-                        <td key={i} 
-                          onClick={() => setMarkingAdmin({ empId: emp.id, empName: emp.full_name, date: dStr })}
-                          style={{ 
-                          padding: '0.5rem 0.25rem', 
-                          textAlign: 'center', 
-                          fontWeight: 700, 
-                          color,
-                          background: isSunday ? 'rgba(255,255,255,0.02)' : 'transparent',
-                          cursor: 'pointer'
-                        }}
-                        className="hover:bg-white/5"
-                        title="Click to edit">
-                          {content}
-                        </td>
+                        <tr key={emp.id}>
+                          <td className="att-name">
+                            <button onClick={() => setOpenEmpId(emp.id)}>
+                              <Avatar name={emp.full_name} src={emp.avatar_url} size="xs" />
+                              <span className="truncate-1">{emp.full_name}</span>
+                            </button>
+                          </td>
+                          {dates.map(d => {
+                            const s = dayState(d, empRecords.find(r => r.date === d), todayIST)
+                            return (
+                              <td key={d} className={d === todayIST ? 'today' : ''}>
+                                <button
+                                  className={`att-cell ${s.kind}`}
+                                  style={{ '--tone': s.color } as React.CSSProperties}
+                                  title={`${emp.full_name} · ${d}${s.label ? ` · ${s.label}` : ''}`}
+                                  onClick={() => setEditCell({ empId: emp.id, empName: emp.full_name, date: d })}
+                                >
+                                  {s.short}
+                                </button>
+                              </td>
+                            )
+                          })}
+                        </tr>
                       )
                     })}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </Reveal>
 
-      {/* Admin Edit Modal */}
-      {markingAdmin && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
-          <div className="glass-card" style={{ width: '100%', maxWidth: '400px', padding: '1.5rem' }}>
-            <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>
-              Edit Attendance
-            </h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
-              {markingAdmin.empName} — {new Date(markingAdmin.date).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}
-            </p>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {ATTENDANCE_TYPES.map(type => (
-                <button
-                  key={type.value}
-                  onClick={() => markAttendance(type.value, markingAdmin.empId, markingAdmin.date)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1rem',
-                    borderRadius: '12px', border: `1px solid ${type.color}40`,
-                    background: `${type.color}10`, color: type.color,
-                    fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
-                    textAlign: 'left'
-                  }}
-                  className="hover:brightness-125"
-                >
-                  {type.icon}
-                  {type.label}
-                </button>
-              ))}
-              <button
-                  onClick={() => markAttendance('DELETE', markingAdmin.empId, markingAdmin.date)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1rem',
-                    borderRadius: '12px', border: `1px solid rgba(255,255,255,0.1)`,
-                    background: `rgba(255,255,255,0.05)`, color: 'var(--text-secondary)',
-                    fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
-                    textAlign: 'left', marginTop: '0.5rem'
-                  }}
-                  className="hover:bg-white/10"
-                >
-                  Clear Record (Absent)
-              </button>
-            </div>
-            
-            <button 
-              className="btn btn-secondary" 
-              style={{ width: '100%', marginTop: '1.5rem' }}
-              onClick={() => setMarkingAdmin(null)}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+        {openEmp && (() => {
+          const empRecords = records.filter(r => r.employee_id === openEmp.id)
+          const c = summarize(empRecords)
+          return (
+            <SidePanel open onClose={() => setOpenEmpId(null)} leading={<Avatar name={openEmp.full_name} src={openEmp.avatar_url} size="md" />} title={openEmp.full_name} subtitle={<>{openEmp.designation || 'Employee'} · {monthLabel}</>}>
+              <KeyValues items={[
+                { label: 'In office', value: c.present },
+                { label: 'Work from home', value: c.wfh },
+                { label: 'Half days', value: c.half_day },
+                { label: 'Leaves', value: c.leave + c.sandwich_leave },
+                { label: 'Pending leave requests', value: c.leave_pending },
+                { label: 'Absent', value: c.absent },
+              ]} />
+              <PanelSection title="Month at a glance">
+                <div className="mini-cal">
+                  {dates.map(d => {
+                    const s = dayState(d, empRecords.find(r => r.date === d), todayIST)
+                    return (
+                      <button key={d} className={`att-cell ${s.kind}`} style={{ '--tone': s.color } as React.CSSProperties} title={`${d} · ${s.label}`} onClick={() => setEditCell({ empId: openEmp.id, empName: openEmp.full_name, date: d })}>
+                        <small>{Number(d.slice(8))}</small>{s.short}
+                      </button>
+                    )
+                  })}
+                </div>
+              </PanelSection>
+            </SidePanel>
+          )
+        })()}
+        {editPanel}
       </div>
     )
   }
 
-  // EMPLOYEE VIEW: Calendar
+  /* ── Employee ── */
+  const c = summarize(records)
+  const firstWeekday = new Date(`${month}-01T00:00:00Z`).getUTCDay()
+  const cells: (string | null)[] = [...Array(firstWeekday).fill(null), ...dates]
+  const todayRec = records.find(r => r.date === todayIST)
+
   return (
-    <div className="animate-fade-in">
-      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.35rem', marginBottom: '0.25rem' }}>My Attendance</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            Mark your daily attendance and track leaves
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <button className="btn btn-secondary" onClick={() => {
-            const d = new Date(y, m - 1, 1)
-            setMonth(`${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`)
-          }}><ChevronLeft size={16} /></button>
-          <input
-            type="month" className="form-input" value={month}
-            onChange={e => setMonth(e.target.value)}
-            style={{ width: 'auto', padding: '0.4rem 0.75rem' }}
-          />
-          <button className="btn btn-secondary" onClick={() => {
-            const d = new Date(y, m + 1, 1)
-            setMonth(`${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`)
-          }}><ChevronRight size={16} /></button>
-        </div>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      <PageHeader eyebrow={monthLabel} title="My Attendance" description="Click a day to mark how you worked or request leave." actions={<MonthNav month={month} setMonth={setMonth} />} />
 
-      <div className="glass-card" style={{ padding: '1.5rem' }}>
-        {/* Calendar Header */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem', marginBottom: '0.5rem' }}>
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-            <div key={day} style={{ textAlign: 'center', fontWeight: 600, fontSize: '0.75rem', color: day === 'Sun' ? '#ef4444' : 'var(--text-muted)', textTransform: 'uppercase' }}>
-              {day}
-            </div>
-          ))}
-        </div>
-
-        {/* Calendar Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem' }}>
-          {days.map((dStr, i) => {
-            if (!dStr) return <div key={i} style={{ padding: '2rem' }}></div>
-            
-            const dayNum = parseInt(dStr.split('-')[2])
-            const isSunday = new Date(dStr).getDay() === 0
-            const holiday = NATIONAL_HOLIDAYS[dStr]
-            const rec = records.find(r => r.date === dStr)
-            const isToday = dStr === todayIST
-            const isFuture = dStr > todayIST
-
-            let statusColor = 'transparent'
-            let statusLabel = ''
-            
-            if (rec) {
-              const typeInfo = ATTENDANCE_TYPES.find(t => t.value === rec.status)
-              if (typeInfo) {
-                statusColor = typeInfo.color
-                statusLabel = typeInfo.label
-              }
-            } else if (holiday) {
-              statusColor = '#a855f7'
-              statusLabel = holiday
-            } else if (isSunday) {
-              statusColor = 'rgba(255,255,255,0.05)'
-              statusLabel = 'Weekend'
-            }
-
-            return (
-              <div 
-                key={i} 
-                onClick={() => {
-                  if (!isFuture && !isSunday && !holiday) setMarkingDate(dStr)
-                }}
-                style={{
-                  border: `1px solid ${isToday ? 'var(--brand-primary)' : 'var(--border-subtle)'}`,
-                  background: rec ? `${statusColor}15` : 'rgba(255,255,255,0.02)',
-                  borderRadius: '12px',
-                  padding: '0.75rem',
-                  minHeight: '100px',
-                  cursor: (!isFuture && !isSunday && !holiday) ? 'pointer' : 'default',
-                  opacity: isFuture ? 0.5 : 1,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  position: 'relative',
-                  transition: 'all 0.2s ease',
-                }}
-                className={(!isFuture && !isSunday && !holiday) ? 'hover:border-[var(--brand-primary)]' : ''}
-              >
-                <span style={{ fontWeight: 800, fontSize: '1.2rem', color: isSunday ? '#ef4444' : isToday ? 'var(--brand-primary)' : 'inherit' }}>
-                  {dayNum}
-                </span>
-                
-                <div style={{ flex: 1 }} />
-                
-                {statusLabel ? (
-                  <div style={{ fontSize: '0.65rem', fontWeight: 600, color: statusColor, background: `${statusColor}20`, padding: '4px 8px', borderRadius: '4px', textAlign: 'center', lineHeight: 1.2 }}>
-                    {statusLabel}
-                  </div>
-                ) : (!isFuture && !isSunday && !holiday && dStr < todayIST) ? (
-                  <div style={{ fontSize: '0.65rem', fontWeight: 600, color: '#ef4444', background: '#ef444420', padding: '4px 8px', borderRadius: '4px', textAlign: 'center' }}>
-                    Absent
-                  </div>
-                ) : (!isFuture && !isSunday && !holiday && isToday) ? (
-                  <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', background: 'rgba(255,255,255,0.05)', padding: '4px 8px', borderRadius: '4px', textAlign: 'center' }}>
-                    Click to mark
-                  </div>
-                ) : null}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Attendance Modal */}
-      {markingDate && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
-          <div className="glass-card" style={{ width: '100%', maxWidth: '400px', padding: '1.5rem' }}>
-            <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>
-              Mark Attendance
-            </h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
-              For {new Date(markingDate).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-            </p>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {ATTENDANCE_TYPES.filter(t => EMPLOYEE_SELECTABLE.includes(t.value)).map(type => (
-                <button
-                  key={type.value}
-                  onClick={() => markAttendance(type.value)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1rem',
-                    borderRadius: '12px', border: `1px solid ${type.color}40`,
-                    background: `${type.color}10`, color: type.color,
-                    fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
-                    textAlign: 'left'
-                  }}
-                  className="hover:brightness-125"
-                >
-                  {type.icon}
-                  {type.label}
-                </button>
-              ))}
-            </div>
-            
-            <button 
-              className="btn btn-secondary" 
-              style={{ width: '100%', marginTop: '1.5rem' }}
-              onClick={() => setMarkingDate(null)}
-            >
-              Cancel
-            </button>
+      {month === todayIST.slice(0, 7) && (
+        <div className={`alert-strip ${todayRec ? 'tone-success' : 'tone-warning'}`}>
+          <span className="alert-strip-icon">{todayRec ? <CheckCircle2 size={16} /> : <Clock size={16} />}</span>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <p style={{ fontWeight: 600, fontSize: '0.875rem' }}>{todayRec ? `Today: ${typeOf(todayRec.status)?.label}` : 'You haven’t marked today yet'}</p>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{todayRec?.check_in_time ? `Checked in at ${todayRec.check_in_time.slice(0, 5)}` : 'Use the office QR / biometric, or mark WFH here.'}</p>
           </div>
+          {!todayRec && <button className="btn btn-primary btn-sm" onClick={() => setEditCell({ date: todayIST })}>Mark today</button>}
         </div>
       )}
+
+      <Reveal className="grid-4">
+        <KpiCard label="In office" value={c.present} icon={Briefcase} tone="brand" compact />
+        <KpiCard label="Work from home" value={c.wfh} icon={Home} tone="info" compact />
+        <KpiCard label="Leaves" value={c.leave + c.sandwich_leave + c.leave_pending} icon={CalendarOff} tone="warning" compact foot={c.leave_pending ? `${c.leave_pending} pending` : undefined} />
+        <KpiCard label="Absent" value={c.absent} icon={Clock} tone={c.absent ? 'danger' : 'default'} compact />
+      </Reveal>
+
+      <Reveal delay={0.06}>
+        <section className="card" style={{ padding: '1.1rem' }}>
+          <div className="cal-head">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <span key={d}>{d}</span>)}</div>
+          <div className="cal-grid">
+            {cells.map((d, i) => {
+              if (!d) return <div key={`pad-${i}`} />
+              const rec = records.find(r => r.date === d)
+              const s = dayState(d, rec, todayIST)
+              const future = d > todayIST
+              const clickable = !future && s.kind !== 'weekend' && s.kind !== 'holiday'
+              return (
+                <button
+                  key={d}
+                  disabled={!clickable}
+                  className={`cal-day ${s.kind} ${d === todayIST ? 'today' : ''} ${future ? 'future' : ''}`}
+                  style={{ '--tone': s.color } as React.CSSProperties}
+                  onClick={() => setEditCell({ date: d })}
+                >
+                  <span className="cal-num">{Number(d.slice(8))}</span>
+                  {s.label && <span className="cal-label">{s.label}</span>}
+                  {rec?.check_in_time && <span className="cal-time">{rec.check_in_time.slice(0, 5)}</span>}
+                </button>
+              )
+            })}
+          </div>
+          <div style={{ marginTop: '1rem' }}>{legend}</div>
+        </section>
+      </Reveal>
+      {editPanel}
     </div>
   )
 }

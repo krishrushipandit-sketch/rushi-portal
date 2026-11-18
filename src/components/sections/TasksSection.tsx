@@ -1,13 +1,18 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import type { Profile } from '@/lib/database.types'
-import { formatDate, getStatusColor, getPriorityColor, isOverdue } from '@/lib/utils'
+import { formatDate, isOverdue } from '@/lib/utils'
 import {
-  Plus, Search, Filter, Trash2, CheckCircle2, Clock, Edit3, X,
-  AlertCircle, ChevronDown, Loader2, MessageSquarePlus, UserCheck, Send, CheckSquare
+  Plus, Trash2, CheckCircle2, X, AlertCircle, Loader2, UserCheck, Send, ListChecks, Search,
+  ChevronRight, Play, Check, Clock, CircleDashed, Ban, ArrowUpRight,
 } from 'lucide-react'
+import PageHeader from '@/components/ui/PageHeader'
+import GlowButton from '@/components/ui/GlowButton'
+import Reveal from '@/components/ui/Reveal'
+import Avatar from '@/components/ui/Avatar'
+import Pill from '@/components/ui/Pill'
+import SidePanel, { KeyValues, PanelSection } from '@/components/ui/SidePanel'
 
 interface Props {
   profile: Profile
@@ -35,18 +40,173 @@ interface Task {
   assigned_by: string | null
   created_at: string
   reminder_sent: boolean
-  assigned_to_profile?: { id: string; full_name: string; email: string }
-  assigned_by_profile?: { id: string; full_name: string; email: string }
+  assigned_to_profile?: { id: string; full_name: string; email: string; avatar_url?: string | null }
+  assigned_by_profile?: { id: string; full_name: string; email?: string; avatar_url?: string | null }
   task_updates?: TaskUpdate[]
 }
 
 interface Employee { id: string; full_name: string; email: string }
 
+const STATUS: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+  pending: { label: 'Pending', color: '#8592a3', icon: <CircleDashed size={12} /> },
+  in_progress: { label: 'In progress', color: '#2f9bff', icon: <Play size={12} /> },
+  completed: { label: 'Completed', color: '#22c55e', icon: <CheckCircle2 size={12} /> },
+  overdue: { label: 'Overdue', color: '#ef4757', icon: <AlertCircle size={12} /> },
+  cancelled: { label: 'Cancelled', color: '#8592a3', icon: <Ban size={12} /> },
+}
+const PRIORITY: Record<string, string> = { low: '#8592a3', medium: '#f5a524', high: '#f0773a', urgent: '#ef4757' }
 const STATUS_OPTIONS = ['pending', 'in_progress', 'completed', 'cancelled']
 const PRIORITY_OPTIONS = ['low', 'medium', 'high', 'urgent']
 
+const fmtDeadline = (d: string) => new Intl.DateTimeFormat('en-IN', {
+  day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata',
+}).format(new Date(d))
+
+const latestUpdate = (t: Task) =>
+  t.task_updates?.length ? [...t.task_updates].sort((a, b) => b.created_at.localeCompare(a.created_at))[0] : null
+
+const isLate = (t: Task) => isOverdue(t.deadline) && t.status !== 'completed' && t.status !== 'cancelled'
+
+// ─── Task panel ───────────────────────────────────────────────────────────
+function TaskPanel({ task, profile, canUpdate, onClose, onChanged, onDelete, onQuickStatus }: {
+  task: Task
+  profile: Profile
+  canUpdate: boolean
+  onClose: () => void
+  onChanged: () => void
+  onDelete: () => void
+  onQuickStatus: (status: string) => void
+}) {
+  const latest = latestUpdate(task)
+  const [status, setStatus] = useState(task.status)
+  const [progress, setProgress] = useState(latest?.progress_percent ?? 0)
+  const [comment, setComment] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setStatus(task.status)
+    setProgress(latestUpdate(task)?.progress_percent ?? 0)
+  }, [task])
+
+  const save = async () => {
+    setSaving(true)
+    const token = localStorage.getItem('rushi_token') || ''
+    try {
+      await fetch(`/api/tasks/${task.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ comment: comment.trim() || `Progress updated to ${progress}%`, progress_percent: progress }),
+      })
+      await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status }),
+      })
+      setComment('')
+      onChanged()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const st = STATUS[isLate(task) ? 'overdue' : task.status] ?? STATUS.pending
+  const history = [...(task.task_updates ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at))
+  const done = task.status === 'completed' || task.status === 'cancelled'
+
+  return (
+    <SidePanel
+      open
+      onClose={onClose}
+      leading={<span className="drawer-icon" style={{ color: st.color, background: `color-mix(in srgb, ${st.color} 14%, transparent)`, boxShadow: `0 0 20px -6px ${st.color}` }}><ListChecks size={18} /></span>}
+      title={<>{task.title}</>}
+      subtitle={<>
+        <Pill color={st.color} icon={st.icon}>{st.label}</Pill>
+        <Pill color={PRIORITY[task.priority] ?? '#8592a3'} dot>{task.priority}</Pill>
+        {task.deadline && <span style={{ color: isLate(task) ? 'var(--status-danger)' : undefined }}>Due {fmtDeadline(task.deadline)}</span>}
+      </>}
+      footer={canUpdate && !done ? (
+        <button className="btn btn-primary" onClick={save} disabled={saving}>
+          {saving ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={15} />}
+          {saving ? 'Saving…' : 'Save progress'}
+        </button>
+      ) : undefined}
+    >
+      <div className="quick-actions">
+        {!done && task.status !== 'in_progress' && (
+          <button className="btn btn-secondary" onClick={() => onQuickStatus('in_progress')}><Play size={14} /> Start</button>
+        )}
+        {!done && (
+          <button className="btn btn-secondary" style={{ color: 'var(--status-success)' }} onClick={() => onQuickStatus('completed')}><Check size={15} /> Mark complete</button>
+        )}
+        {task.status === 'completed' && (
+          <button className="btn btn-secondary" onClick={() => onQuickStatus('in_progress')}><ArrowUpRight size={15} /> Reopen</button>
+        )}
+        {profile.role === 'admin' && <button className="btn btn-danger" onClick={onDelete}><Trash2 size={15} /> Delete</button>}
+      </div>
+
+      <KeyValues items={[
+        { label: 'Assigned to', value: task.assigned_to_profile ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Avatar name={task.assigned_to_profile.full_name} src={task.assigned_to_profile.avatar_url} size="xs" />{task.assigned_to_profile.full_name}</span> : 'Unassigned' },
+        { label: 'Assigned by', value: task.assigned_by_profile?.full_name ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Avatar name={task.assigned_by_profile.full_name} src={task.assigned_by_profile.avatar_url} size="xs" />{task.assigned_by_profile.full_name}</span> : '—' },
+        { label: 'Type', value: task.task_type === 'regular' ? 'Regular responsibility' : 'Assigned task' },
+        { label: 'Created', value: formatDate(task.created_at, 'dd MMM yyyy') },
+        { label: 'Deadline', value: task.deadline ? fmtDeadline(task.deadline) : '—' },
+        { label: 'Progress', value: `${latest?.progress_percent ?? 0}%` },
+      ]} />
+
+      {task.description && (
+        <PanelSection title="Description">
+          <p style={{ fontSize: '0.875rem', lineHeight: 1.6, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>{task.description}</p>
+        </PanelSection>
+      )}
+      {task.notes && <div className="note-box"><Clock size={14} /><span>{task.notes}</span></div>}
+
+      {canUpdate && !done && (
+        <PanelSection title="Update progress">
+          <div className="form-group">
+            <label className="form-label">Status</label>
+            <div className="segmented" style={{ alignSelf: 'flex-start' }}>
+              {STATUS_OPTIONS.map(s => (
+                <button key={s} className={status === s ? 'active' : ''} onClick={() => setStatus(s)}>{STATUS[s].label}</button>
+              ))}
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Progress</span><span className="tabular" style={{ color: 'var(--brand-primary)', fontWeight: 650 }}>{progress}%</span>
+            </label>
+            <input type="range" min={0} max={100} step={5} value={progress} onChange={e => setProgress(Number(e.target.value))} className="range" aria-label="Progress percent" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">What did you do?</label>
+            <textarea className="form-textarea" rows={3} value={comment} onChange={e => setComment(e.target.value)} placeholder="Describe the progress since the last update…" />
+          </div>
+        </PanelSection>
+      )}
+
+      <PanelSection title="Progress history" aside={history.length > 0 && <span style={{ fontSize: '0.72rem', color: 'var(--text-faint)' }}>{history.length} updates</span>}>
+        {history.length === 0 ? (
+          <div className="empty-inline">No progress updates yet</div>
+        ) : (
+          <ul className="timeline">
+            {history.map(u => (
+              <li key={u.id} style={{ '--tone': u.progress_percent >= 100 ? '#22c55e' : '#2f9bff' } as React.CSSProperties}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span className="tabular" style={{ fontWeight: 650, fontSize: '0.8125rem' }}>{u.progress_percent}%</span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{formatDate(u.created_at, 'dd MMM, hh:mm a')}</span>
+                </div>
+                <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginTop: 3 }}>{u.comment}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </PanelSection>
+    </SidePanel>
+  )
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────
 export default function TasksSection({ profile, initialTab = 'all' }: Props) {
-  const router = useRouter()
+  const isAdmin = profile.role === 'admin'
   const [tasks, setTasks] = useState<Task[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
@@ -55,43 +215,32 @@ export default function TasksSection({ profile, initialTab = 'all' }: Props) {
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterType, setFilterType] = useState('all')
   const [showModal, setShowModal] = useState(false)
-  const [showUpdateModal, setShowUpdateModal] = useState<Task | null>(null)
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const emptyForm = { title: '', description: '', assigned_to: '', task_type: 'assigned', priority: 'medium', deadline: '', notes: '' }
+  const [form, setForm] = useState(emptyForm)
 
-  const [form, setForm] = useState({
-    title: '', description: '', assigned_to: '',
-    task_type: 'assigned', priority: 'medium', deadline: '', notes: '',
-  })
-  const [updateComment, setUpdateComment] = useState('')
-  const [updateProgress, setUpdateProgress] = useState(0)
-  const [updateStatus, setUpdateStatus] = useState('')
+  const token = () => localStorage.getItem('rushi_token') || ''
 
-  const getToken = () => typeof window !== 'undefined' ? (localStorage.getItem('rushi_token') || '') : ''
-
-  // Sync tab if initialTab changes from parent navigation
-  useEffect(() => {
-    if (initialTab) {
-      setActiveTab(initialTab)
-    }
-  }, [initialTab])
+  useEffect(() => { setActiveTab(initialTab) }, [initialTab])
 
   const fetchTasks = useCallback(async () => {
-    const token = getToken()
-    if (!token) return
-    const res = await fetch('/api/tasks', { headers: { Authorization: `Bearer ${token}` } })
+    const t = localStorage.getItem('rushi_token')
+    if (!t) return
+    const res = await fetch('/api/tasks', { headers: { Authorization: `Bearer ${t}` } })
     const data = await res.json()
     if (Array.isArray(data)) setTasks(data)
     setLoading(false)
   }, [])
 
   const fetchEmployees = useCallback(async () => {
-    if (profile.role !== 'admin') return
-    const token = getToken()
-    if (!token) return
-    const res = await fetch('/api/employees', { headers: { Authorization: `Bearer ${token}` } })
+    if (!isAdmin) return
+    const t = localStorage.getItem('rushi_token')
+    if (!t) return
+    const res = await fetch('/api/employees', { headers: { Authorization: `Bearer ${t}` } })
     const data = await res.json()
     if (Array.isArray(data)) setEmployees(data)
-  }, [profile.role])
+  }, [isAdmin])
 
   useEffect(() => {
     fetchTasks()
@@ -99,498 +248,232 @@ export default function TasksSection({ profile, initialTab = 'all' }: Props) {
   }, [fetchTasks, fetchEmployees])
 
   const handleCreateTask = async () => {
-    if (!form.title) { alert('Please enter a task title'); return }
-    if (!form.assigned_to) { alert('Please select an employee to assign this task to'); return }
+    if (!form.title || !form.assigned_to) return
     setSubmitting(true)
-    const token = getToken()
-    if (!token) { setSubmitting(false); return }
-
-    const payload = {
-      ...form,
-      deadline: form.deadline ? `${form.deadline}:00+05:30` : null
-    }
-
     try {
       const res = await fetch('/api/tasks', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ ...form, deadline: form.deadline ? `${form.deadline}:00+05:30` : null }),
       })
       const data = await res.json()
-
-      if (res.ok) {
-        setShowModal(false)
-        setForm({ title: '', description: '', assigned_to: '', task_type: 'assigned', priority: 'medium', deadline: '', notes: '' })
-        fetchTasks()
-      } else {
-        alert('Failed to assign task: ' + (data.error || 'Unknown error'))
-      }
-    } catch (err: any) {
-      alert('Error creating task: ' + err.message)
+      if (!res.ok) return alert('Failed to assign task: ' + (data.error || 'Unknown error'))
+      setShowModal(false)
+      setForm(emptyForm)
+      fetchTasks()
+    } catch (err) {
+      alert('Error creating task: ' + (err as Error).message)
     } finally {
       setSubmitting(false)
     }
   }
 
   const handleStatusUpdate = async (taskId: string, status: string) => {
-    const token = getToken()
-    if (!token) return
-
-    // Optimistic UI update for instant click response
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status } : t))
-
     try {
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
         body: JSON.stringify({ status }),
       })
       if (!res.ok) {
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         alert('Could not update status: ' + (data.error || 'Unknown error'))
       }
-    } catch (err: any) {
-      alert('Error updating status: ' + err.message)
     } finally {
       fetchTasks()
     }
   }
 
-  const handleUpdateSubmit = async () => {
-    if (!showUpdateModal) return
-    setSubmitting(true)
-    const token = getToken()
-    if (!token) { setSubmitting(false); return }
-
-    // 1. Insert a progress update into task_updates table
-    await fetch(`/api/tasks/${showUpdateModal.id}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        comment: updateComment.trim() || `Progress updated to ${updateProgress}%`,
-        progress_percent: updateProgress
-      }),
-    })
-
-    // 2. PATCH the task status if it changed
-    const newStatus = updateStatus || showUpdateModal.status
-    await fetch(`/api/tasks/${showUpdateModal.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ status: newStatus }),
-    })
-
-    setShowUpdateModal(null)
-    setUpdateComment('')
-    setUpdateProgress(0)
-    setUpdateStatus('')
-    fetchTasks()
-    setSubmitting(false)
-  }
-
   const handleDelete = async (taskId: string) => {
     if (!confirm('Delete this task? This cannot be undone.')) return
-    const token = getToken()
-    if (!token) return
-    await fetch(`/api/tasks/${taskId}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    await fetch(`/api/tasks/${taskId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token()}` } })
+    setOpenTaskId(null)
     fetchTasks()
   }
 
-  // Count calculations for tabs
-  const allTasksCount = tasks.length
-  const myTasksCount = tasks.filter(t => t.assigned_to === profile.id).length
-  const assignedByMeCount = tasks.filter(t => t.assigned_by === profile.id).length
-
-  // Filter tasks by active tab
-  const tabFilteredTasks = tasks.filter(t => {
-    if (profile.role !== 'admin') return true // Regular employees already only receive their tasks
-    if (activeTab === 'my-tasks') return t.assigned_to === profile.id
-    if (activeTab === 'assigned-by-me') return t.assigned_by === profile.id
-    return true // 'all'
-  })
-
-  // Filter tasks by search query, status, and type
-  const filtered = tabFilteredTasks.filter(t => {
-    const matchSearch =
-      t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (t.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (t.assigned_to_profile?.full_name || '').toLowerCase().includes(searchQuery.toLowerCase())
-    const matchStatus = filterStatus === 'all' || t.status === filterStatus
-    const matchType = filterType === 'all' || t.task_type === filterType
-    return matchSearch && matchStatus && matchType
-  })
-
-  if (loading) {
-    return (
-      <div>
-        <div className="skeleton" style={{ height: '40px', marginBottom: '1rem' }} />
-        {[1,2,3,4].map(i => <div key={i} className="skeleton" style={{ height: '72px', marginBottom: '8px' }} />)}
-      </div>
-    )
+  const counts = {
+    all: tasks.length,
+    mine: tasks.filter(t => t.assigned_to === profile.id).length,
+    byMe: tasks.filter(t => t.assigned_by === profile.id).length,
   }
 
-  const getPageTitle = () => {
-    if (profile.role !== 'admin') return 'My Tasks'
-    if (activeTab === 'my-tasks') return 'My Assigned Tasks'
-    if (activeTab === 'assigned-by-me') return 'Tasks Assigned by Me'
-    return 'Task Management'
-  }
+  const filtered = useMemo(() => {
+    const q = searchQuery.toLowerCase()
+    return tasks.filter(t => {
+      if (isAdmin && activeTab === 'my-tasks' && t.assigned_to !== profile.id) return false
+      if (isAdmin && activeTab === 'assigned-by-me' && t.assigned_by !== profile.id) return false
+      if (q && !(t.title.toLowerCase().includes(q) || (t.description || '').toLowerCase().includes(q) || (t.assigned_to_profile?.full_name || '').toLowerCase().includes(q))) return false
+      if (filterStatus === 'overdue') return isLate(t)
+      if (filterStatus !== 'all' && t.status !== filterStatus) return false
+      if (filterType !== 'all' && t.task_type !== filterType) return false
+      return true
+    }).sort((a, b) => {
+      const rank = (t: Task) => (t.status === 'completed' || t.status === 'cancelled' ? 2 : isLate(t) ? 0 : 1)
+      return rank(a) - rank(b) || (a.deadline ?? '9').localeCompare(b.deadline ?? '9')
+    })
+  }, [tasks, searchQuery, filterStatus, filterType, activeTab, isAdmin, profile.id])
+
+  const openTask = tasks.find(t => t.id === openTaskId) || null
+  const showAssignee = isAdmin && activeTab !== 'my-tasks'
+  const cols = showAssignee
+    ? 'minmax(220px, 2.4fr) minmax(130px, 1.1fr) 92px 120px minmax(120px, 1fr) 110px 34px 14px'
+    : 'minmax(220px, 2.4fr) 92px 120px minmax(120px, 1fr) 110px 34px 14px'
+
+  const title = !isAdmin ? 'My Tasks' : activeTab === 'my-tasks' ? 'My Tasks' : activeTab === 'assigned-by-me' ? 'Assigned by Me' : 'Task Management'
+  const overdueCount = tasks.filter(isLate).length
+  const openCount = tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').length
 
   return (
-    <div className="animate-fade-in">
-      {/* Header */}
-      <div className="page-header" style={{ alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.5rem', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <CheckSquare size={22} style={{ color: 'var(--brand-primary)' }} />
-            {getPageTitle()}
-          </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            {filtered.length} task{filtered.length !== 1 ? 's' : ''} shown
-          </p>
-        </div>
-        {profile.role === 'admin' && (
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-            <Plus size={16} />
-            Assign Task
-          </button>
-        )}
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      <PageHeader
+        eyebrow={`${openCount} open · ${overdueCount} overdue`}
+        title={title}
+        description="Click a task to see details, post a progress update or mark it done."
+        actions={isAdmin ? <GlowButton onClick={() => setShowModal(true)}><Plus size={15} /> Assign task</GlowButton> : undefined}
+      />
 
-      {/* Admin View Tabs (All Tasks / My Tasks / Assigned by Me) */}
-      {profile.role === 'admin' && (
-        <div style={{
-          display: 'flex',
-          gap: '8px',
-          marginBottom: '1.25rem',
-          background: 'var(--bg-surface)',
-          padding: '5px',
-          borderRadius: '12px',
-          border: '1px solid var(--border-subtle)',
-          width: 'fit-content',
-          flexWrap: 'wrap'
-        }}>
-          <button
-            onClick={() => setActiveTab('all')}
-            style={{
-              padding: '6px 14px',
-              borderRadius: '8px',
-              fontSize: '0.84rem',
-              fontWeight: activeTab === 'all' ? 700 : 500,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease',
-              background: activeTab === 'all' ? 'linear-gradient(135deg, #10b981, #059669)' : 'transparent',
-              color: activeTab === 'all' ? '#ffffff' : 'var(--text-secondary)',
-              border: 'none',
-              boxShadow: activeTab === 'all' ? '0 2px 8px rgba(16, 185, 129, 0.25)' : 'none'
-            }}
-          >
-            <span>📋 All Company Tasks</span>
-            <span style={{
-              background: activeTab === 'all' ? 'rgba(255,255,255,0.25)' : 'var(--bg-elevated)',
-              padding: '2px 7px',
-              borderRadius: '10px',
-              fontSize: '0.72rem',
-              fontWeight: 700
-            }}>
-              {allTasksCount}
-            </span>
-          </button>
+      <Reveal>
+        <section className="card list">
+          <div className="list-toolbar">
+            {isAdmin && (
+              <div className="segmented" role="tablist">
+                {([
+                  { id: 'all', label: 'All tasks', count: counts.all, icon: <ListChecks size={13} /> },
+                  { id: 'my-tasks', label: 'Assigned to me', count: counts.mine, icon: <UserCheck size={13} /> },
+                  { id: 'assigned-by-me', label: 'Assigned by me', count: counts.byMe, icon: <Send size={13} /> },
+                ] as const).map(t => (
+                  <button key={t.id} role="tab" aria-selected={activeTab === t.id} className={activeTab === t.id ? 'active' : ''} onClick={() => setActiveTab(t.id)}>
+                    {t.icon}{t.label}<span className="tabular" style={{ color: 'var(--text-faint)' }}>{t.count}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="input-icon">
+              <Search size={14} />
+              <input className="form-input" placeholder="Search tasks or people…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+            </div>
+            <select className="form-select" style={{ width: 'auto' }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)} aria-label="Status">
+              <option value="all">All statuses</option>
+              <option value="overdue">Overdue</option>
+              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{STATUS[s].label}</option>)}
+            </select>
+            <select className="form-select" style={{ width: 'auto' }} value={filterType} onChange={e => setFilterType(e.target.value)} aria-label="Type">
+              <option value="all">All types</option>
+              <option value="assigned">Assigned</option>
+              <option value="regular">Regular</option>
+            </select>
+          </div>
 
-          <button
-            onClick={() => setActiveTab('my-tasks')}
-            style={{
-              padding: '6px 14px',
-              borderRadius: '8px',
-              fontSize: '0.84rem',
-              fontWeight: activeTab === 'my-tasks' ? 700 : 500,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease',
-              background: activeTab === 'my-tasks' ? 'linear-gradient(135deg, #10b981, #059669)' : 'transparent',
-              color: activeTab === 'my-tasks' ? '#ffffff' : 'var(--text-secondary)',
-              border: 'none',
-              boxShadow: activeTab === 'my-tasks' ? '0 2px 8px rgba(16, 185, 129, 0.25)' : 'none'
-            }}
-          >
-            <UserCheck size={14} />
-            <span>My Tasks (Assigned to Me)</span>
-            <span style={{
-              background: activeTab === 'my-tasks' ? 'rgba(255,255,255,0.25)' : 'var(--bg-elevated)',
-              padding: '2px 7px',
-              borderRadius: '10px',
-              fontSize: '0.72rem',
-              fontWeight: 700,
-              color: activeTab === 'my-tasks' ? '#ffffff' : (myTasksCount > 0 ? '#10b981' : 'var(--text-muted)')
-            }}>
-              {myTasksCount}
-            </span>
-          </button>
+          {loading ? (
+            <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[1, 2, 3, 4].map(i => <div key={i} className="skeleton" style={{ height: 52 }} />)}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-state-icon"><CheckCircle2 size={20} /></div>
+              <p style={{ fontWeight: 550, color: 'var(--text-secondary)' }}>{activeTab === 'my-tasks' ? 'Nothing assigned to you right now' : 'No tasks found'}</p>
+              <p style={{ fontSize: '0.8rem' }}>{searchQuery || filterStatus !== 'all' || filterType !== 'all' ? 'Try adjusting your filters.' : 'New tasks will show up here.'}</p>
+            </div>
+          ) : (
+            <div role="list">
+              <div className="list-head" style={{ '--cols': cols } as React.CSSProperties}>
+                <span>Task</span>{showAssignee && <span>Assignee</span>}<span>Priority</span><span>Status</span><span>Deadline</span><span>Progress</span><span /><span />
+              </div>
+              {filtered.map(task => {
+                const late = isLate(task)
+                const st = STATUS[late ? 'overdue' : task.status] ?? STATUS.pending
+                const pct = latestUpdate(task)?.progress_percent ?? (task.status === 'completed' ? 100 : 0)
+                const done = task.status === 'completed' || task.status === 'cancelled'
+                return (
+                  <div
+                    key={task.id}
+                    role="listitem"
+                    tabIndex={0}
+                    className={`list-row ${openTaskId === task.id ? 'selected' : ''}`}
+                    style={{ '--cols': cols } as React.CSSProperties}
+                    onClick={() => setOpenTaskId(task.id)}
+                    onKeyDown={e => { if (e.key === 'Enter') setOpenTaskId(task.id) }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div className="row-title" style={done ? { color: 'var(--text-muted)', textDecoration: 'line-through' } : undefined}>{task.title}</div>
+                      <div className="row-sub">{task.description || (task.task_type === 'regular' ? 'Regular responsibility' : 'Assigned task')}</div>
+                    </div>
+                    {showAssignee && (
+                      <div className="row-main col-hide-sm" style={{ gap: '0.5rem' }}>
+                        <Avatar name={task.assigned_to_profile?.full_name || '?'} src={task.assigned_to_profile?.avatar_url} size="xs" />
+                        <span className="row-cell">{task.assigned_to_profile?.full_name || 'Unassigned'}{task.assigned_to === profile.id ? ' (you)' : ''}</span>
+                      </div>
+                    )}
+                    <span className="col-hide-sm"><Pill color={PRIORITY[task.priority] ?? '#8592a3'} dot>{task.priority}</Pill></span>
+                    <span><Pill color={st.color} icon={st.icon}>{st.label}</Pill></span>
+                    <span className="row-cell col-hide-sm tabular" style={{ color: late ? 'var(--status-danger)' : undefined, fontWeight: late ? 600 : undefined }}>
+                      {task.deadline ? fmtDeadline(task.deadline) : '—'}
+                    </span>
+                    <div className="col-hide-sm" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div className="progress-bar" style={{ height: 5, flex: 1 }}>
+                        <div className="progress-fill" style={{ width: `${pct}%`, background: pct >= 100 ? 'var(--status-success)' : 'var(--brand-gradient)' }} />
+                      </div>
+                      <span className="tabular" style={{ fontSize: '0.72rem', color: 'var(--text-muted)', width: 30, textAlign: 'right' }}>{pct}%</span>
+                    </div>
+                    <span className="col-hide-sm" onClick={e => e.stopPropagation()}>
+                      {!done && (
+                        <button className="icon-btn" title="Mark complete" aria-label="Mark complete" style={{ color: 'var(--status-success)' }} onClick={() => handleStatusUpdate(task.id, 'completed')}>
+                          <CheckCircle2 size={17} />
+                        </button>
+                      )}
+                    </span>
+                    <ChevronRight size={16} className="row-chevron col-hide-sm" />
+                  </div>
+                )
+              })}
+              <div className="list-foot"><span>{filtered.length} task{filtered.length === 1 ? '' : 's'}</span></div>
+            </div>
+          )}
+        </section>
+      </Reveal>
 
-          <button
-            onClick={() => setActiveTab('assigned-by-me')}
-            style={{
-              padding: '6px 14px',
-              borderRadius: '8px',
-              fontSize: '0.84rem',
-              fontWeight: activeTab === 'assigned-by-me' ? 700 : 500,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease',
-              background: activeTab === 'assigned-by-me' ? 'linear-gradient(135deg, #10b981, #059669)' : 'transparent',
-              color: activeTab === 'assigned-by-me' ? '#ffffff' : 'var(--text-secondary)',
-              border: 'none',
-              boxShadow: activeTab === 'assigned-by-me' ? '0 2px 8px rgba(16, 185, 129, 0.25)' : 'none'
-            }}
-          >
-            <Send size={14} />
-            <span>Assigned by Me</span>
-            <span style={{
-              background: activeTab === 'assigned-by-me' ? 'rgba(255,255,255,0.25)' : 'var(--bg-elevated)',
-              padding: '2px 7px',
-              borderRadius: '10px',
-              fontSize: '0.72rem',
-              fontWeight: 700
-            }}>
-              {assignedByMeCount}
-            </span>
-          </button>
-        </div>
+      {openTask && (
+        <TaskPanel
+          task={openTask}
+          profile={profile}
+          canUpdate={openTask.assigned_to === profile.id || !isAdmin}
+          onClose={() => setOpenTaskId(null)}
+          onChanged={fetchTasks}
+          onDelete={() => handleDelete(openTask.id)}
+          onQuickStatus={s => handleStatusUpdate(openTask.id, s)}
+        />
       )}
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
-          <Search size={15} style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-          <input
-            className="form-input"
-            placeholder="Search tasks, descriptions, or assignees..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            style={{ paddingLeft: '2.5rem' }}
-          />
-        </div>
-        <select className="form-select" style={{ width: 'auto' }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-          <option value="all">All Status</option>
-          {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-        </select>
-        <select className="form-select" style={{ width: 'auto' }} value={filterType} onChange={e => setFilterType(e.target.value)}>
-          <option value="all">All Types</option>
-          <option value="assigned">Assigned</option>
-          <option value="regular">Regular</option>
-        </select>
-      </div>
-
-      {/* Task List */}
-      <div className="glass-card" style={{ overflow: 'hidden' }}>
-        {filtered.length === 0 ? (
-          <div className="empty-state" style={{ padding: '3rem 1.5rem', textAlign: 'center' }}>
-            <div className="empty-state-icon" style={{ margin: '0 auto 0.75rem' }}><CheckCircle2 size={28} /></div>
-            <p style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>
-              {activeTab === 'my-tasks' ? 'No tasks assigned to you right now' : 'No tasks found'}
-            </p>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '4px' }}>
-              {activeTab === 'my-tasks'
-                ? 'Tasks assigned to you will appear here with instant update controls.'
-                : 'Try adjusting your filters or search query.'}
-            </p>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Task</th>
-                  {profile.role === 'admin' && activeTab !== 'my-tasks' && <th>Assigned To</th>}
-                  {activeTab === 'my-tasks' && <th>Assigned By</th>}
-                  <th>Type</th>
-                  <th>Priority</th>
-                  <th>Status</th>
-                  <th>Deadline</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(task => {
-                  const overdue = isOverdue(task.deadline) && task.status !== 'completed' && task.status !== 'cancelled'
-                  const isAssignedToMe = task.assigned_to === profile.id
-                  return (
-                    <tr key={task.id}>
-                      <td style={{ maxWidth: '300px' }}>
-                        <div>
-                          <p style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)' }}>{task.title}</p>
-                          {task.description && (
-                            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px', lineHeight: 1.4 }}>
-                              {task.description.slice(0, 75)}{task.description.length > 75 ? '...' : ''}
-                            </p>
-                          )}
-                          {/* Show latest progress update */}
-                          {task.task_updates && task.task_updates.length > 0 && (() => {
-                            const latest = [...task.task_updates].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
-                            return (
-                              <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <div style={{ width: '70px', height: '4px', borderRadius: '99px', background: 'var(--border-subtle)', flexShrink: 0 }}>
-                                  <div style={{ height: '4px', borderRadius: '99px', width: `${latest.progress_percent}%`, background: latest.progress_percent >= 100 ? '#10b981' : '#6366f1', transition: 'width 0.3s' }} />
-                                </div>
-                                <span style={{ fontSize: '0.68rem', color: 'var(--brand-primary)', fontWeight: 700 }}>{latest.progress_percent}%</span>
-                                <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontStyle: 'italic', wordBreak: 'break-word', maxWidth: '280px' }} title={latest.comment}>"{latest.comment}"</span>
-                              </div>
-                            )
-                          })()}
-                        </div>
-                      </td>
-
-                      {profile.role === 'admin' && activeTab !== 'my-tasks' && (
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>
-                              {task.assigned_to_profile?.full_name || 'Unassigned'}
-                            </span>
-                            {isAssignedToMe && (
-                              <span style={{ fontSize: '0.65rem', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', padding: '1px 6px', borderRadius: '6px', fontWeight: 700 }}>
-                                You
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                      )}
-
-                      {activeTab === 'my-tasks' && (
-                        <td>
-                          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                            {task.assigned_by_profile?.full_name || 'Rushikesh Pandit'}
-                          </p>
-                        </td>
-                      )}
-
-                      <td>
-                        <span className="badge" style={{
-                          background: task.task_type === 'regular' ? 'rgba(100, 116, 139, 0.15)' : 'rgba(99, 102, 241, 0.1)',
-                          color: task.task_type === 'regular' ? '#94a3b8' : '#818cf8',
-                        }}>
-                          {task.task_type}
-                        </span>
-                      </td>
-                      <td>
-                        <span className={`badge ${getPriorityColor(task.priority)}`}>
-                          {task.priority}
-                        </span>
-                      </td>
-                      <td>
-                        <span className={`badge ${getStatusColor(task.status)}`}>
-                          {task.status.replace('_', ' ')}
-                        </span>
-                      </td>
-                      <td>
-                        <span style={{
-                          fontSize: '0.8rem',
-                          color: overdue ? '#ef4444' : 'var(--text-secondary)',
-                          display: 'flex', alignItems: 'center', gap: '4px',
-                        }}>
-                          {overdue && <AlertCircle size={12} />}
-                          {task.deadline
-                            ? new Intl.DateTimeFormat('en-IN', {
-                                day: '2-digit', month: 'short',
-                                hour: '2-digit', minute: '2-digit', hour12: true,
-                                timeZone: 'Asia/Kolkata'
-                              }).format(new Date(task.deadline))
-                            : '—'}
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                          {/* Progress update button: Available to the assignee (Shridhar/employee) or admin on their task */}
-                          {(isAssignedToMe || profile.role === 'employee' || activeTab === 'my-tasks') && task.status !== 'completed' && (
-                            <button
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => {
-                                setShowUpdateModal(task)
-                                setUpdateStatus(task.status)
-                              }}
-                              title="Add progress update / notes"
-                            >
-                              <MessageSquarePlus size={14} />
-                              <span style={{ fontSize: '0.72rem', marginLeft: '3px' }}>Progress</span>
-                            </button>
-                          )}
-                          {/* Quick complete */}
-                          {task.status !== 'completed' && task.status !== 'cancelled' && (
-                            <button
-                              className="btn btn-sm"
-                              style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.2)' }}
-                              onClick={() => handleStatusUpdate(task.id, 'completed')}
-                              title="Mark complete"
-                            >
-                              <CheckCircle2 size={14} />
-                            </button>
-                          )}
-                          {/* Admin: delete */}
-                          {profile.role === 'admin' && (
-                            <button
-                              className="btn btn-danger btn-sm"
-                              onClick={() => handleDelete(task.id)}
-                              title="Delete task"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* ====== CREATE TASK MODAL ====== */}
       {showModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
+        <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && setShowModal(false)}>
           <div className="modal-content">
             <div className="modal-header">
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Assign New Task</h3>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowModal(false)}>
-                <X size={18} />
-              </button>
+              <h3>Assign new task</h3>
+              <button className="icon-btn" onClick={() => setShowModal(false)} aria-label="Close"><X size={18} /></button>
             </div>
             <div className="modal-body">
               <div className="form-group">
-                <label className="form-label">Task Title *</label>
-                <input className="form-input" placeholder="Enter task title" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
+                <label className="form-label">Task title *</label>
+                <input className="form-input" placeholder="What needs to be done?" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
               </div>
               <div className="form-group">
                 <label className="form-label">Description</label>
-                <textarea className="form-textarea" placeholder="Detailed task description..." rows={3} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} style={{ resize: 'vertical' }} />
+                <textarea className="form-textarea" placeholder="Details, links, expectations…" rows={3} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
               </div>
               <div className="grid-2">
                 <div className="form-group">
-                  <label className="form-label">Assign To *</label>
+                  <label className="form-label">Assign to *</label>
                   <select className="form-select" value={form.assigned_to} onChange={e => setForm({ ...form, assigned_to: e.target.value })}>
                     <option value="">Select team member</option>
-                    {employees.map(e => (
-                      <option key={e.id} value={e.id}>
-                        {e.full_name} {e.id === profile.id ? '(You)' : ''}
-                      </option>
-                    ))}
+                    {employees.map(e => <option key={e.id} value={e.id}>{e.full_name}{e.id === profile.id ? ' (you)' : ''}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Task Type</label>
+                  <label className="form-label">Task type</label>
                   <select className="form-select" value={form.task_type} onChange={e => setForm({ ...form, task_type: e.target.value })}>
                     <option value="assigned">Assigned (with reminder)</option>
-                    <option value="regular">Regular Responsibility</option>
+                    <option value="regular">Regular responsibility</option>
                   </select>
                 </div>
               </div>
@@ -607,81 +490,24 @@ export default function TasksSection({ profile, initialTab = 'all' }: Props) {
                 </div>
               </div>
               {form.task_type === 'assigned' && (
-                <div style={{
-                  padding: '0.75rem 1rem',
-                  background: 'rgba(99, 102, 241, 0.06)',
-                  border: '1px solid rgba(99, 102, 241, 0.15)',
-                  borderRadius: 'var(--radius-md)',
-                  fontSize: '0.8rem',
-                  color: 'var(--text-secondary)',
-                }}>
-                  WhatsApp reminder will be sent 1 hour before the deadline.
+                <div className="hint-box" style={{ '--tone': 'var(--status-info)' } as React.CSSProperties}>
+                  <Clock size={15} /><div><p style={{ marginTop: 0 }}>A WhatsApp reminder is sent 1 hour before the deadline.</p></div>
                 </div>
               )}
               <div className="form-group">
                 <label className="form-label">Notes</label>
-                <textarea className="form-textarea" placeholder="Additional notes..." rows={2} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} style={{ resize: 'vertical' }} />
+                <textarea className="form-textarea" placeholder="Additional notes…" rows={2} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
               </div>
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-              <button
-                className="btn btn-primary"
-                onClick={handleCreateTask}
-                disabled={submitting || !form.title || !form.assigned_to}
-              >
-                {submitting ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Assigning...</> : 'Assign Task'}
+              <button className="btn btn-primary" onClick={handleCreateTask} disabled={submitting || !form.title || !form.assigned_to}>
+                {submitting ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Assigning…</> : 'Assign task'}
               </button>
             </div>
           </div>
         </div>
       )}
-
-      {/* ====== UPDATE PROGRESS MODAL ====== */}
-      {showUpdateModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowUpdateModal(null)}>
-          <div className="modal-content">
-            <div className="modal-header">
-              <div>
-                <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>Update Task Progress</h3>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>{showUpdateModal.title}</p>
-              </div>
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowUpdateModal(null)}>
-                <X size={18} />
-              </button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Status</label>
-                <select className="form-select" value={updateStatus} onChange={e => setUpdateStatus(e.target.value)}>
-                  {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Progress — {updateProgress}%</label>
-                <input type="range" min={0} max={100} step={5} value={updateProgress} onChange={e => setUpdateProgress(Number(e.target.value))}
-                  style={{ width: '100%', accentColor: 'var(--brand-primary)' }} />
-                <div className="progress-bar" style={{ marginTop: '0.5rem' }}>
-                  <div className="progress-fill" style={{ width: `${updateProgress}%` }} />
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Progress Note *</label>
-                <textarea className="form-textarea" placeholder="Describe what you've done..." rows={4}
-                  value={updateComment} onChange={e => setUpdateComment(e.target.value)} style={{ resize: 'vertical' }} />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowUpdateModal(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleUpdateSubmit} disabled={submitting}>
-                {submitting ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Saving...</> : 'Save Update'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }

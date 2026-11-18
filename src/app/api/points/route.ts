@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
-  const month = searchParams.get('month') || new Date().toISOString().slice(0, 7)
+  const month = searchParams.get('month') || new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 7)
   const dateFrom = `${month}-01`
   const dateTo = new Date(new Date(dateFrom).setMonth(new Date(dateFrom).getMonth() + 1))
     .toISOString()
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
   try {
     // Get all points for this month
     const points = await query<EmployeePointRow>(
-      `SELECT employee_id, points, report_date, targets_hit, targets_total, reason
+      `SELECT employee_id, points, TO_CHAR(report_date, 'YYYY-MM-DD') AS report_date, targets_hit, targets_total, reason
        FROM employee_points
        WHERE report_date >= $1 AND report_date < $2
        ORDER BY report_date ASC`,

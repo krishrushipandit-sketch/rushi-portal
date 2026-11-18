@@ -13,13 +13,14 @@ export async function GET(req: NextRequest) {
   if (!month) return NextResponse.json({ error: 'Month is required' }, { status: 400 })
 
   const dateFrom = `${month}-01`
-  const d0 = new Date(`${dateFrom}T00:00:00`)
-  const dateTo = new Date(d0.getFullYear(), d0.getMonth() + 1, 1).toISOString().slice(0, 10)
+  const [fy, fm] = dateFrom.split('-').map(Number)
+  const dateTo = new Date(Date.UTC(fy, fm, 1)).toISOString().slice(0, 10)
 
   try {
     let sql = `
       SELECT 
         ea.*,
+        TO_CHAR(ea.date, 'YYYY-MM-DD') AS date,
         json_build_object(
           'id', p.id,
           'full_name', p.full_name,

@@ -69,7 +69,7 @@ export interface LeadRow {
   category: string
   industry?: string | null
   platform?: string | null
-  status: 'new' | 'ringing' | 'not_connected' | 'switched_off' | 'not_logical' | 'busy_callback' | 'interested' | 'visit_scheduled' | 'closed_won' | 'closed_lost'
+  status: 'new' | 'ringing' | 'not_connected' | 'switched_off' | 'not_logical' | 'busy_callback' | 'interested' | 'visit_scheduled' | 'visit_done' | 'closed_won' | 'closed_lost'
   source: string | null
   assigned_to: string | null
   notes: string | null
@@ -80,6 +80,7 @@ export interface LeadRow {
   next_followup_at?: string | null
   whatsapp_visit_msg_sent?: boolean
   whatsapp_msg_status?: string | null
+  visit_done_at?: string | null
   created_at: string
   updated_at: string
 }

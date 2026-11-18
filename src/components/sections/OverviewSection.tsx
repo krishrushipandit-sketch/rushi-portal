@@ -3,11 +3,20 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Profile } from '@/lib/database.types'
-import type { ActiveSection } from '@/app/dashboard/page'
-import { useTheme } from '@/lib/ThemeContext'
-import { CheckSquare, Clock, AlertTriangle, TrendingUp, BarChart3, Users, Star, Trophy } from 'lucide-react'
+import type { ActiveSection } from '@/lib/navigation'
+import { canAccessLeads } from '@/lib/navigation'
+import {
+  AlertTriangle, ArrowUpRight, CalendarCheck, CheckCircle2, CheckSquare, Clock, GraduationCap,
+  ListTodo, MapPinned, Sparkles, Star, Trophy, Users, ClipboardCheck, PhoneCall,
+} from 'lucide-react'
 import { formatDate, getStatusColor, getPriorityColor } from '@/lib/utils'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import Avatar from '@/components/ui/Avatar'
+import KpiCard from '@/components/ui/KpiCard'
+import AuroraHero from '@/components/ui/AuroraHero'
+import CountUp from '@/components/fx/CountUp'
+import DecryptedText from '@/components/fx/DecryptedText'
+import DailyReportForm from './EmployeeReportForm'
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from 'recharts'
 
 interface Props {
   profile: Profile
@@ -21,6 +30,7 @@ interface Task {
   priority: string
   deadline: string | null
   task_type: string
+  assigned_to_profile?: { full_name: string; avatar_url?: string | null } | null
 }
 
 interface GlobalStats {
@@ -28,457 +38,469 @@ interface GlobalStats {
   completed: number
   in_progress: number
   overdue: number
-  total_leads: number
-  leads_closed_won: number
-  enrollments?: Record<string, number>
+}
+
+interface MyDay {
+  attendance: { status: string; check_in_time: string | null } | null
+  reportDone: boolean
+  todayReport: Record<string, unknown> | null
+  reportsThisMonth: number
+  followupsDue: number | null
+  points: { total: number; rank: number; of: number } | null
+}
+
+const ATT_LABEL: Record<string, string> = {
+  present: 'In office', wfh: 'Working from home', half_day: 'Half day',
+  leave: 'On leave', leave_pending: 'Leave requested', sandwich_leave: 'On leave',
+}
+
+interface SalesPulse {
+  leads: number
+  pipeline: number
+  visitsScheduled: number
+  visitsDone: number
+  enrolled: number
+  trend: { month: string; visits: number }[]
+}
+
+const monthLabel = (ym: string) =>
+  new Date(`${ym}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short' })
+
+function lastSixMonths(): string[] {
+  const now = new Date(Date.now() + 5.5 * 3600 * 1000)
+  return Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (5 - i), 1))
+    return d.toISOString().slice(0, 7)
+  })
 }
 
 export default function OverviewSection({ profile, onNavigate }: Props) {
   const router = useRouter()
-  const { theme } = useTheme()
-  const isLight = theme === 'light'
+  const isAdmin = profile.role === 'admin'
+  const showSales = canAccessLeads(profile)
   const [tasks, setTasks] = useState<Task[]>([])
   const [stats, setStats] = useState<GlobalStats | null>(null)
+  const [pulse, setPulse] = useState<SalesPulse | null>(null)
   const [loading, setLoading] = useState(true)
-  const [leaderboard, setLeaderboard] = useState<{ employee: { full_name: string }; totalPoints: number }[]>([])
+  const [leaderboard, setLeaderboard] = useState<{ employee: { full_name: string; avatar_url?: string | null }; totalPoints: number }[]>([])
+  const [myDay, setMyDay] = useState<MyDay | null>(null)
+  const [showReport, setShowReport] = useState(false)
   const [stars, setStars] = useState<{ rank: number; total_points: number; employee: { full_name: string; designation: string | null } }[]>([])
 
   const fetchData = useCallback(async () => {
     const token = localStorage.getItem('rushi_token')
     if (!token) { router.push('/'); return }
-
     const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
 
-    const [tasksRes, perfRes, pointsRes] = await Promise.all([
+    const [tasksRes, perfRes, pointsRes, salesRes] = await Promise.all([
       fetch('/api/tasks', { headers }),
-      profile.role === 'admin' ? fetch('/api/performance', { headers }) : Promise.resolve(null),
-      profile.role === 'admin' ? fetch('/api/points', { headers }) : Promise.resolve(null),
+      isAdmin ? fetch('/api/performance', { headers }) : Promise.resolve(null),
+      fetch('/api/points', { headers }),
+      showSales ? fetch('/api/sales', { headers }) : Promise.resolve(null),
     ])
 
-    const tasksData = await tasksRes.json()
-    if (Array.isArray(tasksData)) setTasks(tasksData.slice(0, 5))
+    if (!isAdmin) {
+      const json = (r: Response) => (r.ok ? r.json() : null)
+      const [att, reports, leads] = await Promise.all([
+        fetch('/api/attendance/today', { headers }).then(json).catch(() => null),
+        fetch('/api/reports', { headers }).then(json).catch(() => null),
+        showSales ? fetch('/api/leads', { headers }).then(json).catch(() => null) : Promise.resolve(null),
+      ])
+      const todayStr = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10)
+      const myReports: { report_date: string }[] = Array.isArray(reports) ? reports : []
+      const todayReport = myReports.find(r => String(r.report_date).slice(0, 10) === todayStr) ?? null
+      const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999)
+      setMyDay({
+        attendance: att?.record ?? null,
+        reportDone: !!todayReport,
+        todayReport: todayReport as Record<string, unknown> | null,
+        reportsThisMonth: myReports.filter(r => String(r.report_date).slice(0, 7) === todayStr.slice(0, 7)).length,
+        followupsDue: Array.isArray(leads)
+          ? leads.filter((l: { status: string; next_followup_at?: string | null; follow_up_date?: string | null }) => {
+              const d = l.next_followup_at || l.follow_up_date
+              return d && new Date(d) <= endOfToday && !['closed_won', 'closed_lost', 'not_interested'].includes(l.status)
+            }).length
+          : null,
+        points: null,
+      })
+    }
 
-    if (perfRes) {
+    const tasksData = await tasksRes.json().catch(() => [])
+    if (Array.isArray(tasksData)) setTasks(tasksData)
+
+    if (perfRes?.ok) {
       const perfData = await perfRes.json()
       if (perfData.globalStats) setStats(perfData.globalStats)
     }
-
-    if (pointsRes) {
+    if (pointsRes?.ok) {
       const pointsData = await pointsRes.json()
       if (pointsData.leaderboard) setLeaderboard(pointsData.leaderboard)
       if (pointsData.stars) setStars(pointsData.stars)
+      if (!isAdmin && Array.isArray(pointsData.leaderboard)) {
+        const board: { employee: { id: string }; totalPoints: number }[] = pointsData.leaderboard
+        const idx = board.findIndex(r => r.employee.id === profile.id)
+        setMyDay(d => d && ({ ...d, points: idx >= 0 ? { total: board[idx].totalPoints, rank: idx + 1, of: board.length } : { total: 0, rank: board.length + 1, of: board.length + 1 } }))
+      }
     }
-
+    if (salesRes?.ok) {
+      const s = await salesRes.json()
+      const team: { totalLeads: number; activeLeads: number; visitsScheduled?: number; visitsDone?: number; convertedCount: number }[] = s.team ?? []
+      const byMonth = new Map<string, number>((s.visitTrend ?? []).map((r: { month: string; visits: number }) => [r.month, r.visits]))
+      setPulse({
+        leads: team.reduce((a, t) => a + t.totalLeads, 0),
+        pipeline: team.reduce((a, t) => a + t.activeLeads, 0),
+        visitsScheduled: team.reduce((a, t) => a + (t.visitsScheduled ?? 0), 0),
+        visitsDone: s.visitsDoneTotal ?? team.reduce((a, t) => a + (t.visitsDone ?? 0), 0),
+        enrolled: team.reduce((a, t) => a + t.convertedCount, 0),
+        trend: lastSixMonths().map(m => ({ month: monthLabel(m), visits: byMonth.get(m) ?? 0 })),
+      })
+    }
     setLoading(false)
-  }, [profile.role, router])
+  }, [isAdmin, showSales, router, profile.id])
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  // Employee stats derived from their tasks
-  const myCompleted = tasks.filter(t => t.status === 'completed').length
-  const myInProgress = tasks.filter(t => t.status === 'in_progress').length
-  const myPending = tasks.filter(t => t.status === 'pending').length
-  const myOverdue = tasks.filter(t =>
-    t.deadline && new Date(t.deadline) < new Date() && t.status !== 'completed'
-  ).length
+  const now = new Date()
+  const hour = Number(now.toLocaleString('en-IN', { hour: 'numeric', hour12: false, timeZone: 'Asia/Kolkata' }))
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+  const firstName = profile.full_name.split(' ')[0]
+  const monthName = now.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
 
-  const adminCards = stats ? [
-    { label: 'Total Tasks', value: stats.total_tasks, icon: CheckSquare, color: '#6366f1', sub: `${stats.completed} completed` },
-    { label: 'In Progress', value: stats.in_progress, icon: Clock, color: '#3b82f6', sub: 'Active tasks' },
-    { label: 'Overdue', value: stats.overdue, icon: AlertTriangle, color: '#ef4444', sub: 'Needs attention' },
-    { 
-      label: 'Monthly Enrollments', 
-      value: 0, 
-      icon: Users, 
-      color: '#10b981', 
-      sub: `DM: 0 · SM: 0 · AZ: 0` 
-    },
-  ] : []
+  const isOverdueTask = (t: Task) => t.deadline && new Date(t.deadline) < now && t.status !== 'completed' && t.status !== 'cancelled'
+  const mine = {
+    total: tasks.length,
+    open: tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').length,
+    inProgress: tasks.filter(t => t.status === 'in_progress').length,
+    completed: tasks.filter(t => t.status === 'completed').length,
+    overdue: tasks.filter(isOverdueTask).length,
+  }
 
-  const employeeCards = [
-    { label: 'My Tasks', value: tasks.length, icon: CheckSquare, color: '#6366f1', sub: 'Total assigned' },
-    { label: 'In Progress', value: myInProgress, icon: Clock, color: '#3b82f6', sub: 'Working on' },
-    { label: 'Completed', value: myCompleted, icon: BarChart3, color: '#10b981', sub: 'Done' },
-    { label: 'Overdue', value: myOverdue, icon: AlertTriangle, color: '#ef4444', sub: 'Needs attention' },
-  ]
+  const kpis = isAdmin && stats
+    ? [
+        { label: 'Open tasks', value: stats.total_tasks - stats.completed, icon: ListTodo, foot: `${stats.total_tasks} total · ${stats.completed} done`, go: 'tasks' as ActiveSection },
+        { label: 'In progress', value: stats.in_progress, icon: Clock, foot: 'Pending or being worked on', go: 'tasks' as ActiveSection },
+        { label: 'Overdue', value: stats.overdue, icon: AlertTriangle, foot: stats.overdue ? 'Needs attention today' : 'All on schedule', danger: stats.overdue > 0, go: 'tasks' as ActiveSection },
+        { label: 'Enrolments', value: pulse?.enrolled ?? 0, icon: GraduationCap, foot: `This month · ${monthName}`, go: 'sales' as ActiveSection },
+      ]
+    : [
+        { label: 'Open tasks', value: mine.open, icon: ListTodo, foot: `${mine.total} assigned in total`, go: 'tasks' as ActiveSection },
+        { label: 'In progress', value: mine.inProgress, icon: Clock, foot: 'Currently working on', go: 'tasks' as ActiveSection },
+        { label: 'Completed', value: mine.completed, icon: CheckCircle2, foot: 'Nicely done', go: 'tasks' as ActiveSection },
+        { label: 'Overdue', value: mine.overdue, icon: AlertTriangle, foot: mine.overdue ? 'Past the deadline' : 'Nothing overdue', danger: mine.overdue > 0, go: 'tasks' as ActiveSection },
+      ]
 
-  const statCards = profile.role === 'admin' ? adminCards : employeeCards
+  const recentTasks = [...tasks]
+    .sort((a, b) => {
+      const rank = (t: Task) => (t.status === 'completed' ? 2 : isOverdueTask(t) ? 0 : 1)
+      return rank(a) - rank(b) || (a.deadline ?? '9').localeCompare(b.deadline ?? '9')
+    })
+    .slice(0, 6)
+
+  const maxPoints = Math.max(1, ...leaderboard.map(l => l.totalPoints))
 
   if (loading) {
     return (
       <div>
-        <div style={{ marginBottom: '2rem' }}>
-          <div className="skeleton" style={{ height: '28px', width: '220px', marginBottom: '8px' }} />
-          <div className="skeleton" style={{ height: '16px', width: '300px' }} />
-        </div>
-        <div className="grid-4" style={{ marginBottom: '2rem' }}>
-          {[1,2,3,4].map(i => (
-            <div key={i} className="skeleton" style={{ height: '100px' }} />
-          ))}
-        </div>
+        <div className="skeleton" style={{ height: 30, width: 280, marginBottom: 10 }} />
+        <div className="skeleton" style={{ height: 16, width: 200, marginBottom: 28 }} />
+        <div className="skeleton" style={{ height: 120, marginBottom: 20, borderRadius: 14 }} />
+        <div className="grid-4">{[1, 2, 3, 4].map(i => <div key={i} className="skeleton" style={{ height: 116, borderRadius: 14 }} />)}</div>
       </div>
     )
   }
 
   return (
-    <div className="animate-fade-in">
-      {/* Header */}
-      <div className="page-header">
-        <div>
-          <h1 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>
-            {profile.role === 'admin' ? 'Admin Dashboard' : `Welcome, ${profile.full_name.split(' ')[0]} 👋`}
-          </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-            {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          </p>
-        </div>
-      </div>
-
-      {/* ── Organization Vision & Leadership Hero Card ── */}
-      <style>{`
-        @keyframes visionAurora {
-          0%, 100% {
-            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.45), 0 0 20px rgba(16, 185, 129, 0.15), 0 0 40px rgba(59, 130, 246, 0.1);
-            border-color: rgba(16, 185, 129, 0.4);
-          }
-          50% {
-            box-shadow: 0 4px 35px rgba(0, 0, 0, 0.55), 0 0 35px rgba(16, 185, 129, 0.3), 0 0 50px rgba(245, 158, 11, 0.18);
-            border-color: rgba(52, 211, 153, 0.7);
-          }
-        }
-        @keyframes sparkleBlink {
-          0%, 100% { transform: scale(1) rotate(0deg); filter: drop-shadow(0 0 4px #fbbf24) drop-shadow(0 0 10px rgba(245, 158, 11, 0.8)); }
-          50% { transform: scale(1.2) rotate(12deg); filter: drop-shadow(0 0 10px #fde68a) drop-shadow(0 0 18px rgba(251, 191, 36, 0.95)); }
-        }
-        @keyframes livePulseDot {
-          0%, 100% { transform: scale(1); opacity: 0.8; }
-          50% { transform: scale(1.4); opacity: 1; }
-        }
-      `}</style>
-      
-      <div
-        style={{
-          background: isLight
-            ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(99, 102, 241, 0.08) 100%)'
-            : 'linear-gradient(135deg, rgba(16, 185, 129, 0.14) 0%, rgba(14, 20, 36, 0.95) 45%, rgba(59, 130, 246, 0.12) 100%)',
-          border: isLight ? '1.5px solid rgba(16, 185, 129, 0.45)' : '1.5px solid rgba(16, 185, 129, 0.45)',
-          borderRadius: '18px',
-          padding: '1.35rem 1.5rem',
-          marginBottom: '1.75rem',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '1rem',
-          position: 'relative',
-          overflow: 'hidden',
-          animation: 'visionAurora 4s ease-in-out infinite',
-          backdropFilter: 'blur(12px)',
-          boxShadow: isLight ? '0 4px 20px rgba(16, 185, 129, 0.12)' : '0 8px 32px rgba(0, 0, 0, 0.5)'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1.125rem' }}>
-          {/* Glowing Golden-Emerald 3D Icon Badge */}
-          <div
-            style={{
-              width: '46px',
-              height: '46px',
-              borderRadius: '14px',
-              background: isLight
-                ? 'rgba(16, 185, 129, 0.18)'
-                : 'linear-gradient(135deg, rgba(245, 158, 11, 0.25) 0%, rgba(16, 185, 129, 0.3) 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              border: isLight ? '1.5px solid rgba(16, 185, 129, 0.4)' : '1.5px solid rgba(251, 191, 36, 0.5)',
-              boxShadow: isLight ? '0 2px 10px rgba(16, 185, 129, 0.2)' : '0 0 16px rgba(245, 158, 11, 0.35)'
-            }}
-          >
-            <span style={{ fontSize: '1.45rem', display: 'inline-block', animation: 'sparkleBlink 2.5s ease-in-out infinite' }}>
-              ✨
-            </span>
-          </div>
-
-          <div style={{ flex: 1 }}>
-            {/* Header Pill */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.45rem' }}>
-              <span style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: '#10b981',
-                display: 'inline-block',
-                boxShadow: '0 0 10px #10b981',
-                animation: 'livePulseDot 1.8s infinite'
-              }} />
-              <span style={{
-                fontSize: '0.74rem',
-                fontWeight: 800,
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-                color: isLight ? '#065f46' : '#34d399',
-                textShadow: isLight ? 'none' : '0 0 12px rgba(16, 185, 129, 0.4)'
-              }}>
-                Our Collective Vision &amp; Growth Mission
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      {showReport && (
+        <DailyReportForm
+          existingReport={myDay?.todayReport ?? undefined}
+          onClose={() => setShowReport(false)}
+          onSaved={() => { setShowReport(false); fetchData(); window.dispatchEvent(new Event('rp:refresh-badges')) }}
+        />
+      )}
+      <AuroraHero>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '1.25rem', flexWrap: 'wrap' }}>
+          <div>
+            <div className="hero-meta">
+              <span className="live-dot" />
+              <span className="eyebrow">
+                {now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Kolkata' })} · Systems online
               </span>
             </div>
-
-            {/* Tagline with Color Accents & Visual Polish */}
-            <p style={{
-              fontSize: '0.94rem',
-              lineHeight: 1.65,
-              color: 'var(--text-primary)',
-              margin: 0,
-              fontWeight: 500,
-              letterSpacing: '-0.01em'
-            }}>
-              &ldquo;We&apos;re building an organization that can become one of India&apos;s leading{' '}
-              <span style={{ color: isLight ? '#0369a1' : '#38bdf8', fontWeight: 800 }}>
-                AI, Business Transformation
-              </span>
-              , and{' '}
-              <span style={{ color: isLight ? '#047857' : '#34d399', fontWeight: 800 }}>
-                Digital Growth
-              </span>{' '}
-              companies, including{' '}
-              <span style={{ color: isLight ? '#b45309' : '#fbbf24', fontWeight: 800 }}>
-                Stock Advisory
-              </span>
-              . Every one of you has the opportunity to{' '}
-              <span style={{
-                color: isLight ? '#064e3b' : '#ffffff',
-                fontWeight: 800,
-                background: isLight ? 'rgba(16, 185, 129, 0.18)' : 'rgba(16, 185, 129, 0.25)',
-                padding: '2px 8px',
-                borderRadius: '6px',
-                border: isLight ? '1.5px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(16, 185, 129, 0.45)',
-                display: 'inline-block'
-              }}>
-                grow into a leader as we scale together.
-              </span>
-              &rdquo;
+            <h1 className="hero-title" style={{ marginTop: '0.7rem' }}>
+              {greeting},{' '}
+              <DecryptedText text={firstName} animateOn="view" sequential speed={45} revealDirection="start" className="text-gradient" encryptedClassName="hero-scramble" />
+            </h1>
+            <p style={{ marginTop: '0.45rem', color: 'var(--text-muted)', fontSize: '0.9375rem' }}>
+              {isAdmin ? 'Here’s how the team is doing today.' : 'Here’s what’s on your plate today.'}
             </p>
           </div>
-        </div>
-
-        {/* 3 Visual Pillars */}
-        <div style={{
-          display: 'flex',
-          gap: '0.75rem',
-          flexWrap: 'wrap',
-          borderTop: isLight ? '1px solid rgba(14, 61, 53, 0.12)' : '1px solid rgba(255, 255, 255, 0.08)',
-          paddingTop: '0.75rem'
-        }}>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: '6px',
-            fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '8px',
-            background: isLight ? 'rgba(2, 132, 199, 0.12)' : 'rgba(56, 189, 248, 0.12)',
-            color: isLight ? '#0369a1' : '#38bdf8',
-            border: isLight ? '1px solid rgba(2, 132, 199, 0.3)' : '1px solid rgba(56, 189, 248, 0.3)'
-          }}>
-            🤖 AI &amp; Business Transformation
-          </div>
-
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: '6px',
-            fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '8px',
-            background: isLight ? 'rgba(217, 119, 6, 0.12)' : 'rgba(245, 158, 11, 0.12)',
-            color: isLight ? '#b45309' : '#fbbf24',
-            border: isLight ? '1px solid rgba(217, 119, 6, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)'
-          }}>
-            📈 Stock &amp; Wealth Advisory
-          </div>
-
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: '6px',
-            fontSize: '0.75rem', fontWeight: 700, padding: '4px 10px', borderRadius: '8px',
-            background: isLight ? 'rgba(14, 61, 53, 0.1)' : 'rgba(16, 185, 129, 0.12)',
-            color: isLight ? '#065f46' : '#34d399',
-            border: isLight ? '1px solid rgba(14, 61, 53, 0.3)' : '1px solid rgba(16, 185, 129, 0.3)'
-          }}>
-            🚀 Digital Growth &amp; Media Production
-          </div>
-        </div>
-      </div>
-
-      {/* Stat Cards */}
-      <div className="grid-4" style={{ marginBottom: '2rem' }}>
-        {statCards.map(({ label, value, icon: Icon, color, sub }) => (
-          <div key={label} className="stat-card" style={{
-            background: isLight 
-              ? '#ffffff' 
-              : `linear-gradient(145deg, ${color}12 0%, rgba(17, 24, 39, 0.95) 100%)`,
-            border: isLight ? '1px solid #cbd5e1' : `1px solid rgba(255, 255, 255, 0.12)`,
-            borderTop: `3px solid ${color}`,
-            boxShadow: isLight ? '0 2px 6px rgba(15, 23, 42, 0.04)' : `0 4px 20px rgba(0, 0, 0, 0.4), 0 0 15px ${color}15`,
-            borderRadius: '16px',
-            padding: '1.35rem',
-            transition: 'all 0.2s ease'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-              <div>
-                <div className="metric-value" style={{ fontSize: '2rem', fontWeight: 800, color }}>{value}</div>
-                <div className="metric-label" style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>{label}</div>
-                <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>{sub}</div>
-              </div>
-              <div style={{
-                width: '46px', height: '46px',
-                background: `${color}18`,
-                borderRadius: '12px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color,
-                border: `1px solid ${color}35`,
-                boxShadow: `0 0 12px ${color}20`
-              }}>
-                <Icon size={22} />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Recent Tasks */}
-      <div className="glass-card" style={{ padding: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-          <h2 style={{ fontSize: '1rem', fontWeight: 700 }}>
-            {profile.role === 'admin' ? 'Recent Tasks' : 'My Recent Tasks'}
-          </h2>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => onNavigate('tasks')}
-          >
-            View all
-          </button>
-        </div>
-
-        {tasks.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-icon"><CheckSquare size={24} /></div>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>No tasks yet</p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
-            {tasks.map(task => (
-              <div key={task.id} style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '0.875rem 1rem',
-                background: 'var(--bg-elevated)',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--border-subtle)',
-                gap: '1rem',
-                flexWrap: 'wrap',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 0 }}>
-                  <div style={{
-                    width: '8px', height: '8px', borderRadius: '50%', flexShrink: 0,
-                    background: task.status === 'completed' ? '#10b981' :
-                      task.status === 'in_progress' ? '#3b82f6' :
-                      task.status === 'overdue' ? '#ef4444' : '#64748b',
-                  }} />
-                  <p style={{
-                    fontSize: '0.875rem', fontWeight: 500,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>
-                    {task.title}
-                  </p>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexShrink: 0 }}>
-                  <span className={`badge ${getPriorityColor(task.priority)}`}>
-                    {task.priority}
-                  </span>
-                  <span className={`badge ${getStatusColor(task.status)}`}>
-                    {task.status.replace('_', ' ')}
-                  </span>
-                  {task.deadline && (
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                      {formatDate(task.deadline, 'dd MMM')}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Points Chart (Admin Only) */}
-      {profile.role === 'admin' && (
-        <div style={{ marginTop: '1.5rem' }}>
-          {/* Star Performers Banner */}
-          {stars.length > 0 && (
-            <div style={{
-              background: 'linear-gradient(135deg, rgba(245,158,11,0.1), rgba(251,191,36,0.03))',
-              border: '1px solid rgba(245,158,11,0.3)',
-              borderRadius: 'var(--radius-lg)',
-              padding: '1.25rem 1.5rem',
-              marginBottom: '1.5rem',
-              display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Star size={20} fill="#f59e0b" color="#f59e0b" />
-                <div>
-                  <p style={{ fontWeight: 800, fontSize: '0.95rem', color: '#f59e0b' }}>Star Performers of the Month</p>
-                  <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>{new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</p>
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: '1rem', flex: 1, flexWrap: 'wrap' }}>
-                {stars.map(s => (
-                  <div key={s.rank} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', background: s.rank === 1 ? 'rgba(245,158,11,0.15)' : 'var(--bg-elevated)', border: `1px solid ${s.rank === 1 ? 'rgba(245,158,11,0.3)' : 'var(--border-subtle)'}` }}>
-                    <span style={{ fontSize: '1.25rem' }}>{s.rank === 1 ? '🥇' : '🥈'}</span>
-                    <div>
-                      <p style={{ fontWeight: 700, fontSize: '0.85rem' }}>{s.employee.full_name}</p>
-                      <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{s.total_points} pts total</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Points Leaderboard Chart */}
-          <div className="glass-card" style={{ padding: '1.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '1.25rem' }}>
-              <Trophy size={18} style={{ color: '#f59e0b' }} />
-              <h2 style={{ fontSize: '1rem', fontWeight: 700 }}>Monthly Points Leaderboard</h2>
-              <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                {new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
-              </span>
-            </div>
-            {leaderboard.length === 0 ? (
-              <div className="empty-state" style={{ height: '160px' }}>
-                <div className="empty-state-icon"><Trophy size={22} /></div>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Points will appear here once employees submit reports</p>
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart
-                  data={leaderboard.map(row => ({
-                    name: row.employee.full_name.split(' ')[0],
-                    Points: row.totalPoints,
-                  }))}
-                  margin={{ top: 5, right: 10, left: -20, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-                  <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} allowDecimals={false} />
-                  <Tooltip
-                    formatter={(v) => [`${v} pts`]}
-                    contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)', borderRadius: '8px', fontSize: '0.8rem' }}
-                  />
-                  <Bar dataKey="Points" radius={[6, 6, 0, 0]}>
-                    {leaderboard.map((_, i) => (
-                      <Cell key={i} fill={
-                        i === 0 ? '#f59e0b' : i === 1 ? '#94a3b8' : i === 2 ? '#cd7f32' : '#6366f1'
-                      } />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button className="btn btn-secondary" onClick={() => onNavigate('reports')}>
+              <CalendarCheck size={15} /> {isAdmin ? 'Daily reports' : 'Submit daily report'}
+            </button>
+            {showSales && (
+              <button className="btn btn-primary" onClick={() => onNavigate('leads')}>
+                Open pipeline <ArrowUpRight size={15} />
+              </button>
             )}
           </div>
         </div>
+        <div className="hero-mission">
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', minWidth: 0 }}>
+            <Sparkles size={16} style={{ color: 'var(--brand-primary)', flexShrink: 0, marginTop: 4 }} />
+            <p>
+              <strong>We’re building one of India’s leading AI, Business Transformation and Digital Growth companies, including Stock Advisory.</strong>{' '}
+              Every one of you has the opportunity to grow into a leader as we scale together.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+            <span className="badge tone-info">AI &amp; Transformation</span>
+            <span className="badge tone-warning">Stock Advisory</span>
+            <span className="badge tone-success">Digital Growth</span>
+          </div>
+        </div>
+      </AuroraHero>
+
+      {!isAdmin && myDay && (() => {
+        const dueToday = tasks.filter(t => t.deadline && t.status !== 'completed' && t.status !== 'cancelled' && new Date(t.deadline) <= new Date(new Date().setHours(23, 59, 59, 999))).length
+        const items = [
+          {
+            key: 'att', icon: CalendarCheck, done: !!myDay.attendance,
+            title: myDay.attendance ? `Attendance: ${ATT_LABEL[myDay.attendance.status] || myDay.attendance.status}` : 'Mark your attendance',
+            sub: myDay.attendance?.check_in_time ? `Checked in at ${myDay.attendance.check_in_time.slice(0, 5)}` : 'Scan the office QR or mark WFH',
+            action: myDay.attendance ? null : { label: 'Mark now', run: () => onNavigate('attendance') },
+          },
+          {
+            key: 'report', icon: ClipboardCheck, done: myDay.reportDone,
+            title: myDay.reportDone ? 'Today’s report submitted' : 'Submit today’s report',
+            sub: myDay.reportDone ? 'You can still edit it until midnight' : 'Takes a minute — use the mic',
+            action: { label: myDay.reportDone ? 'Edit' : 'Fill report', run: () => setShowReport(true), primary: !myDay.reportDone },
+          },
+          {
+            key: 'tasks', icon: ListTodo, done: dueToday === 0,
+            title: dueToday ? `${dueToday} task${dueToday === 1 ? '' : 's'} due today or overdue` : 'No tasks due today',
+            sub: `${mine.open} open in total`,
+            action: dueToday ? { label: 'Open tasks', run: () => onNavigate('tasks') } : null,
+          },
+          ...(myDay.followupsDue !== null ? [{
+            key: 'follow', icon: PhoneCall, done: myDay.followupsDue === 0,
+            title: myDay.followupsDue ? `${myDay.followupsDue} follow-up${myDay.followupsDue === 1 ? '' : 's'} due` : 'No follow-ups due',
+            sub: 'Calls scheduled for today or earlier',
+            action: myDay.followupsDue ? { label: 'Call now', run: () => onNavigate('leads') } : null,
+          }] : []),
+        ]
+        const doneCount = items.filter(i => i.done).length
+        return (
+          <div className="overview-split">
+            <section className="card" style={{ overflow: 'hidden' }}>
+              <div className="card-header">
+                <div>
+                  <div className="card-title">My day</div>
+                  <div className="card-subtitle">{doneCount} of {items.length} done</div>
+                </div>
+                <div className="progress-bar" style={{ width: 120, height: 6 }}><div className="progress-fill" style={{ width: `${(doneCount / items.length) * 100}%`, background: 'var(--brand-gradient)' }} /></div>
+              </div>
+              <ul className="myday-list">
+                {items.map(item => (
+                  <li key={item.key} className={item.done ? 'done' : ''}>
+                    <span className="myday-icon">{item.done ? <CheckCircle2 size={16} /> : <item.icon size={16} />}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="myday-title">{item.title}</div>
+                      <div className="myday-sub">{item.sub}</div>
+                    </div>
+                    {item.action && (
+                      <button className={`btn btn-sm ${'primary' in item.action && item.action.primary ? 'btn-primary' : 'btn-secondary'}`} onClick={item.action.run}>{item.action.label}</button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+
+            <section className="card myday-month">
+              <div className="card-header">
+                <div><div className="card-title">My month</div><div className="card-subtitle">{monthName}</div></div>
+                <button className="btn btn-ghost btn-sm" onClick={() => onNavigate('reports')}>Reports <ArrowUpRight size={14} /></button>
+              </div>
+              <div style={{ padding: '1.1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <div className="rank-badge"><Trophy size={18} /><span className="tabular">#{myDay.points?.rank ?? '—'}</span></div>
+                  <div>
+                    <div className="kpi-value text-gradient" style={{ fontSize: '2rem' }}><CountUp to={myDay.points?.total ?? 0} duration={1.1} /></div>
+                    <div className="kpi-foot">points · rank {myDay.points?.rank ?? '—'} of {myDay.points?.of ?? '—'}</div>
+                  </div>
+                </div>
+                <div className="kv-grid">
+                  <div><dt>Reports submitted</dt><dd className="tabular">{myDay.reportsThisMonth}</dd></div>
+                  <div><dt>Tasks completed</dt><dd className="tabular">{mine.completed}</dd></div>
+                </div>
+              </div>
+            </section>
+          </div>
+        )
+      })()}
+
+      {/* KPIs */}
+      <div className="grid-4">
+        {kpis.map(({ label, value, icon, foot, danger, go }) => (
+          <KpiCard key={label} label={label} value={value} icon={icon} foot={foot} tone={danger ? 'danger' : 'default'} onClick={() => onNavigate(go)} />
+        ))}
+      </div>
+
+      {/* Sales pulse */}
+      {showSales && pulse && (
+        <section className="card" style={{ overflow: 'hidden' }}>
+          <div className="card-header">
+            <div>
+              <div className="card-title">Sales pulse</div>
+              <div className="card-subtitle">{isAdmin ? 'All sales reps' : 'Your pipeline'} · {monthName}</div>
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={() => onNavigate('sales')}>Analytics <ArrowUpRight size={14} /></button>
+          </div>
+          <div className="overview-pulse">
+            <div className="overview-pulse-stats">
+              {[
+                { label: 'Leads assigned', value: pulse.leads, icon: Users },
+                { label: 'In pipeline', value: pulse.pipeline, icon: ListTodo },
+                { label: 'Visits scheduled', value: pulse.visitsScheduled, icon: CalendarCheck },
+                { label: 'Visits done', value: pulse.visitsDone, icon: MapPinned, highlight: true, sub: 'this month' },
+              ].map(s => (
+                <div key={s.label} className="overview-pulse-stat">
+                  <span className="kpi-label truncate-1">{s.label}</span>
+                  <span className={`kpi-value ${s.highlight ? 'text-gradient' : ''}`} style={{ fontSize: '1.75rem' }}>
+                    <CountUp to={s.value} duration={1.2} />
+                  </span>
+                  {s.sub && <span className="kpi-foot">{s.sub}</span>}
+                </div>
+              ))}
+            </div>
+            <div className="overview-pulse-chart">
+              <span className="kpi-label">Visits done · last 6 months</span>
+              <ResponsiveContainer width="100%" height={118}>
+                <AreaChart data={pulse.trend} margin={{ top: 10, right: 6, left: 6, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="visitsFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--brand-primary)" stopOpacity={0.32} />
+                      <stop offset="100%" stopColor="var(--brand-primary)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+                  <Tooltip
+                    cursor={{ stroke: 'var(--border-strong)' }}
+                    formatter={(v) => [`${v} visits`, '']}
+                    separator=""
+                    contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 8, fontSize: 12, color: 'var(--text-primary)' }}
+                    labelStyle={{ color: 'var(--text-muted)' }}
+                  />
+                  <Area type="monotone" dataKey="visits" stroke="var(--brand-primary)" strokeWidth={2} fill="url(#visitsFill)" dot={{ r: 2.5, fill: 'var(--brand-primary)' }} activeDot={{ r: 4 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </section>
       )}
+
+      <div className={isAdmin ? 'overview-split' : undefined}>
+        {/* Tasks */}
+        <section className="card" style={{ overflow: 'hidden' }}>
+          <div className="card-header">
+            <div>
+              <div className="card-title">{isAdmin ? 'Team tasks' : 'My tasks'}</div>
+              <div className="card-subtitle">Overdue first, then by deadline</div>
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={() => onNavigate('tasks')}>View all <ArrowUpRight size={14} /></button>
+          </div>
+          {recentTasks.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-state-icon"><CheckSquare size={20} /></div>
+              <p style={{ fontWeight: 550, color: 'var(--text-secondary)' }}>You’re all caught up</p>
+              <p style={{ fontSize: '0.8125rem' }}>New tasks will show up here.</p>
+            </div>
+          ) : (
+            <ul style={{ listStyle: 'none' }}>
+              {recentTasks.map(task => {
+                const overdue = isOverdueTask(task)
+                return (
+                  <li key={task.id} className="overview-task">
+                    <span className="overview-task-dot" style={{
+                      background: task.status === 'completed' ? 'var(--status-success)' : overdue ? 'var(--status-danger)' : task.status === 'in_progress' ? 'var(--status-info)' : 'var(--text-faint)',
+                    }} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <p className="truncate-1" style={{ fontSize: '0.875rem', fontWeight: 500, color: task.status === 'completed' ? 'var(--text-muted)' : 'var(--text-primary)', textDecoration: task.status === 'completed' ? 'line-through' : undefined }}>
+                        {task.title}
+                      </p>
+                      {isAdmin && task.assigned_to_profile?.full_name && (
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                          <Avatar name={task.assigned_to_profile.full_name} src={task.assigned_to_profile.avatar_url} size="xs" />{task.assigned_to_profile.full_name}
+                        </p>
+                      )}
+                    </div>
+                    <span className={`badge ${getPriorityColor(task.priority)} hidden-mobile`} style={{ textTransform: 'capitalize' }}>{task.priority}</span>
+                    <span className={`badge ${overdue ? 'tone-danger' : getStatusColor(task.status)}`} style={{ textTransform: 'capitalize' }}>
+                      {overdue ? 'Overdue' : task.status.replace('_', ' ')}
+                    </span>
+                    {task.deadline && (
+                      <span className="tabular" style={{ fontSize: '0.75rem', color: overdue ? 'var(--status-danger)' : 'var(--text-muted)', width: 48, textAlign: 'right' }}>
+                        {formatDate(task.deadline, 'dd MMM')}
+                      </span>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </section>
+
+        {/* Points leaderboard */}
+        {isAdmin && (
+          <section className="card" style={{ overflow: 'hidden' }}>
+            <div className="card-header">
+              <div>
+                <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Trophy size={15} style={{ color: 'var(--status-warning)' }} /> Points leaderboard
+                </div>
+                <div className="card-subtitle">{monthName}</div>
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => onNavigate('leaderboard')}>Details <ArrowUpRight size={14} /></button>
+            </div>
+
+            {stars.length > 0 && (
+              <div style={{ display: 'flex', gap: '0.5rem', padding: '0.9rem 1.25rem 0', flexWrap: 'wrap' }}>
+                {stars.map(s => (
+                  <span key={s.rank} className="badge tone-warning" style={{ height: 26 }}>
+                    <Star size={12} fill="currentColor" /> {s.employee.full_name} · {s.total_points} pts
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {leaderboard.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-state-icon"><Trophy size={20} /></div>
+                <p style={{ fontSize: '0.8125rem' }}>Points appear once employees submit reports.</p>
+              </div>
+            ) : (
+              <ol style={{ listStyle: 'none', padding: '0.6rem 0.75rem 0.9rem' }}>
+                {leaderboard.slice(0, 8).map((row, i) => (
+                  <li key={row.employee.full_name} className="overview-rank">
+                    <span className={`overview-rank-pos ${i < 3 ? `top-${i + 1}` : ''}`}>{i + 1}</span>
+                    <Avatar name={row.employee.full_name} src={row.employee.avatar_url} size="xs" />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: '0.8125rem' }}>
+                        <span className="truncate-1" style={{ fontWeight: 550 }}>{row.employee.full_name}</span>
+                        <span className="tabular" style={{ color: 'var(--text-muted)' }}>{row.totalPoints}</span>
+                      </div>
+                      <div className="progress-bar" style={{ height: 4, marginTop: 5 }}>
+                        <div className="progress-fill" style={{ width: `${(row.totalPoints / maxPoints) * 100}%`, background: i === 0 ? 'var(--status-warning)' : undefined }} />
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+        )}
+      </div>
     </div>
   )
 }

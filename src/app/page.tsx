@@ -2,7 +2,10 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Eye, EyeOff, Lock, Mail, Loader2, ArrowRight, ShieldCheck, Play, FastForward, Volume2, VolumeX, Clock } from 'lucide-react'
+import { Eye, EyeOff, Lock, Mail, Loader2, ArrowRight, ShieldCheck, FastForward, Volume2, VolumeX, Clock } from 'lucide-react'
+import Aurora from '@/components/fx/Aurora'
+import GradientText from '@/components/fx/GradientText'
+import ShinyText from '@/components/fx/ShinyText'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -293,269 +296,118 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '2rem 1.5rem',
-      background: 'radial-gradient(ellipse at top, #0e241f 0%, #081411 100%)',
-      position: 'relative',
-      overflow: 'hidden'
-    }}>
-      {/* Ambient background glows */}
-      <div style={{
-        position: 'absolute',
-        top: '-150px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: '600px',
-        height: '600px',
-        borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(16, 185, 129, 0.18) 0%, transparent 70%)',
-        pointerEvents: 'none',
-        zIndex: 0
-      }} />
+    <div className="login-shell">
+      <div className="login-aurora" aria-hidden>
+        <Aurora colorStops={['#0f6b55', '#3ee6a8', '#2a7bd6']} amplitude={1.2} blend={0.6} speed={0.7} opacity={0.95} dpr={1} />
+      </div>
+      <div className="login-grid" aria-hidden />
 
-      {/* Login Card */}
-      <div style={{
-        width: '100%',
-        maxWidth: '420px',
-        background: 'rgba(14, 30, 26, 0.85)',
-        backdropFilter: 'blur(20px)',
-        borderRadius: '24px',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.7)',
-        padding: '2.5rem 2rem',
-        position: 'relative',
-        zIndex: 1
-      }}>
-        {/* Brand Logo & Header */}
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <div style={{
-            background: '#ffffff',
-            borderRadius: '12px',
-            padding: '0.65rem 1.25rem',
-            display: 'inline-flex',
-            alignItems: 'center',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-            border: '1px solid rgba(255,255,255,0.2)',
-            marginBottom: '1.25rem'
-          }}>
-            <img
-              src="/logo.png"
-              alt="RushiPandit Logo"
-              style={{
-                height: '32px',
-                width: 'auto',
-                maxWidth: '170px',
-                objectFit: 'contain',
-                display: 'block'
-              }}
-            />
+      <section className="login-brand">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <img src="/logo-mark.png" alt="" width={40} height={40} style={{ borderRadius: '50%', boxShadow: '0 0 0 1px rgba(255,255,255,0.15), 0 0 30px rgba(62,230,168,0.35)' }} />
+          <div style={{ lineHeight: 1.2 }}>
+            <div style={{ fontWeight: 650, fontSize: '0.95rem', color: '#eef3f7' }}>RushiPandit</div>
+            <div style={{ fontSize: '0.75rem', color: '#8b97a3' }}>Institute of Business &amp; AI</div>
           </div>
-          <h2 style={{
-            fontSize: '1.35rem',
-            fontWeight: 800,
-            color: '#ffffff',
-            letterSpacing: '-0.02em',
-            margin: '0 0 0.35rem'
-          }}>
-            Staff &amp; Admin Portal
-          </h2>
-          <p style={{
-            fontSize: '0.82rem',
-            color: '#94a3b8',
-            margin: 0
-          }}>
-            Sign in to access your CRM, sales leads &amp; reports
-          </p>
         </div>
 
-        {sessionExpiredNotice && (
-          <div style={{
-            background: 'rgba(245, 158, 11, 0.12)',
-            border: '1px solid rgba(245, 158, 11, 0.35)',
-            borderRadius: '10px',
-            padding: '0.75rem 1rem',
-            marginBottom: '1.25rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            color: '#fbbf24',
-            fontSize: '0.8rem',
-            fontWeight: 600
-          }}>
-            <Clock size={16} style={{ flexShrink: 0 }} />
-            <span>Daily session ended at 12:00 AM. Please sign in with your password to start today&apos;s workspace.</span>
+        <div>
+          <div className="login-chip">
+            <span className="live-dot" />
+            <ShinyText text="STAFF COMMAND CENTER · v2" color="#8b97a3" shineColor="#eafff6" speed={3} />
           </div>
-        )}
+          <h1 className="login-headline">
+            Run the institute
+            <br />
+            <GradientText colors={['#3ee6a8', '#2fd0d8', '#4aa8ff', '#3ee6a8']} animationSpeed={6}>at the speed of AI.</GradientText>
+          </h1>
+          <p className="login-lede">
+            Leads, visits, daily reports, attendance and performance — one live workspace for the whole RushiPandit team.
+          </p>
+          <div className="login-stats">
+            {[
+              ['Pipeline', 'Live lead tracking'],
+              ['Visits', 'Monthly visit analytics'],
+              ['Reports', 'AI-assisted daily logs'],
+            ].map(([k, v]) => (
+              <div key={k}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#3ee6a8' }}>{k}</div>
+                <div style={{ fontSize: '0.8125rem', color: '#aeb9c4', marginTop: 4 }}>{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
 
-        {/* Login Form */}
-        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1.125rem' }}>
-          <div className="form-group">
-            <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700, color: '#cbd5e1' }}>
-              Work Email Address
-            </label>
-            <div style={{ position: 'relative' }}>
-              <Mail
-                size={16}
-                style={{
-                  position: 'absolute',
-                  left: '12px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  color: '#64748b',
-                  pointerEvents: 'none',
-                }}
-              />
-              <input
-                type="email"
-                className="form-input"
-                placeholder="your.name@rushipandit.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                style={{
-                  paddingLeft: '38px',
-                  height: '44px',
-                  fontSize: '0.875rem',
-                  borderRadius: '10px',
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  borderColor: 'rgba(255,255,255,0.12)',
-                  color: '#ffffff'
-                }}
-                required
-                autoComplete="email"
-                autoFocus
-              />
-            </div>
+        <p style={{ fontSize: '0.75rem', color: '#5d6976' }}>© {new Date().getFullYear()} RushiPandit Institute · Internal use only</p>
+      </section>
+
+      <section className="login-panel">
+        <div className="login-card">
+          <div style={{ marginBottom: '1.75rem' }}>
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6875rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#77838f' }}>Secure sign-in</p>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 650, letterSpacing: '-0.03em', color: '#eef3f7', marginTop: '0.4rem' }}>Welcome back</h2>
+            <p style={{ fontSize: '0.875rem', color: '#8b97a3', marginTop: '0.3rem' }}>Sign in with your work account to continue.</p>
           </div>
 
-          <div className="form-group">
-            <label className="form-label" style={{ fontSize: '0.75rem', fontWeight: 700, color: '#cbd5e1' }}>
-              Password
-            </label>
-            <div style={{ position: 'relative' }}>
-              <Lock
-                size={16}
-                style={{
-                  position: 'absolute',
-                  left: '12px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  color: '#64748b',
-                  pointerEvents: 'none',
-                }}
-              />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                className="form-input"
-                placeholder="••••••••••••"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                style={{
-                  paddingLeft: '38px',
-                  paddingRight: '40px',
-                  height: '44px',
-                  fontSize: '0.875rem',
-                  borderRadius: '10px',
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  borderColor: 'rgba(255,255,255,0.12)',
-                  color: '#ffffff'
-                }}
-                required
-                autoComplete="current-password"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                style={{
-                  position: 'absolute',
-                  right: '12px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: '#64748b',
-                  padding: 0,
-                  display: 'flex',
-                }}
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-          </div>
-
-          {error && (
-            <div style={{
-              background: 'rgba(239, 68, 68, 0.12)',
-              border: '1px solid rgba(239, 68, 68, 0.3)',
-              borderRadius: '8px',
-              padding: '0.75rem 1rem',
-              fontSize: '0.8rem',
-              color: '#f87171',
-              fontWeight: 600
-            }}>
-              {error}
+          {sessionExpiredNotice && (
+            <div className="login-notice">
+              <Clock size={15} style={{ flexShrink: 0 }} />
+              <span>Your daily session ended at 12:00 AM. Sign in again to start today’s workspace.</span>
             </div>
           )}
 
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={loading}
-            style={{
-              width: '100%',
-              justifyContent: 'center',
-              height: '46px',
-              fontSize: '0.92rem',
-              fontWeight: 800,
-              borderRadius: '10px',
-              marginTop: '0.5rem',
-              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-              borderColor: '#059669',
-              color: '#ffffff',
-              boxShadow: '0 8px 24px rgba(16, 185, 129, 0.35)'
-            }}
-          >
-            {loading ? (
-              <>
-                <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                Signing in...
-              </>
-            ) : (
-              <>
-                Sign In <ArrowRight size={16} />
-              </>
-            )}
-          </button>
-        </form>
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <label className="login-field">
+              <span>Work email</span>
+              <div className="login-input">
+                <Mail size={16} />
+                <input
+                  type="email"
+                  placeholder="you@rushipandit.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                  autoFocus
+                />
+              </div>
+            </label>
 
-        {/* Security / Help Footer */}
-        <div style={{
-          marginTop: '1.75rem',
-          paddingTop: '1.25rem',
-          borderTop: '1px solid rgba(255,255,255,0.08)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '6px',
-          color: '#64748b',
-          fontSize: '0.75rem'
-        }}>
-          <ShieldCheck size={14} color="#10b981" />
-          <span>Encrypted internal system access</span>
+            <label className="login-field">
+              <span>Password</span>
+              <div className="login-input">
+                <Lock size={16} />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="••••••••••"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </label>
+
+            {error && <div className="login-error" role="alert">{error}</div>}
+
+            <button type="submit" className="login-submit" disabled={loading}>
+              {loading ? (
+                <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Signing in…</>
+              ) : (
+                <>Sign in <ArrowRight size={16} /></>
+              )}
+            </button>
+          </form>
+
+          <div className="login-foot">
+            <ShieldCheck size={14} color="#3ee6a8" />
+            <span>Encrypted session · auto sign-out at midnight IST</span>
+          </div>
         </div>
-      </div>
-
-      <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
+      </section>
     </div>
   )
 }
-
